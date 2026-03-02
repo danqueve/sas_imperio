@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   `estado` ENUM('EN_CURSO','FINALIZADO','MOROSO','CANCELADO') DEFAULT 'EN_CURSO',
   `motivo_finalizacion` ENUM('PAGO_COMPLETO', 'RETIRO_PRODUCTO') DEFAULT NULL,
   `observaciones` TEXT,
+  `veces_refinanciado` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Cantidad de refinanciaciones aplicadas',
+  `fecha_ultima_refinanciacion` DATE NULL DEFAULT NULL COMMENT 'Fecha de la última refinanciación',
   `created_by` INT,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (`cliente_id`) REFERENCES `ic_clientes`(`id`),

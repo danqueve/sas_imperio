@@ -29,20 +29,6 @@ $pagadas_info = $pagadas_stmt->fetch();
 $cuotas_pagadas = (int) $pagadas_info['c'];
 $total_pagado = (float) $pagadas_info['total'];
 
-// Calcular mora pendiente acumulada
-$mora_stmt = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? AND (estado='PENDIENTE' OR estado='VENCIDA')");
-$mora_stmt->execute([$id]);
-$cuotas_pendientes = $mora_stmt->fetchAll();
-$total_mora = 0;
-foreach ($cuotas_pendientes as $cp) {
-    if ($cp['fecha_vencimiento'] < date('Y-m-d')) {
-        $dias = dias_atraso_habiles($cp['fecha_vencimiento']);
-        if ($dias > 0) {
-            $total_mora += calcular_mora($cp['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
-        }
-    }
-}
-
 // Listas para el formulario
 $clientes = $pdo->query("SELECT id,nombres,apellidos FROM ic_clientes WHERE estado='ACTIVO' OR id={$cr['cliente_id']} ORDER BY apellidos,nombres")->fetchAll();
 $articulos = $pdo->query("SELECT id,descripcion,precio_venta FROM ic_articulos WHERE activo=1 OR id={$cr['articulo_id']} ORDER BY descripcion")->fetchAll();
@@ -52,6 +38,8 @@ $vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE ac
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Con pagos realizados solo se permite editar metadata, no el plan de cuotas.
+    // La reestructuración del cronograma se hace desde refinanciar.php.
     $v = $_POST;
     if (
         empty($v['cliente_id']) || empty($v['articulo_id']) || empty($v['cobrador_id']) || empty($v['vendedor_id']) ||
@@ -59,87 +47,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ) {
         $error = 'Completá todos los campos obligatorios.';
     } else {
-        $precio = (float) $v['precio_articulo'];
-        $interes = (float) $v['interes_pct'];
-        $monto_tot = round($precio * (1 + ($interes / 100)), 2);
+        $precio      = (float) $v['precio_articulo'];
+        $interes     = (float) $v['interes_pct'];
+        $monto_tot   = round($precio * (1 + ($interes / 100)), 2);
         $cant_cuotas = (int) $v['cant_cuotas'];
 
-        if ($cuotas_pagadas > 0) {
-            if ($cant_cuotas <= $cuotas_pagadas) {
-                $error = "La cantidad de cuotas ($cant_cuotas) debe ser mayor a las cuotas ya pagadas ($cuotas_pagadas).";
-            } elseif ($monto_tot <= $total_pagado) {
-                $error = "El monto total ($monto_tot) debe ser mayor a lo ya pagado ($total_pagado).";
+        try {
+            $pdo->beginTransaction();
+
+            $upd = $pdo->prepare("
+                UPDATE ic_creditos SET
+                    cliente_id=?, articulo_id=?, cobrador_id=?, vendedor_id=?,
+                    precio_articulo=?, monto_total=?, interes_pct=?, interes_moratorio_pct=?,
+                    frecuencia=?, cant_cuotas=?, observaciones=?
+                WHERE id=?
+            ");
+            $upd->execute([
+                $v['cliente_id'], $v['articulo_id'], $v['cobrador_id'], $v['vendedor_id'],
+                $precio, $monto_tot, $interes, (float)($v['interes_moratorio_pct'] ?? 15),
+                $v['frecuencia'], $cant_cuotas, trim($v['observaciones'] ?? ''),
+                $id
+            ]);
+
+            // Regenerar cuotas solo si no hay ningún pago todavía
+            if ($cuotas_pagadas == 0) {
+                $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id=?")->execute([$id]);
+                $monto_cuota = round($monto_tot / $cant_cuotas, 2);
+                $pdo->prepare("UPDATE ic_creditos SET monto_cuota=?, primer_vencimiento=? WHERE id=?")
+                    ->execute([$monto_cuota, $v['primer_vencimiento'], $id]);
+                generar_cuotas($id, [
+                    'primer_vencimiento' => $v['primer_vencimiento'],
+                    'cant_cuotas'        => $cant_cuotas,
+                    'frecuencia'         => $v['frecuencia'],
+                    'monto_cuota'        => $monto_cuota,
+                ], $pdo);
             }
-        }
 
-        if (!$error) {
-            try {
-                $pdo->beginTransaction();
-
-                // 1. Actualizar el crédito
-                $upd = $pdo->prepare("
-                    UPDATE ic_creditos SET
-                        cliente_id=?, articulo_id=?, cobrador_id=?, vendedor_id=?,
-                        precio_articulo=?, monto_total=?, interes_pct=?, interes_moratorio_pct=?,
-                        frecuencia=?, cant_cuotas=?, observaciones=?
-                    WHERE id=?
-                ");
-                $upd->execute([
-                    $v['cliente_id'], $v['articulo_id'], $v['cobrador_id'], $v['vendedor_id'],
-                    $precio, $monto_tot, $interes, (float)($v['interes_moratorio_pct'] ?? 15),
-                    $v['frecuencia'], $cant_cuotas, trim($v['observaciones'] ?? ''),
-                    $id
-                ]);
-
-                // 2. Gestionar Cuotas
-                if ($cuotas_pagadas == 0) {
-                    // Borrar todas y rehacer
-                    $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id=?")->execute([$id]);
-                    $monto_cuota = round($monto_tot / $cant_cuotas, 2);
-                    $pdo->prepare("UPDATE ic_creditos SET monto_cuota=?, primer_vencimiento=? WHERE id=?")->execute([$monto_cuota, $v['primer_vencimiento'], $id]);
-                    
-                    generar_cuotas($id, [
-                        'primer_vencimiento' => $v['primer_vencimiento'],
-                        'cant_cuotas' => $cant_cuotas,
-                        'frecuencia' => $v['frecuencia'],
-                        'monto_cuota' => $monto_cuota
-                    ], $pdo);
-                } else {
-                    // Hay pagos. Borrar solo pendientes/vencidas
-                    $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id=? AND estado != 'PAGADA'")->execute([$id]);
-                    
-                    $saldo_restante = ($monto_tot - $total_pagado) + $total_mora;
-                    $cuotas_restantes = $cant_cuotas - $cuotas_pagadas;
-                    $nuevo_monto_cuota = round($saldo_restante / $cuotas_restantes, 2);
-                    
-                    $pdo->prepare("UPDATE ic_creditos SET monto_cuota=? WHERE id=?")->execute([$nuevo_monto_cuota, $id]);
-
-                    // Buscar fecha del último pago para proyectar los nuevos vencimientos
-                    $last_paid = $pdo->prepare("SELECT fecha_vencimiento FROM ic_cuotas WHERE credito_id=? AND estado='PAGADA' ORDER BY numero_cuota DESC LIMIT 1");
-                    $last_paid->execute([$id]);
-                    $fecha_last = $last_paid->fetchColumn();
-                    $f = new DateTime($fecha_last);
-
-                    for ($i = 1; $i <= $cuotas_restantes; $i++) {
-                        switch ($v['frecuencia']) {
-                            case 'semanal': $f->modify('+7 days'); break;
-                            case 'quincenal': $f->modify('+15 days'); break;
-                            case 'mensual': $f->modify('+1 month'); break;
-                        }
-                        $stmt_ins_c = $pdo->prepare("INSERT INTO ic_cuotas (credito_id, numero_cuota, fecha_vencimiento, monto_cuota) VALUES (?, ?, ?, ?)");
-                        $stmt_ins_c->execute([$id, $cuotas_pagadas + $i, $f->format('Y-m-d'), $nuevo_monto_cuota]);
-                    }
-                }
-
-                $pdo->commit();
-                registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_EDITADO', 'credito', $id);
-                $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Crédito editado satisfactoriamente.'];
-                header("Location: ver.php?id=$id");
-                exit;
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                $error = 'Error al actualizar: ' . $e->getMessage();
-            }
+            $pdo->commit();
+            registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_EDITADO', 'credito', $id);
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Crédito actualizado correctamente.'];
+            header("Location: ver.php?id=$id");
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error = 'Error al actualizar: ' . $e->getMessage();
         }
     }
 } else {
@@ -160,19 +111,15 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <?php if ($cuotas_pagadas > 0): ?>
-        <div id="alert-refinanciacion" class="alert-ic alert-warning" style="transition: opacity 1s;"><i class="fa fa-info-circle"></i> 
-            Este crédito ya tiene <strong><?= $cuotas_pagadas ?> cuotas pagadas</strong> (Total cobrado: <?= formato_pesos($total_pagado) ?>). <br>
-            Actúa como <strong>Refinanciación</strong>: Si modificás el monto total o la cantidad total de cuotas, se calculará el saldo restante más la mora acumulada (<strong><?= formato_pesos($total_mora) ?></strong>) en las nuevas cuotas. Las cuotas ya cobradas quedan intactas. No se podrá modificar el primer vencimiento.
+        <div class="alert-ic alert-warning">
+            <i class="fa fa-info-circle"></i>
+            Este crédito tiene <strong><?= $cuotas_pagadas ?> cuotas pagadas</strong>.
+            Podés editar los datos generales, pero el cronograma de cuotas pendientes <strong>no se modifica desde aquí</strong>.
+            Para reestructurar el plan de pagos usá
+            <a href="refinanciar.php?id=<?= $id ?>" class="fw-bold" style="color:var(--warning)">
+                <i class="fa fa-sync-alt"></i> Refinanciar Crédito
+            </a>.
         </div>
-        <script>
-            setTimeout(function() {
-                var alert = document.getElementById('alert-refinanciacion');
-                if (alert) {
-                    alert.style.opacity = '0';
-                    setTimeout(function() { alert.style.display = 'none'; }, 1000);
-                }
-            }, 20000); // 20 segundos
-        </script>
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
@@ -250,21 +197,16 @@ require_once __DIR__ . '/../views/layout.php';
                         value="<?= e($v['observaciones'] ?? '') ?>" placeholder="Opcional...">
                 </div>
             </div>
-            <div
-                style="margin-top:20px;padding:15px;background:var(--dark-bg);border:1px solid var(--dark-border);border-radius:6px;display:flex;justify-content:space-around">
+            <div style="margin-top:20px;padding:15px;background:var(--dark-bg);border:1px solid var(--dark-border);border-radius:6px;display:flex;justify-content:space-around">
                 <div class="text-center">
                     <div class="text-muted" style="font-size:.8rem">Monto Total Calculado</div>
                     <div class="fw-bold" style="font-size:1.2rem;color:var(--primary)" id="lbl_monto_total">
                         <?= formato_pesos($v['monto_total']) ?></div>
                 </div>
                 <div class="text-center">
-                    <div class="text-muted" style="font-size:.8rem">Valor Cuota (Restantes)</div>
+                    <div class="text-muted" style="font-size:.8rem">Valor Cuota</div>
                     <div class="fw-bold" style="font-size:1.2rem;color:var(--primary)" id="lbl_monto_cuota">
-                        <?php
-                            $saldo_proyectado = ($v['monto_total'] - $total_pagado) + $total_mora;
-                            $cuotas_proj = max(1, $v['cant_cuotas'] - $cuotas_pagadas);
-                            echo formato_pesos($saldo_proyectado / $cuotas_proj);
-                        ?>
+                        <?= formato_pesos($v['monto_total'] > 0 && $v['cant_cuotas'] > 0 ? $v['monto_total'] / $v['cant_cuotas'] : 0) ?>
                     </div>
                 </div>
             </div>
@@ -305,47 +247,26 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <script>
-    const cbArticulo = document.getElementById('sel_articulo');
-    const inpPrecio = document.getElementById('precio_articulo');
-    const inpInteres = document.getElementById('interes_pct');
-    const inpCuotas = document.getElementById('cant_cuotas');
-    const lblTotal = document.getElementById('lbl_monto_total');
-    const lblCuota = document.getElementById('lbl_monto_cuota');
-    
-    // Variables pre-existentes para recálculo visual 
-    const cuotasPagadas = <?= $cuotas_pagadas ?>;
-    const totalPagado = <?= $total_pagado ?>;
-
     function formatMoney(n) {
-        return "$ " + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return '$ ' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function cargarPrecio(sel) {
         if (!sel.value) return;
         const o = sel.options[sel.selectedIndex];
         if (o.dataset.precio) {
-            inpPrecio.value = o.dataset.precio;
+            document.getElementById('precio_articulo').value = o.dataset.precio;
             calcularCuotas();
         }
     }
 
     function calcularCuotas() {
-        let precio = parseFloat(inpPrecio.value) || 0;
-        let interes = parseFloat(inpInteres.value) || 0;
-        let cuotas = parseInt(inpCuotas.value) || 1;
-
-        let total = precio * (1 + (interes / 100));
-        lblTotal.textContent = formatMoney(total);
-        
-        let totalMora = <?= $total_mora ?>;
-        let restante = (total - totalPagado) + totalMora;
-        if(restante < 0) restante = 0;
-        
-        let c_restantes = cuotas - cuotasPagadas;
-        if(c_restantes < 1) c_restantes = 1;
-
-        let m_cuota = restante / c_restantes;
-        lblCuota.textContent = formatMoney(m_cuota);
+        const precio  = parseFloat(document.getElementById('precio_articulo').value) || 0;
+        const interes = parseFloat(document.getElementById('interes_pct').value) || 0;
+        const cuotas  = parseInt(document.getElementById('cant_cuotas').value) || 1;
+        const total   = precio * (1 + interes / 100);
+        document.getElementById('lbl_monto_total').textContent = formatMoney(total);
+        document.getElementById('lbl_monto_cuota').textContent = formatMoney(total / cuotas);
     }
 </script>
 

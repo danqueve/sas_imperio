@@ -61,11 +61,17 @@ $porc = $total_cuotas > 0 ? round($pagadas / $total_cuotas * 100) : 0;
 $total_mora_pendiente = array_sum(array_map(fn($c) => $c['mora_calc'], $lista_cuotas));
 $deuda_pendiente = array_sum(array_map(fn($c) => $c['estado'] !== 'PAGADA' ? $c['monto_cuota'] : 0, $lista_cuotas));
 
-$page_title = 'Crédito #' . $id;
+$page_title   = 'Crédito #' . $id;
 $page_current = 'creditos';
+
+$topbar_actions = '';
 if (es_admin()) {
-    $topbar_actions = '<a href="editar.php?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-edit"></i> Editar Crédito</a>';
+    $topbar_actions .= '<a href="editar.php?id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar</a> ';
 }
+if ((es_admin() || es_supervisor()) && in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
+    $topbar_actions .= '<a href="refinanciar.php?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-sync-alt"></i> Refinanciar</a>';
+}
+
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -202,6 +208,19 @@ require_once __DIR__ . '/../views/layout.php';
                         <?php endif; ?>
                     </td>
                 </tr>
+                <?php if (!empty($cr['veces_refinanciado']) && (int)$cr['veces_refinanciado'] > 0): ?>
+                <tr>
+                    <td class="text-muted" style="padding:5px 0">Refinanciaciones</td>
+                    <td>
+                        <span class="badge-ic badge-warning"><?= (int)$cr['veces_refinanciado'] ?> vez<?= (int)$cr['veces_refinanciado'] > 1 ? 'ces' : '' ?></span>
+                        <?php if (!empty($cr['fecha_ultima_refinanciacion'])): ?>
+                            <span class="text-muted" style="font-size:.78rem;margin-left:6px">
+                                Última: <?= date('d/m/Y', strtotime($cr['fecha_ultima_refinanciacion'])) ?>
+                            </span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endif; ?>
             </table>
             <hr class="divider">
             <!-- Barra de progreso -->

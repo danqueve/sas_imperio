@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/wamp64/bin/mysql/mysql8.0.31/bin/mysql.exe -u root -e \"SHOW DATABASES;\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root -e \":*)"
+    ]
+  }
+}
