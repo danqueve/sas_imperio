@@ -13,11 +13,10 @@ if (!$id) {
 }
 
 $pdo = obtener_conexion();
-// Verificar que no tenga créditos en curso
-$activos = $pdo->prepare("SELECT COUNT(*) FROM ic_creditos WHERE cliente_id=? AND estado='EN_CURSO'");
-$activos->execute([$id]);
-if ((int) $activos->fetchColumn() > 0) {
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'No se puede eliminar: el cliente tiene créditos activos.'];
+$historial = $pdo->prepare("SELECT COUNT(*) FROM ic_creditos WHERE cliente_id=?");
+$historial->execute([$id]);
+if ((int) $historial->fetchColumn() > 0) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'No se puede eliminar: el cliente posee historial de créditos. Puede editarlo y marcarlo como INACTIVO.'];
     header('Location: index.php');
     exit;
 }

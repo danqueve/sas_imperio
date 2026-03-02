@@ -18,11 +18,13 @@ if (!$id) {
 $stmt = $pdo->prepare("
     SELECT cr.*, cl.nombres, cl.apellidos, cl.telefono, cl.id AS cid,
            a.descripcion AS articulo,
-           u.nombre AS cobrador_n, u.apellido AS cobrador_a
+           u.nombre AS cobrador_n, u.apellido AS cobrador_a,
+           v.nombre AS vendedor_n, v.apellido AS vendedor_a
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
     JOIN ic_articulos a ON cr.articulo_id=a.id
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
+    LEFT JOIN ic_usuarios v ON cr.vendedor_id=v.id
     WHERE cr.id=?
 ");
 $stmt->execute([$id]);
@@ -186,6 +188,15 @@ require_once __DIR__ . '/../views/layout.php';
                     <td class="text-muted" style="padding:5px 0">Cobrador</td>
                     <td>
                         <?= e($cr['cobrador_n'] . ' ' . $cr['cobrador_a']) ?>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-muted" style="padding:5px 0">Vendedor</td>
+                    <td>
+                        <?= isset($cr['vendedor_n']) ? e($cr['vendedor_n'] . ' ' . $cr['vendedor_a']) : '<span class="text-muted">No asignado</span>' ?>
+                        <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
+                            <a href="cambiar_vendedor.php?id=<?= $id ?>" class="btn-ic btn-ghost btn-sm" title="Cambiar vendedor" style="padding:2px 5px; font-size:.7rem; margin-left:10px;"><i class="fa fa-edit"></i></a>
+                        <?php endif; ?>
                     </td>
                 </tr>
             </table>

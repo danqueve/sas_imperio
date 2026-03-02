@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS `ic_usuarios` (
   `apellido` VARCHAR(100) NOT NULL,
   `usuario` VARCHAR(60) UNIQUE NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `rol` ENUM('admin','supervisor','cobrador') NOT NULL,
+  `rol` ENUM('admin','supervisor','cobrador','vendedor') NOT NULL,
   `telefono` VARCHAR(20),
   `activo` TINYINT(1) DEFAULT 1,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   `cliente_id` INT NOT NULL,
   `articulo_id` INT NOT NULL,
   `cobrador_id` INT NOT NULL,
+  `vendedor_id` INT NULL,
   `fecha_alta` DATE NOT NULL,
   `precio_articulo` DECIMAL(12,2) NOT NULL,
   `monto_total` DECIMAL(12,2) NOT NULL,
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   FOREIGN KEY (`cliente_id`) REFERENCES `ic_clientes`(`id`),
   FOREIGN KEY (`articulo_id`) REFERENCES `ic_articulos`(`id`),
   FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
+  FOREIGN KEY (`vendedor_id`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL,
   FOREIGN KEY (`created_by`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 

@@ -14,6 +14,7 @@ $cliente_id = (int) ($_GET['cliente_id'] ?? 0);
 $clientes = $pdo->query("SELECT id,nombres,apellidos FROM ic_clientes WHERE estado='ACTIVO' ORDER BY apellidos,nombres")->fetchAll();
 $articulos = $pdo->query("SELECT id,descripcion,precio_venta FROM ic_articulos WHERE activo=1 ORDER BY descripcion")->fetchAll();
 $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
+$vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='vendedor' AND activo=1 ORDER BY nombre")->fetchAll();
 
 $error = '';
 $v = ['cliente_id' => $cliente_id, 'frecuencia' => 'semanal', 'cant_cuotas' => 12, 'interes_pct' => 0, 'interes_moratorio_pct' => 15];
@@ -22,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $v = $_POST;
     // Validación
     if (
-        empty($v['cliente_id']) || empty($v['articulo_id']) || empty($v['cobrador_id']) ||
+        empty($v['cliente_id']) || empty($v['articulo_id']) || empty($v['cobrador_id']) || empty($v['vendedor_id']) ||
         empty($v['cant_cuotas']) || empty($v['primer_vencimiento'])
     ) {
         $error = 'Completá todos los campos obligatorios.';
@@ -38,15 +39,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->beginTransaction();
                 $ins = $pdo->prepare("
                     INSERT INTO ic_creditos
-                      (cliente_id, articulo_id, cobrador_id, fecha_alta, precio_articulo, monto_total,
+                      (cliente_id, articulo_id, cobrador_id, vendedor_id, fecha_alta, precio_articulo, monto_total,
                        interes_pct, interes_moratorio_pct, frecuencia, cant_cuotas, monto_cuota,
                        dia_cobro, primer_vencimiento, estado, observaciones, created_by)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ");
                 $ins->execute([
                     $v['cliente_id'],
                     $v['articulo_id'],
                     $v['cobrador_id'],
+                    $v['vendedor_id'],
                     date('Y-m-d'),
                     $precio,
                     $monto_tot,
@@ -149,6 +151,17 @@ require_once __DIR__ . '/../views/layout.php';
                         <?php foreach ($cobradores as $cob): ?>
                             <option value="<?= $cob['id'] ?>" <?= ($v['cobrador_id'] ?? '') == $cob['id'] ? 'selected' : '' ?>>
                                 <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Vendedor *</label>
+                    <select name="vendedor_id" required>
+                        <option value="">— Seleccionar —</option>
+                        <?php foreach ($vendedores as $ven): ?>
+                            <option value="<?= $ven['id'] ?>" <?= ($v['vendedor_id'] ?? '') == $ven['id'] ? 'selected' : '' ?>>
+                                <?= e($ven['nombre'] . ' ' . $ven['apellido']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
