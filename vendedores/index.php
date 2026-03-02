@@ -3,7 +3,7 @@
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 verificar_sesion();
-verificar_permiso('admin'); // Solo admin gestiona vendedores
+verificar_rol('admin'); // Solo admin gestiona vendedores
 
 $pdo = obtener_conexion();
 $b = trim($_GET['b'] ?? '');

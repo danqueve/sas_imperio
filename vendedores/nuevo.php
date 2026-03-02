@@ -4,7 +4,7 @@ require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
-verificar_permiso('admin');
+verificar_rol('admin');
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
