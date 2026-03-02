@@ -14,7 +14,7 @@ $cliente_id = (int) ($_GET['cliente_id'] ?? 0);
 $clientes = $pdo->query("SELECT id,nombres,apellidos FROM ic_clientes WHERE estado='ACTIVO' ORDER BY apellidos,nombres")->fetchAll();
 $articulos = $pdo->query("SELECT id,descripcion,precio_venta FROM ic_articulos WHERE activo=1 ORDER BY descripcion")->fetchAll();
 $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
-$vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='vendedor' AND activo=1 ORDER BY nombre")->fetchAll();
+$vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE activo=1 ORDER BY nombre")->fetchAll();
 
 $error = '';
 $v = ['cliente_id' => $cliente_id, 'frecuencia' => 'semanal', 'cant_cuotas' => 12, 'interes_pct' => 0, 'interes_moratorio_pct' => 15];

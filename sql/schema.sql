@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS `ic_usuarios` (
   `apellido` VARCHAR(100) NOT NULL,
   `usuario` VARCHAR(60) UNIQUE NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `rol` ENUM('admin','supervisor','cobrador','vendedor') NOT NULL,
+  `rol` ENUM('admin','supervisor','cobrador') NOT NULL,
   `telefono` VARCHAR(20),
   `activo` TINYINT(1) DEFAULT 1,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -66,6 +66,18 @@ CREATE TABLE IF NOT EXISTS `ic_garantes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 -- ------------------------------------------------------------
+-- Tabla ic_vendedores (NUEVO)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_vendedores` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `nombre` VARCHAR(100) NOT NULL,
+  `apellido` VARCHAR(100) NOT NULL,
+  `telefono` VARCHAR(20),
+  `activo` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
 -- Tabla ic_articulos
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `ic_articulos` (
@@ -106,7 +118,7 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   FOREIGN KEY (`cliente_id`) REFERENCES `ic_clientes`(`id`),
   FOREIGN KEY (`articulo_id`) REFERENCES `ic_articulos`(`id`),
   FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
-  FOREIGN KEY (`vendedor_id`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL,
+  FOREIGN KEY (`vendedor_id`) REFERENCES `ic_vendedores`(`id`) ON DELETE SET NULL,
   FOREIGN KEY (`created_by`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 

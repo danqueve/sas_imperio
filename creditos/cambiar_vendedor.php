@@ -33,7 +33,7 @@ if (!$cr || !in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
 }
 
 // Obtener lista de vendedores
-$vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='vendedor' AND activo=1 ORDER BY nombre")->fetchAll();
+$vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE activo=1 ORDER BY nombre")->fetchAll();
 
 $error = '';
 

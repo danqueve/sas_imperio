@@ -71,6 +71,10 @@ $rol = $user['rol'];
 
                 <?php if ($rol === 'admin'): ?>
                     <div class="nav-label">Administración</div>
+                    <a class="nav-item <?= ($page_current ?? '') === 'vendedores' ? 'active' : '' ?>"
+                        href="<?= BASE_URL ?>vendedores/index.php">
+                        <i class="fa fa-user-tag"></i> Vendedores
+                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'usuarios' ? 'active' : '' ?>"
                         href="<?= BASE_URL ?>admin/usuarios.php">
                         <i class="fa fa-user-cog"></i> Usuarios
