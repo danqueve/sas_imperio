@@ -2,6 +2,7 @@
 // vendedores/index.php
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
+require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_rol('admin'); // Solo admin gestiona vendedores
 
