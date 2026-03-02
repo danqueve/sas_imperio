@@ -42,11 +42,13 @@ $stmt = $pdo->prepare("
     SELECT cr.*, cl.nombres, cl.apellidos, cl.telefono,
            a.descripcion AS articulo,
            u.nombre AS cobrador_n, u.apellido AS cobrador_a,
+           v.nombre AS vendedor_n, v.apellido AS vendedor_a,
            (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
     JOIN ic_articulos a ON cr.articulo_id=a.id
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
+    LEFT JOIN ic_usuarios v ON cr.vendedor_id=v.id
     WHERE $whereStr
     ORDER BY cr.fecha_alta DESC
     LIMIT $limit OFFSET $offset
@@ -111,6 +113,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <th>Frec.</th>
                     <th>Avance</th>
                     <th>Cobrador</th>
+                    <th>Vendedor</th>
                     <th>Estado</th>
                     <th></th>
                 </tr>
@@ -158,6 +161,9 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td class="text-muted">
                                 <?= e($cr['cobrador_n'] . ' ' . $cr['cobrador_a']) ?>
+                            </td>
+                            <td class="text-muted">
+                                <?= isset($cr['vendedor_n']) ? e($cr['vendedor_n'] . ' ' . $cr['vendedor_a']) : '<span style="font-size:0.75rem">No asig.</span>' ?>
                             </td>
                             <td>
                                 <?= badge_estado_credito($cr['estado']) ?>
