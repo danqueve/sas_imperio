@@ -173,6 +173,12 @@ require_once __DIR__ . '/../views/layout.php';
                                     title="Ver cronograma">
                                     <i class="fa fa-eye"></i>
                                 </a>
+                                <?php if (es_admin()): ?>
+                                    <a href="editar.php?id=<?= $cr['id'] ?>" class="btn-ic btn-primary btn-sm btn-icon"
+                                        title="Editar Crédito">
+                                        <i class="fa fa-edit"></i>
+                                    </a>
+                                <?php endif; ?>
                                 <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
                                     <a href="finalizar.php?id=<?= $cr['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
                                         title="Finalizar Crédito">

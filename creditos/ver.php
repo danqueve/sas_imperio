@@ -63,6 +63,9 @@ $deuda_pendiente = array_sum(array_map(fn($c) => $c['estado'] !== 'PAGADA' ? $c[
 
 $page_title = 'Crédito #' . $id;
 $page_current = 'creditos';
+if (es_admin()) {
+    $topbar_actions = '<a href="editar.php?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-edit"></i> Editar Crédito</a>';
+}
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
