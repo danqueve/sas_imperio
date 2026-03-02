@@ -29,6 +29,20 @@ $pagadas_info = $pagadas_stmt->fetch();
 $cuotas_pagadas = (int) $pagadas_info['c'];
 $total_pagado = (float) $pagadas_info['total'];
 
+// Calcular mora pendiente acumulada
+$mora_stmt = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? AND (estado='PENDIENTE' OR estado='VENCIDA')");
+$mora_stmt->execute([$id]);
+$cuotas_pendientes = $mora_stmt->fetchAll();
+$total_mora = 0;
+foreach ($cuotas_pendientes as $cp) {
+    if ($cp['fecha_vencimiento'] < date('Y-m-d')) {
+        $dias = dias_atraso_habiles($cp['fecha_vencimiento']);
+        if ($dias > 0) {
+            $total_mora += calcular_mora($cp['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
+        }
+    }
+}
+
 // Listas para el formulario
 $clientes = $pdo->query("SELECT id,nombres,apellidos FROM ic_clientes WHERE estado='ACTIVO' OR id={$cr['cliente_id']} ORDER BY apellidos,nombres")->fetchAll();
 $articulos = $pdo->query("SELECT id,descripcion,precio_venta FROM ic_articulos WHERE activo=1 OR id={$cr['articulo_id']} ORDER BY descripcion")->fetchAll();
@@ -94,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Hay pagos. Borrar solo pendientes/vencidas
                     $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id=? AND estado != 'PAGADA'")->execute([$id]);
                     
-                    $saldo_restante = $monto_tot - $total_pagado;
+                    $saldo_restante = ($monto_tot - $total_pagado) + $total_mora;
                     $cuotas_restantes = $cant_cuotas - $cuotas_pagadas;
                     $nuevo_monto_cuota = round($saldo_restante / $cuotas_restantes, 2);
                     
@@ -146,10 +160,19 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <?php if ($cuotas_pagadas > 0): ?>
-        <div class="alert-ic alert-warning"><i class="fa fa-info-circle"></i> 
+        <div id="alert-refinanciacion" class="alert-ic alert-warning" style="transition: opacity 1s;"><i class="fa fa-info-circle"></i> 
             Este crédito ya tiene <strong><?= $cuotas_pagadas ?> cuotas pagadas</strong> (Total cobrado: <?= formato_pesos($total_pagado) ?>). <br>
-            Si modificás el monto total o la cantidad total de cuotas, el sistema mantendrá intactas las cuotas ya cobradas y recalculará una nueva cuota mensual para el saldo restante. No se podrá modificar el primer vencimiento.
+            Actúa como <strong>Refinanciación</strong>: Si modificás el monto total o la cantidad total de cuotas, se calculará el saldo restante más la mora acumulada (<strong><?= formato_pesos($total_mora) ?></strong>) en las nuevas cuotas. Las cuotas ya cobradas quedan intactas. No se podrá modificar el primer vencimiento.
         </div>
+        <script>
+            setTimeout(function() {
+                var alert = document.getElementById('alert-refinanciacion');
+                if (alert) {
+                    alert.style.opacity = '0';
+                    setTimeout(function() { alert.style.display = 'none'; }, 1000);
+                }
+            }, 20000); // 20 segundos
+        </script>
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
@@ -238,7 +261,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <div class="text-muted" style="font-size:.8rem">Valor Cuota (Restantes)</div>
                     <div class="fw-bold" style="font-size:1.2rem;color:var(--primary)" id="lbl_monto_cuota">
                         <?php
-                            $saldo_proyectado = $v['monto_total'] - $total_pagado;
+                            $saldo_proyectado = ($v['monto_total'] - $total_pagado) + $total_mora;
                             $cuotas_proj = max(1, $v['cant_cuotas'] - $cuotas_pagadas);
                             echo formato_pesos($saldo_proyectado / $cuotas_proj);
                         ?>
@@ -314,7 +337,8 @@ require_once __DIR__ . '/../views/layout.php';
         let total = precio * (1 + (interes / 100));
         lblTotal.textContent = formatMoney(total);
         
-        let restante = total - totalPagado;
+        let totalMora = <?= $total_mora ?>;
+        let restante = (total - totalPagado) + totalMora;
         if(restante < 0) restante = 0;
         
         let c_restantes = cuotas - cuotasPagadas;
