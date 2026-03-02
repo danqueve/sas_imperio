@@ -1,0 +1,23 @@
+# Sistema Imperio Comercial — .gitignore
+
+# Configuración local (DB credentials)
+config/conexion.php
+
+# Archivos subidos por usuarios
+assets/img/uploads/
+
+# Logs
+*.log
+error_log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# PHP
+*.phar

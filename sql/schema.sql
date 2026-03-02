@@ -1,0 +1,181 @@
+-- ============================================================
+-- Sistema Imperio Comercial — Schema MySQL
+-- Versión: 1.0 — Marzo 2026
+-- ============================================================
+
+SET FOREIGN_KEY_CHECKS = 0;
+SET NAMES utf8mb4;
+
+-- ------------------------------------------------------------
+-- Tabla ic_usuarios
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_usuarios` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `nombre` VARCHAR(100) NOT NULL,
+  `apellido` VARCHAR(100) NOT NULL,
+  `usuario` VARCHAR(60) UNIQUE NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `rol` ENUM('admin','supervisor','cobrador') NOT NULL,
+  `telefono` VARCHAR(20),
+  `activo` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- Usuario administrador por defecto: usuario=admin / contraseña=password  ← CAMBIAR EN PRODUCCIÓN
+INSERT IGNORE INTO `ic_usuarios` (`nombre`, `apellido`, `usuario`, `password_hash`, `rol`)
+VALUES ('Administrador', 'Sistema', 'admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin');
+
+-- ------------------------------------------------------------
+-- Tabla ic_clientes
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_clientes` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `nombres` VARCHAR(100) NOT NULL,
+  `apellidos` VARCHAR(100) NOT NULL,
+  `dni` VARCHAR(20),
+  `cuil` VARCHAR(20),
+  `telefono` VARCHAR(20) NOT NULL,
+  `telefono_alt` VARCHAR(20),
+  `fecha_nacimiento` DATE,
+  `direccion` TEXT,
+  `direccion_laboral` TEXT,
+  `coordenadas` VARCHAR(60),
+  `cobrador_id` INT,
+  `dia_cobro` TINYINT COMMENT '1=Lun,2=Mar,3=Mie,4=Jue,5=Vie,6=Sab',
+  `zona` VARCHAR(60),
+  `estado` ENUM('ACTIVO','INACTIVO','MOROSO') DEFAULT 'ACTIVO',
+  `token_acceso` VARCHAR(64) UNIQUE,
+  `tiene_garante` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_garantes
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_garantes` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `cliente_id` INT NOT NULL,
+  `nombres` VARCHAR(100) NOT NULL,
+  `apellidos` VARCHAR(100) NOT NULL,
+  `dni` VARCHAR(20),
+  `telefono` VARCHAR(20),
+  `direccion` TEXT,
+  `coordenadas` VARCHAR(60),
+  FOREIGN KEY (`cliente_id`) REFERENCES `ic_clientes`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_articulos
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_articulos` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `descripcion` VARCHAR(200) NOT NULL,
+  `precio_costo` DECIMAL(12,2),
+  `precio_venta` DECIMAL(12,2),
+  `stock` INT DEFAULT 0,
+  `categoria` VARCHAR(80),
+  `activo` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_creditos
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_creditos` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `cliente_id` INT NOT NULL,
+  `articulo_id` INT NOT NULL,
+  `cobrador_id` INT NOT NULL,
+  `fecha_alta` DATE NOT NULL,
+  `precio_articulo` DECIMAL(12,2) NOT NULL,
+  `monto_total` DECIMAL(12,2) NOT NULL,
+  `interes_pct` DECIMAL(5,2) NOT NULL,
+  `interes_moratorio_pct` DECIMAL(5,2) DEFAULT 15.00,
+  `frecuencia` ENUM('semanal','quincenal','mensual') NOT NULL,
+  `cant_cuotas` INT NOT NULL,
+  `monto_cuota` DECIMAL(12,2) NOT NULL,
+  `dia_cobro` TINYINT COMMENT 'Solo para frecuencia semanal: 1=Lun…6=Sab',
+  `primer_vencimiento` DATE NOT NULL,
+  `estado` ENUM('EN_CURSO','FINALIZADO','MOROSO','CANCELADO') DEFAULT 'EN_CURSO',
+  `motivo_finalizacion` ENUM('PAGO_COMPLETO', 'RETIRO_PRODUCTO') DEFAULT NULL,
+  `observaciones` TEXT,
+  `created_by` INT,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`cliente_id`) REFERENCES `ic_clientes`(`id`),
+  FOREIGN KEY (`articulo_id`) REFERENCES `ic_articulos`(`id`),
+  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
+  FOREIGN KEY (`created_by`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_cuotas
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_cuotas` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `credito_id` INT NOT NULL,
+  `numero_cuota` INT NOT NULL,
+  `fecha_vencimiento` DATE NOT NULL,
+  `monto_cuota` DECIMAL(12,2) NOT NULL,
+  `monto_mora` DECIMAL(12,2) DEFAULT 0.00,
+  `dias_atraso` INT DEFAULT 0,
+  `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL') DEFAULT 'PENDIENTE',
+  `fecha_pago` DATE DEFAULT NULL,
+  FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_pagos_temporales
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_pagos_temporales` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `cuota_id` INT NOT NULL,
+  `cobrador_id` INT NOT NULL,
+  `fecha_registro` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `monto_efectivo` DECIMAL(12,2) DEFAULT 0.00,
+  `monto_transferencia` DECIMAL(12,2) DEFAULT 0.00,
+  `monto_total` DECIMAL(12,2) NOT NULL,
+  `monto_mora_cobrada` DECIMAL(12,2) DEFAULT 0.00,
+  `observaciones` TEXT,
+  `estado` ENUM('PENDIENTE','APROBADO','RECHAZADO') DEFAULT 'PENDIENTE',
+  FOREIGN KEY (`cuota_id`) REFERENCES `ic_cuotas`(`id`),
+  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_pagos_confirmados
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_pagos_confirmados` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `pago_temp_id` INT NOT NULL,
+  `cuota_id` INT NOT NULL,
+  `cobrador_id` INT NOT NULL,
+  `aprobador_id` INT NOT NULL,
+  `fecha_pago` DATE NOT NULL,
+  `monto_efectivo` DECIMAL(12,2) DEFAULT 0.00,
+  `monto_transferencia` DECIMAL(12,2) DEFAULT 0.00,
+  `monto_total` DECIMAL(12,2) NOT NULL,
+  `monto_mora_cobrada` DECIMAL(12,2) DEFAULT 0.00,
+  `fecha_aprobacion` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`pago_temp_id`) REFERENCES `ic_pagos_temporales`(`id`),
+  FOREIGN KEY (`cuota_id`) REFERENCES `ic_cuotas`(`id`),
+  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
+  FOREIGN KEY (`aprobador_id`) REFERENCES `ic_usuarios`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_log_actividades
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_log_actividades` (
+  `id`         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `usuario_id` INT NOT NULL,
+  `accion`     VARCHAR(50) NOT NULL,
+  `entidad`    VARCHAR(30) NOT NULL,
+  `entidad_id` INT NULL,
+  `detalle`    VARCHAR(255) NULL,
+  `ip`         VARCHAR(45) NULL,
+  `fecha`      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`usuario_id`) REFERENCES `ic_usuarios`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+SET FOREIGN_KEY_CHECKS = 1;
