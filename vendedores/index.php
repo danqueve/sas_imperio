@@ -23,7 +23,7 @@ $vendedores = $stmt->fetchAll();
 
 $page_title = 'Vendedores';
 $page_current = 'vendedores';
-$topbar_actions = '<a href="nuevo.php" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Vendedor</a>';
+$topbar_actions = '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Vendedor</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -33,7 +33,7 @@ require_once __DIR__ . '/../views/layout.php';
             <input type="text" name="b" class="form-control mb-0" placeholder="Buscar vendedor..." value="<?= e($b) ?>">
             <button type="submit" class="btn-ic btn-secondary">Buscar</button>
             <?php if ($b !== ''): ?>
-                <a href="index.php" class="btn-ic btn-ghost">Limpiar</a>
+                <a href="index" class="btn-ic btn-ghost">Limpiar</a>
             <?php endif; ?>
         </form>
     </div>
@@ -66,11 +66,11 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <a href="editar.php?id=<?= $v['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar"><i class="fa fa-edit"></i></a>
+                                <a href="editar?id=<?= $v['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar"><i class="fa fa-edit"></i></a>
                                 <?php if ($v['activo']): ?>
-                                    <a href="eliminar.php?id=<?= $v['id'] ?>&accion=baja" class="btn-ic btn-danger btn-sm btn-icon" title="Dar de baja" onclick="return confirm('¿Seguro que deseas dar de baja a este vendedor?')"><i class="fa fa-arrow-down"></i></a>
+                                    <a href="eliminar?id=<?= $v['id'] ?>&accion=baja" class="btn-ic btn-danger btn-sm btn-icon" title="Dar de baja" onclick="return confirm('¿Seguro que deseas dar de baja a este vendedor?')"><i class="fa fa-arrow-down"></i></a>
                                 <?php else: ?>
-                                    <a href="eliminar.php?id=<?= $v['id'] ?>&accion=alta" class="btn-ic btn-success btn-sm btn-icon" title="Dar de alta" onclick="return confirm('¿Seguro que deseas reactivar a este vendedor?')"><i class="fa fa-arrow-up"></i></a>
+                                    <a href="eliminar?id=<?= $v['id'] ?>&accion=alta" class="btn-ic btn-success btn-sm btn-icon" title="Dar de alta" onclick="return confirm('¿Seguro que deseas reactivar a este vendedor?')"><i class="fa fa-arrow-up"></i></a>
                                 <?php endif; ?>
                             </td>
                         </tr>

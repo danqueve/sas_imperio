@@ -9,7 +9,7 @@ verificar_rol('admin');
 $pdo = obtener_conexion();
 $id = (int)($_GET['id'] ?? 0);
 if (!$id) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -18,7 +18,7 @@ $stmt->execute([$id]);
 $vendedor = $stmt->fetch();
 
 if (!$vendedor) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($upd->execute([$nombre, $apellido, $telefono, $id])) {
             registrar_log($pdo, $_SESSION['user_id'], 'VENDEDOR_MODIFICADO', 'vendedores', $id);
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Vendedor actualizado.'];
-            header('Location: index.php');
+            header('Location: index');
             exit;
         } else {
             $error = 'Error al modificar.';
@@ -64,7 +64,7 @@ require_once __DIR__ . '/../views/layout.php';
         <input type="text" name="telefono" class="form-control" value="<?= e($vendedor['telefono']) ?>">
         
         <button type="submit" class="btn-ic btn-primary mt-3">Guardar Cambios</button>
-        <a href="index.php" class="btn-ic btn-ghost mt-3">Cancelar</a>
+        <a href="index" class="btn-ic btn-ghost mt-3">Cancelar</a>
     </form>
 </div>
 

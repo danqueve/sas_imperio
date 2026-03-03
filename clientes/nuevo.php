@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Cliente agregado correctamente.'];
-        header('Location: ver.php?id=' . $cliente_id);
+        header('Location: ver?id=' . $cliente_id);
         exit;
     }
 }
@@ -239,7 +239,7 @@ require_once __DIR__ . '/../views/layout.php';
 
         <div class="d-flex gap-3">
             <button type="submit" class="btn-ic btn-primary"><i class="fa fa-save"></i> Guardar Cliente</button>
-            <a href="index.php" class="btn-ic btn-ghost">Cancelar</a>
+            <a href="index" class="btn-ic btn-ghost">Cancelar</a>
         </div>
 
     </form>

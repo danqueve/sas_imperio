@@ -10,7 +10,7 @@ verificar_rol('admin');
 
 $pdo = obtener_conexion();
 $id  = (int) ($_GET['id'] ?? 0);
-if (!$id) { header('Location: liquidaciones.php'); exit; }
+if (!$id) { header('Location: liquidaciones'); exit; }
 
 // Cargar liquidación
 $stmt = $pdo->prepare("
@@ -24,7 +24,7 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$id]);
 $liq = $stmt->fetch();
-if (!$liq) { header('Location: liquidaciones.php'); exit; }
+if (!$liq) { header('Location: liquidaciones'); exit; }
 
 // Ítems de la liquidación
 $items_stmt = $pdo->prepare("SELECT * FROM ic_liquidacion_items WHERE liquidacion_id=? ORDER BY tipo, id");
@@ -66,15 +66,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         registrar_log($pdo, $_SESSION['user_id'], 'LIQUIDACION_PAGADA', 'liquidacion', $id);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Liquidación marcada como pagada.'];
 
+    } elseif ($accion === 'revertir' && $liq['estado'] === 'APROBADA') {
+        $pdo->prepare("
+            UPDATE ic_liquidaciones SET estado='BORRADOR', aprobado_by=NULL, aprobado_at=NULL WHERE id=?
+        ")->execute([$id]);
+        registrar_log($pdo, $_SESSION['user_id'], 'LIQUIDACION_REVERTIDA', 'liquidacion', $id);
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Liquidación revertida a Borrador. Ya puede editarla.'];
+
     } elseif ($accion === 'eliminar' && $liq['estado'] === 'BORRADOR') {
         $pdo->prepare("DELETE FROM ic_liquidaciones WHERE id=?")->execute([$id]);
         registrar_log($pdo, $_SESSION['user_id'], 'LIQUIDACION_ELIMINADA', 'liquidacion', $id);
         $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Liquidación eliminada.'];
-        header('Location: liquidaciones.php');
+        header('Location: liquidaciones');
         exit;
     }
 
-    header("Location: liquidacion_ver.php?id=$id");
+    header("Location: liquidacion_ver?id=$id");
     exit;
 }
 
@@ -87,6 +94,9 @@ $page_current = 'liquidaciones';
 // Botones en topbar
 $topbar_actions  = '<button onclick="window.print()" class="btn-ic btn-ghost btn-sm no-print"><i class="fa fa-print"></i> Imprimir</button>';
 if ($liq['estado'] === 'BORRADOR') {
+    $topbar_actions .= ' <a href="liquidacion_editar?id=' . $id . '" class="btn-ic btn-ghost btn-sm no-print">
+        <i class="fa fa-pen"></i> Editar
+    </a>';
     $topbar_actions .= ' <form method="POST" style="display:inline" class="no-print">
         <input type="hidden" name="accion" value="aprobar">
         <button type="submit" class="btn-ic btn-primary btn-sm" data-confirm="¿Aprobar esta liquidación?">
@@ -95,6 +105,12 @@ if ($liq['estado'] === 'BORRADOR') {
     </form>';
 }
 if ($liq['estado'] === 'APROBADA') {
+    $topbar_actions .= ' <form method="POST" style="display:inline" class="no-print">
+        <input type="hidden" name="accion" value="revertir">
+        <button type="submit" class="btn-ic btn-ghost btn-sm" data-confirm="¿Revertir a Borrador para poder editarla?">
+            <i class="fa fa-undo"></i> Revertir a Borrador
+        </button>
+    </form>';
     $topbar_actions .= ' <form method="POST" style="display:inline" class="no-print">
         <input type="hidden" name="accion" value="marcar_pagada">
         <button type="submit" class="btn-ic btn-success btn-sm" data-confirm="¿Marcar como pagada?">
@@ -305,7 +321,7 @@ require_once __DIR__ . '/../views/layout.php';
             </button>
         </form>
     <?php endif; ?>
-    <a href="liquidaciones.php" class="btn-ic btn-ghost btn-sm">
+    <a href="liquidaciones" class="btn-ic btn-ghost btn-sm">
         <i class="fa fa-arrow-left"></i> Volver al listado
     </a>
 </div>

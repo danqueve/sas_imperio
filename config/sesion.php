@@ -19,7 +19,7 @@ function verificar_sesion(): void
     if (empty($_SESSION['user_id']) || !isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ROLES, true)) {
         session_unset();
         session_destroy();
-        header('Location: ' . BASE_URL . 'auth/login.php');
+        header('Location: ' . BASE_URL . 'auth/login');
         exit;
     }
 }

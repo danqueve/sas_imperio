@@ -9,11 +9,11 @@ require_once __DIR__ . '/config/funciones.php';
 
 if (!empty($_SESSION['user_id'])) {
     if (es_cobrador()) {
-        header('Location: cobrador/agenda.php');
+        header('Location: cobrador/agenda');
     } else {
-        header('Location: admin/dashboard.php');
+        header('Location: admin/dashboard');
     }
 } else {
-    header('Location: auth/login.php');
+    header('Location: auth/login');
 }
 exit;

@@ -119,7 +119,7 @@ require_once __DIR__ . '/../views/layout.php';
 <div class="alert-ic alert-warning mb-4">
     <i class="fa fa-bell"></i>
     <strong><?= $rend_pend ?> cobrador<?= $rend_pend !== 1 ? 'es tienen' : ' tiene' ?> rendiciones pendientes de aprobación.</strong>
-    <a href="rendiciones.php" style="color:inherit;text-decoration:underline;margin-left:12px">Ir a Rendiciones →</a>
+    <a href="rendiciones" style="color:inherit;text-decoration:underline;margin-left:12px">Ir a Rendiciones →</a>
 </div>
 <?php endif; ?>
 
@@ -271,7 +271,7 @@ require_once __DIR__ . '/../views/layout.php';
     <div class="card-ic">
         <div class="card-ic-header">
             <span class="card-title"><i class="fa fa-check-double"></i> Últimos Pagos</span>
-            <a href="rendiciones.php" class="btn-ic btn-ghost btn-sm">Ver Rendiciones</a>
+            <a href="rendiciones" class="btn-ic btn-ghost btn-sm">Ver Rendiciones</a>
         </div>
         <?php if (empty($ultimos_pagos)): ?>
             <p class="text-muted text-center" style="padding:24px">Sin pagos aprobados.</p>

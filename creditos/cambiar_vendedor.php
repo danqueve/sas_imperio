@@ -11,7 +11,7 @@ verificar_permiso('alta_creditos');
 $pdo = obtener_conexion();
 $id = (int) ($_GET['id'] ?? 0);
 if (!$id) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -28,7 +28,7 @@ $cr = $stmt->fetch();
 
 if (!$cr || !in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'El crédito no existe o no se puede modificar su vendedor en su estado actual.'];
-    header("Location: ver.php?id=$id");
+    header("Location: ver?id=$id");
     exit;
 }
 
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Vendedor asignado actualizado correctamente.'];
-            header("Location: ver.php?id=$id");
+            header("Location: ver?id=$id");
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -109,7 +109,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <button type="submit" class="btn-ic btn-primary">
                     <i class="fa fa-save"></i> Guardar Cambios
                 </button>
-                <a href="ver.php?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
+                <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
             </div>
         </div>
     </form>

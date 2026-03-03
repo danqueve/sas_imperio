@@ -19,7 +19,7 @@ if ($modo === 'editar' && $id) {
     $stmt->execute([$id]);
     $u = $stmt->fetch();
     if (!$u) {
-        header('Location: usuarios.php');
+        header('Location: usuarios');
         exit;
     }
 }
@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($accion === 'toggle_activo') {
         $uid = (int) $_POST['uid'];
         $pdo->prepare("UPDATE ic_usuarios SET activo = 1 - activo WHERE id=?")->execute([$uid]);
-        header('Location: usuarios.php');
+        header('Location: usuarios');
         exit;
     }
 
@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             if (!$error) {
-                header('Location: usuarios.php');
+                header('Location: usuarios');
                 exit;
             }
         }
@@ -182,7 +182,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <span class="card-title">
                     <?= $modo === 'nuevo' ? 'Nuevo Usuario' : 'Editar Usuario' ?>
                 </span>
-                <a href="usuarios.php" class="btn-ic btn-ghost btn-sm">✕</a>
+                <a href="usuarios" class="btn-ic btn-ghost btn-sm">✕</a>
             </div>
             <?php if ($error): ?>
                 <div class="alert-ic alert-danger">
@@ -220,7 +220,7 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
                 <div class="d-flex gap-3">
                     <button type="submit" class="btn-ic btn-primary"><i class="fa fa-save"></i> Guardar</button>
-                    <a href="usuarios.php" class="btn-ic btn-ghost">Cancelar</a>
+                    <a href="usuarios" class="btn-ic btn-ghost">Cancelar</a>
                 </div>
             </form>
         </div>

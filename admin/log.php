@@ -129,7 +129,7 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
         <div style="display:flex;align-items:flex-end;gap:8px">
             <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
-            <a href="log.php" class="btn-ic btn-ghost"><i class="fa fa-times"></i></a>
+            <a href="log" class="btn-ic btn-ghost"><i class="fa fa-times"></i></a>
         </div>
     </form>
 </div>

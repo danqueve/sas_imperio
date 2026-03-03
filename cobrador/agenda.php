@@ -153,7 +153,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="modal-title"><i class="fa fa-file-pdf"></i> Exportar Ficha Semanal</div>
             <button class="modal-close" onclick="closeModal('modal-agenda-pdf')">✕</button>
         </div>
-        <form id="form-agenda-pdf" target="_blank" action="agenda_pdf.php" method="GET">
+        <form id="form-agenda-pdf" target="_blank" action="agenda_pdf" method="GET">
             <div class="form-group mb-3">
                 <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
                 <select name="cobrador_id" style="width:100%">
@@ -472,7 +472,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         </div>
         <div id="modal-info"
             style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
-        <form method="POST" action="registrar_pago.php" class="form-ic" id="form-pago">
+        <form method="POST" action="registrar_pago" class="form-ic" id="form-pago">
             <input type="hidden" name="cuota_id" id="input_cuota_id">
             <div class="form-grid">
                 <div class="form-group">

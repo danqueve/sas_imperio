@@ -114,7 +114,7 @@ require_once __DIR__ . '/../views/layout.php';
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
         <a href="?" class="btn-ic btn-ghost"><i class="fa fa-times"></i> Limpiar</a>
         <?php if (!es_cobrador()): ?>
-            <a href="nuevo.php" class="btn-ic btn-primary" style="margin-left:auto">
+            <a href="nuevo" class="btn-ic btn-primary" style="margin-left:auto">
                 <i class="fa fa-plus"></i> Nuevo Cliente
             </a>
         <?php endif; ?>
@@ -202,17 +202,17 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td class="nowrap">
                                 <div class="d-flex gap-2">
-                                    <a href="ver.php?id=<?= $c['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon"
+                                    <a href="ver?id=<?= $c['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon"
                                         title="Ver ficha">
                                         <i class="fa fa-eye"></i>
                                     </a>
                                     <?php if (!es_cobrador()): ?>
-                                        <a href="editar.php?id=<?= $c['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon"
+                                        <a href="editar?id=<?= $c['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon"
                                             title="Editar">
                                             <i class="fa fa-pencil"></i>
                                         </a>
                                         <?php if (es_admin()): ?>
-                                            <a href="eliminar.php?id=<?= $c['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
+                                            <a href="eliminar?id=<?= $c['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
                                                 title="Eliminar"
                                                 data-confirm="¿Eliminar al cliente <?= e($c['nombres'] . ' ' . $c['apellidos']) ?>? Esta acción no se puede deshacer.">
                                                 <i class="fa fa-trash"></i>

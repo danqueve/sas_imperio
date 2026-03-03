@@ -64,7 +64,7 @@ $creditos = $stmt->fetchAll();
 
 $page_title = 'Créditos';
 $page_current = 'creditos';
-$topbar_actions = '<a href="nuevo.php" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Crédito</a>';
+$topbar_actions = '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Crédito</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -136,7 +136,7 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= $cr['id'] ?>
                             </td>
                             <td>
-                                <div class="fw-bold"><a href="../clientes/ver.php?id=<?= $cr['cliente_id'] ?>">
+                                <div class="fw-bold"><a href="../clientes/ver?id=<?= $cr['cliente_id'] ?>">
                                         <?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?>
                                     </a></div>
                                 <div class="text-muted" style="font-size:.75rem">
@@ -175,18 +175,18 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= badge_estado_credito($cr['estado']) ?>
                             </td>
                             <td>
-                                <a href="ver.php?id=<?= $cr['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon"
+                                <a href="ver?id=<?= $cr['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon"
                                     title="Ver cronograma">
                                     <i class="fa fa-eye"></i>
                                 </a>
                                 <?php if (es_admin()): ?>
-                                    <a href="editar.php?id=<?= $cr['id'] ?>" class="btn-ic btn-primary btn-sm btn-icon"
+                                    <a href="editar?id=<?= $cr['id'] ?>" class="btn-ic btn-primary btn-sm btn-icon"
                                         title="Editar Crédito">
                                         <i class="fa fa-edit"></i>
                                     </a>
                                 <?php endif; ?>
                                 <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
-                                    <a href="finalizar.php?id=<?= $cr['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
+                                    <a href="finalizar?id=<?= $cr['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
                                         title="Finalizar Crédito">
                                         <i class="fa fa-power-off"></i>
                                     </a>

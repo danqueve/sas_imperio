@@ -11,7 +11,7 @@ verificar_permiso('editar_clientes');
 $pdo = obtener_conexion();
 $id = (int) ($_GET['id'] ?? 0);
 if (!$id) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -19,7 +19,7 @@ $cliente = $pdo->prepare("SELECT * FROM ic_clientes WHERE id=?");
 $cliente->execute([$id]);
 $c = $cliente->fetch();
 if (!$c) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         registrar_log($pdo, $_SESSION['user_id'], 'CLIENTE_EDITADO', 'cliente', $id,
             trim($v['apellidos']) . ', ' . trim($v['nombres']));
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Cliente actualizado correctamente.'];
-        header('Location: ver.php?id=' . $id);
+        header('Location: ver?id=' . $id);
         exit;
     }
 }
@@ -212,7 +212,7 @@ require_once __DIR__ . '/../views/layout.php';
 
         <div class="d-flex gap-3">
             <button type="submit" class="btn-ic btn-primary"><i class="fa fa-save"></i> Guardar Cambios</button>
-            <a href="ver.php?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
+            <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>
 </div>

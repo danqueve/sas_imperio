@@ -8,12 +8,12 @@ verificar_rol('admin');
 
 $pdo = obtener_conexion();
 $id  = (int)($_GET['id'] ?? 0);
-if (!$id) { header('Location: index.php'); exit; }
+if (!$id) { header('Location: index'); exit; }
 
 $stmt = $pdo->prepare("SELECT * FROM ic_creditos WHERE id=?");
 $stmt->execute([$id]);
 $cr = $stmt->fetch();
-if (!$cr) { header('Location: index.php'); exit; }
+if (!$cr) { header('Location: index'); exit; }
 
 // Cuotas pagadas
 $pagadas_stmt = $pdo->prepare("SELECT COUNT(*) as c, IFNULL(SUM(monto_cuota),0) as total FROM ic_cuotas WHERE credito_id=? AND estado='PAGADA'");
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_EDITADO', 'credito', $id);
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Crédito actualizado correctamente.'];
-            header("Location: ver.php?id=$id");
+            header("Location: ver?id=$id");
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -121,7 +121,7 @@ require_once __DIR__ . '/../views/layout.php';
             <i class="fa fa-info-circle"></i>
             Este crédito tiene <strong><?= $cuotas_pagadas ?> cuotas pagadas</strong>.
             Podés editar los datos generales, pero para reestructurar el cronograma usá
-            <a href="refinanciar.php?id=<?= $id ?>" class="fw-bold" style="color:var(--warning)">
+            <a href="refinanciar?id=<?= $id ?>" class="fw-bold" style="color:var(--warning)">
                 <i class="fa fa-sync-alt"></i> Refinanciar
             </a>.
         </div>
@@ -263,7 +263,7 @@ require_once __DIR__ . '/../views/layout.php';
             <button type="submit" class="btn-ic btn-primary">
                 <i class="fa fa-save"></i> Guardar Cambios
             </button>
-            <a href="ver.php?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
+            <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>
 </div>

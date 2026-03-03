@@ -56,7 +56,7 @@ $cobradores = $pdo->query("SELECT id, nombre, apellido FROM ic_usuarios WHERE ro
 
 $page_title   = 'Liquidaciones';
 $page_current = 'liquidaciones';
-$topbar_actions = '<a href="liquidacion_nueva.php" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nueva Liquidación</a>';
+$topbar_actions = '<a href="liquidacion_nueva" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nueva Liquidación</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -139,10 +139,15 @@ require_once __DIR__ . '/../views/layout.php';
                                 ?>
                                 <span class="badge bg-<?= $badge_color ?>"><?= $liq['estado'] ?></span>
                             </td>
-                            <td>
-                                <a href="liquidacion_ver.php?id=<?= $liq['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Ver detalle">
+                            <td class="nowrap">
+                                <a href="liquidacion_ver?id=<?= $liq['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Ver detalle">
                                     <i class="fa fa-eye"></i>
                                 </a>
+                                <?php if ($liq['estado'] === 'BORRADOR'): ?>
+                                    <a href="liquidacion_editar?id=<?= $liq['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar">
+                                        <i class="fa fa-pen"></i>
+                                    </a>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

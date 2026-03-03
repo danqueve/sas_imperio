@@ -10,7 +10,7 @@ verificar_sesion();
 $pdo = obtener_conexion();
 $id = (int) ($_GET['id'] ?? 0);
 if (!$id) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -27,7 +27,7 @@ $cr = $stmt->fetch();
 
 if (!$cr || !in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'El crédito no existe o no se puede finalizar en su estado actual.'];
-    header("Location: ver.php?id=$id");
+    header("Location: ver?id=$id");
     exit;
 }
 
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Crédito finalizado correctamente (' . strtolower($desc_motivo) . ').'];
-            header("Location: ver.php?id=$id");
+            header("Location: ver?id=$id");
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -110,7 +110,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <button type="submit" class="btn-ic btn-danger">
                     <i class="fa fa-check"></i> Confirmar Finalización
                 </button>
-                <a href="ver.php?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
+                <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
             </div>
         </div>
     </form>

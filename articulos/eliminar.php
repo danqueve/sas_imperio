@@ -8,7 +8,7 @@ verificar_permiso('alta_creditos');
 $pdo = obtener_conexion();
 $id = (int) ($_GET['id'] ?? 0);
 if (!$id) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 $usados = $pdo->prepare("SELECT COUNT(*) FROM ic_creditos WHERE articulo_id=?");
@@ -20,5 +20,5 @@ if ((int) $usados->fetchColumn() > 0) {
     registrar_log($pdo, $_SESSION['user_id'], 'ARTICULO_ELIMINADO', 'articulo', $id);
     $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artículo eliminado.'];
 }
-header('Location: index.php');
+header('Location: index');
 exit;

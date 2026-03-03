@@ -11,7 +11,7 @@ $id = (int)($_GET['id'] ?? 0);
 $accion = $_GET['accion'] ?? '';
 
 if (!$id || !in_array($accion, ['alta', 'baja'])) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -24,5 +24,5 @@ $log_msg = ($nuevo_estado) ? 'VENDEDOR_REACTIVADO' : 'VENDEDOR_DADO_BAJA';
 registrar_log($pdo, $_SESSION['user_id'], $log_msg, 'vendedores', $id);
 
 $_SESSION['flash'] = ['type' => 'success', 'msg' => ($nuevo_estado ? 'Vendedor reactivado.' : 'Vendedor dado de baja.')];
-header('Location: index.php');
+header('Location: index');
 exit;

@@ -11,7 +11,7 @@ verificar_permiso('ver_clientes');
 $pdo = obtener_conexion();
 $id = (int) ($_GET['id'] ?? 0);
 if (!$id) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -24,7 +24,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([$id]);
 $c = $stmt->fetch();
 if (!$c) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -46,7 +46,7 @@ $listado_creditos = $creditos->fetchAll();
 
 $page_title = 'Ficha Cliente — ' . $c['apellidos'] . ', ' . $c['nombres'];
 $page_current = 'clientes';
-$topbar_actions = '<a href="editar.php?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-pencil"></i> Editar</a>';
+$topbar_actions = '<a href="editar?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-pencil"></i> Editar</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -225,7 +225,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="card-ic-header">
                 <span class="card-title"><i class="fa fa-file-invoice-dollar"></i> Créditos</span>
                 <?php if (!es_cobrador()): ?>
-                    <a href="../creditos/nuevo.php?cliente_id=<?= $id ?>" class="btn-ic btn-primary btn-sm">
+                    <a href="../creditos/nuevo?cliente_id=<?= $id ?>" class="btn-ic btn-primary btn-sm">
                         <i class="fa fa-plus"></i> Nuevo Crédito
                     </a>
                 <?php endif; ?>
@@ -280,7 +280,7 @@ require_once __DIR__ . '/../views/layout.php';
                                         <?= badge_estado_credito($cr['estado']) ?>
                                     </td>
                                     <td>
-                                        <a href="../creditos/ver.php?id=<?= $cr['id'] ?>"
+                                        <a href="../creditos/ver?id=<?= $cr['id'] ?>"
                                             class="btn-ic btn-ghost btn-sm btn-icon" title="Ver cronograma">
                                             <i class="fa fa-eye"></i>
                                         </a>

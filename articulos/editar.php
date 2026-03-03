@@ -16,7 +16,7 @@ if ($id) {
     $stmt->execute([$id]);
     $a = $stmt->fetch();
     if (!$a) {
-        header('Location: index.php');
+        header('Location: index');
         exit;
     }
     $esEdicion = true;
@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             registrar_log($pdo, $_SESSION['user_id'], 'ARTICULO_CREADO', 'articulo', $art_id, $desc);
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artículo agregado.'];
         }
-        header('Location: index.php');
+        header('Location: index');
         exit;
     }
 }
@@ -102,7 +102,7 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
         <div class="d-flex gap-3">
             <button type="submit" class="btn-ic btn-primary"><i class="fa fa-save"></i> Guardar</button>
-            <a href="index.php" class="btn-ic btn-ghost">Cancelar</a>
+            <a href="index" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>
 </div>

@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         registrar_log($pdo, $_SESSION['user_id'], 'PAGO_RECHAZADO', 'pago_temporal', $pago_id);
         $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Pago rechazado.'];
     }
-    header('Location: rendiciones.php?fecha=' . urlencode($fecha_sel) . '&cobrador_id=' . $cobrador_id);
+    header('Location: rendiciones?fecha=' . urlencode($fecha_sel) . '&cobrador_id=' . $cobrador_id);
     exit;
 }
 
@@ -148,7 +148,7 @@ require_once __DIR__ . '/../views/layout.php';
                         <span class="text-muted" style="font-size:.82rem">Total:
                             <strong><?= formato_pesos($total_general) ?></strong>
                         </span>
-                        <a href="rendicion_pdf.php?fecha=<?= urlencode($fecha_sel) ?>&cobrador_id=<?= $cobrador_id ?>"
+                        <a href="rendicion_pdf?fecha=<?= urlencode($fecha_sel) ?>&cobrador_id=<?= $cobrador_id ?>"
                            class="btn-ic btn-ghost btn-sm no-print" target="_blank">
                             <i class="fa fa-file-pdf"></i> Exportar PDF
                         </a>

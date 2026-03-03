@@ -11,7 +11,7 @@ verificar_permiso('alta_creditos');
 
 $pdo = obtener_conexion();
 $id  = (int) ($_GET['id'] ?? 0);
-if (!$id) { header('Location: index.php'); exit; }
+if (!$id) { header('Location: index'); exit; }
 
 // ── Crédito ──────────────────────────────────────────────────
 $stmt = $pdo->prepare("
@@ -26,11 +26,11 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$id]);
 $cr = $stmt->fetch();
-if (!$cr) { header('Location: index.php'); exit; }
+if (!$cr) { header('Location: index'); exit; }
 
 if (!in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
     $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Solo se pueden refinanciar créditos activos o morosos.'];
-    header("Location: ver.php?id=$id");
+    header("Location: ver?id=$id");
     exit;
 }
 
@@ -187,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'msg'  => 'Refinanciación #' . ($veces_ref + 1) . ' aplicada. '
                             . $f['nuevas_cuotas'] . ' nuevas cuotas de ' . formato_pesos($nuevo_valor_cuota) . '.',
                 ];
-                header("Location: ver.php?id=$id");
+                header("Location: ver?id=$id");
                 exit;
 
             } catch (Exception $e) {
@@ -373,7 +373,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <?= $tiene_pagos_pendientes ? 'disabled' : '' ?>>
                 <i class="fa fa-sync-alt"></i> Confirmar Refinanciación
             </button>
-            <a href="ver.php?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
+            <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>
 </div>

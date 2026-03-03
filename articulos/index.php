@@ -24,7 +24,7 @@ $lista = $articulos->fetchAll();
 
 $page_title = 'Artículos';
 $page_current = 'articulos';
-$topbar_actions = '<a href="nuevo.php" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Artículo</a>';
+$topbar_actions = '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Artículo</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -40,7 +40,7 @@ require_once __DIR__ . '/../views/layout.php';
         <input type="text" name="q" value="<?= e($q) ?>" placeholder="🔍 Buscar artículo...">
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Buscar</button>
         <a href="?" class="btn-ic btn-ghost">Limpiar</a>
-        <a href="nuevo.php" class="btn-ic btn-primary" style="margin-left:auto">
+        <a href="nuevo" class="btn-ic btn-primary" style="margin-left:auto">
             <i class="fa fa-plus"></i> Nuevo Artículo
         </a>
     </form>
@@ -101,10 +101,10 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= $a['activo'] ? '<span class="badge-ic badge-success">Sí</span>' : '<span class="badge-ic badge-muted">No</span>' ?>
                             </td>
                             <td class="nowrap">
-                                <a href="editar.php?id=<?= $a['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar">
+                                <a href="editar?id=<?= $a['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar">
                                     <i class="fa fa-pencil"></i>
                                 </a>
-                                <a href="eliminar.php?id=<?= $a['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
+                                <a href="eliminar?id=<?= $a['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
                                     title="Eliminar" data-confirm="¿Eliminar el artículo «<?= e($a['descripcion']) ?>»?">
                                     <i class="fa fa-trash"></i>
                                 </a>

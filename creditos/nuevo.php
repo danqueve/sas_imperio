@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_CREADO', 'credito', (int)$credito_id,
                     'Cuotas: ' . $v['cant_cuotas'] . ' | Total: ' . formato_pesos($monto_tot));
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Crédito registrado y cuotas generadas.'];
-                header("Location: ver.php?id=$credito_id");
+                header("Location: ver?id=$credito_id");
                 exit;
             } catch (Exception $e) {
                 $pdo->rollBack();
@@ -264,7 +264,7 @@ require_once __DIR__ . '/../views/layout.php';
             <button type="submit" class="btn-ic btn-primary">
                 <i class="fa fa-save"></i> Crear Crédito
             </button>
-            <a href="index.php" class="btn-ic btn-ghost">Cancelar</a>
+            <a href="index" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>
 </div>

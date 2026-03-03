@@ -11,7 +11,7 @@ verificar_permiso('ver_agenda');
 $pdo = obtener_conexion();
 $id = (int) ($_GET['id'] ?? 0);
 if (!$id) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -30,7 +30,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([$id]);
 $cr = $stmt->fetch();
 if (!$cr) {
-    header('Location: index.php');
+    header('Location: index');
     exit;
 }
 
@@ -66,10 +66,10 @@ $page_current = 'creditos';
 
 $topbar_actions = '';
 if (es_admin()) {
-    $topbar_actions .= '<a href="editar.php?id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar</a> ';
+    $topbar_actions .= '<a href="editar?id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar</a> ';
 }
 if ((es_admin() || es_supervisor()) && in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
-    $topbar_actions .= '<a href="refinanciar.php?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-sync-alt"></i> Refinanciar</a>';
+    $topbar_actions .= '<a href="refinanciar?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-sync-alt"></i> Refinanciar</a>';
 }
 
 require_once __DIR__ . '/../views/layout.php';
@@ -134,7 +134,7 @@ require_once __DIR__ . '/../views/layout.php';
             <table style="width:100%;font-size:.875rem;border-collapse:collapse">
                 <tr>
                     <td class="text-muted" style="padding:5px 0;width=45%">Cliente</td>
-                    <td><a href="../clientes/ver.php?id=<?= $cr['cid'] ?>" class="fw-bold">
+                    <td><a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="fw-bold">
                             <?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?>
                         </a></td>
                 </tr>
@@ -204,7 +204,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <td>
                         <?= isset($cr['vendedor_n']) ? e($cr['vendedor_n'] . ' ' . $cr['vendedor_a']) : '<span class="text-muted">No asignado</span>' ?>
                         <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
-                            <a href="cambiar_vendedor.php?id=<?= $id ?>" class="btn-ic btn-ghost btn-sm" title="Cambiar vendedor" style="padding:2px 5px; font-size:.7rem; margin-left:10px;"><i class="fa fa-edit"></i></a>
+                            <a href="cambiar_vendedor?id=<?= $id ?>" class="btn-ic btn-ghost btn-sm" title="Cambiar vendedor" style="padding:2px 5px; font-size:.7rem; margin-left:10px;"><i class="fa fa-edit"></i></a>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -234,14 +234,14 @@ require_once __DIR__ . '/../views/layout.php';
             </div>
             <hr class="divider">
             <div class="d-flex gap-2">
-                <a href="imprimir_cronograma.php?id=<?= $id ?>" target="_blank" class="btn-ic btn-ghost btn-sm">
+                <a href="imprimir_cronograma?id=<?= $id ?>" target="_blank" class="btn-ic btn-ghost btn-sm">
                     <i class="fa fa-print"></i> PDF
                 </a>
-                <a href="../clientes/ver.php?id=<?= $cr['cid'] ?>" class="btn-ic btn-ghost btn-sm">
+                <a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="btn-ic btn-ghost btn-sm">
                     <i class="fa fa-user"></i> Cliente
                 </a>
                 <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
-                    <a href="finalizar.php?id=<?= $id ?>" class="btn-ic btn-danger btn-sm" title="Finalizar Crédito">
+                    <a href="finalizar?id=<?= $id ?>" class="btn-ic btn-danger btn-sm" title="Finalizar Crédito">
                         <i class="fa fa-power-off"></i>
                     </a>
                 <?php endif; ?>

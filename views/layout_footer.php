@@ -6,7 +6,7 @@
 
 <div id="toast-container"></div>
 
-<script src="<?= BASE_URL ?>assets/js/app.js"></script>
+<script src="<?= BASE_URL ?>assets/js/app.js?v=3"></script>
 <?php if (!empty($page_scripts))
     echo $page_scripts; ?>
 </body>

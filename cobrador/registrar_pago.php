@@ -7,7 +7,7 @@ verificar_sesion();
 verificar_permiso('registrar_pagos');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: agenda.php');
+    header('Location: agenda');
     exit;
 }
 
@@ -20,7 +20,7 @@ $total = $ef + $tr;
 
 if (!$cuota_id || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
-    header('Location: agenda.php');
+    header('Location: agenda');
     exit;
 }
 
@@ -29,7 +29,7 @@ $stmt = $pdo->prepare("SELECT COUNT(*) FROM ic_pagos_temporales WHERE cuota_id=?
 $stmt->execute([$cuota_id]);
 if ((int) $stmt->fetchColumn() > 0) {
     $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Esta cuota ya tiene un pago registrado pendiente de aprobación.'];
-    header('Location: agenda.php');
+    header('Location: agenda');
     exit;
 }
 
@@ -43,5 +43,5 @@ registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota_id,
     'Efectivo: ' . formato_pesos($ef) . ' | Transferencia: ' . formato_pesos($tr));
 
 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago registrado correctamente. Pendiente de aprobación del supervisor.'];
-header('Location: agenda.php');
+header('Location: agenda');
 exit;

@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $idNuevo = $pdo->lastInsertId();
             registrar_log($pdo, $_SESSION['user_id'], 'VENDEDOR_CREADO', 'vendedores', $idNuevo);
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Vendedor agregado correctamente.'];
-            header('Location: index.php');
+            header('Location: index');
             exit;
         } else {
             $error = 'Error al guardar el vendedor.';
@@ -50,7 +50,7 @@ require_once __DIR__ . '/../views/layout.php';
         <input type="text" name="telefono" class="form-control" value="<?= e($_POST['telefono'] ?? '') ?>">
         
         <button type="submit" class="btn-ic btn-primary mt-3">Guardar Vendedor</button>
-        <a href="index.php" class="btn-ic btn-ghost mt-3">Cancelar</a>
+        <a href="index" class="btn-ic btn-ghost mt-3">Cancelar</a>
     </form>
 </div>
 
