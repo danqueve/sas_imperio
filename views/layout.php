@@ -63,6 +63,10 @@ $rol = $user['rol'];
                         href="<?= BASE_URL ?>admin/rendiciones.php">
                         <i class="fa fa-clipboard-check"></i> Rendiciones
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'liquidaciones' ? 'active' : '' ?>"
+                        href="<?= BASE_URL ?>admin/liquidaciones.php">
+                        <i class="fa fa-money-bill-wave"></i> Liquidaciones
+                    </a>
                 <?php endif; ?>
 
                 <?php if ($rol === 'admin'): ?>
