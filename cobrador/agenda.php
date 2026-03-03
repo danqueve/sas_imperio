@@ -30,12 +30,12 @@ $sql = "
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
            cr.cant_cuotas,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
-           art.descripcion AS articulo,
+           COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
-    JOIN ic_articulos art ON cr.articulo_id = art.id
+    LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
     WHERE cu.estado IN ('PENDIENTE','VENCIDA')
       AND cr.estado = 'EN_CURSO'
       $condCobrador
@@ -80,12 +80,12 @@ $semana_stmt = $pdo->prepare("
            cr.interes_moratorio_pct, cr.cant_cuotas,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado AS cuota_estado,
-           a.descripcion AS articulo,
+           COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
     FROM ic_clientes cl
     JOIN ic_creditos cr ON cr.cliente_id  = cl.id AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
     JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA')
-    JOIN ic_articulos a ON a.id           = cr.articulo_id
+    LEFT JOIN ic_articulos a ON a.id           = cr.articulo_id
     WHERE cl.dia_cobro BETWEEN 1 AND 6
     ORDER BY cl.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");

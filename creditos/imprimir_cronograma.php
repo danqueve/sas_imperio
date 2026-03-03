@@ -33,11 +33,11 @@ if (!$id)
 
 $stmt = $pdo->prepare("
     SELECT cr.*, cl.nombres, cl.apellidos, cl.dni, cl.telefono, cl.direccion,
-           a.descripcion AS articulo,
+           COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            u.nombre AS cobrador_n, u.apellido AS cobrador_a
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
-    JOIN ic_articulos a ON cr.articulo_id=a.id
+    LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
     WHERE cr.id=?
 ");

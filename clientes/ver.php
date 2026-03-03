@@ -33,11 +33,11 @@ $garante->execute([$id]);
 $g = $garante->fetch();
 
 $creditos = $pdo->prepare("
-    SELECT cr.*, a.descripcion AS articulo,
+    SELECT cr.*, COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas,
            (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id) AS total_cuotas
     FROM ic_creditos cr
-    JOIN ic_articulos a ON cr.articulo_id = a.id
+    LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
     WHERE cr.cliente_id = ?
     ORDER BY cr.fecha_alta DESC
 ");

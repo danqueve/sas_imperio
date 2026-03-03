@@ -46,10 +46,6 @@ $rol = $user['rol'];
                         href="<?= BASE_URL ?>clientes/index.php">
                         <i class="fa fa-users"></i> Clientes
                     </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'articulos' ? 'active' : '' ?>"
-                        href="<?= BASE_URL ?>articulos/index.php">
-                        <i class="fa fa-box-open"></i> Artículos
-                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'creditos' ? 'active' : '' ?>"
                         href="<?= BASE_URL ?>creditos/index.php">
                         <i class="fa fa-file-invoice-dollar"></i> Créditos
@@ -106,8 +102,7 @@ $rol = $user['rol'];
 
         <!-- ── TOPBAR ── -->
         <header class="topbar">
-            <button class="btn-ic btn-ghost btn-icon" id="sidebar-toggle" onclick="toggleSidebar()" style="display:none"
-                title="Menú">
+            <button class="btn-ic btn-ghost btn-icon" id="sidebar-toggle" onclick="toggleSidebar()" title="Menú">
                 <i class="fa fa-bars"></i>
             </button>
             <span class="topbar-title">
@@ -116,6 +111,11 @@ $rol = $user['rol'];
             <div class="topbar-actions">
                 <?php if (!empty($topbar_actions))
                     echo $topbar_actions; ?>
+                <div class="topbar-user">
+                    <span class="topbar-avatar">
+                        <?= strtoupper(substr($user['nombre'], 0, 1) . substr($user['apellido'], 0, 1)) ?>
+                    </span>
+                </div>
             </div>
         </header>
 

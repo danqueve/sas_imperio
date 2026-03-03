@@ -39,21 +39,52 @@ $total_pend = $cartera['vigentes'] + $cartera['vencidas'];
 $g_al_dia   = $total_pend > 0 ? min(99,(int)round($cartera['vigentes'] / $total_pend * 100)) : 100;
 $g_cobro    = $cobrado_mes > 0 ? min(99,(int)round($cobrado_hoy / $cobrado_mes * 100)) : 0;
 
-// ── Cobros últimos 7 días (gráfico de barras) ─────────────────
+// ── Cobros últimos 7 días por cobrador (gráfico apilado) ──────
 $chart_labels = [];
-$chart_map    = [];
+$chart_days   = [];
 for ($i = 6; $i >= 0; $i--) {
     $d = date('Y-m-d', strtotime("-$i days"));
     $chart_labels[] = date('d/m', strtotime($d));
-    $chart_map[$d]  = 0;
+    $chart_days[]   = $d;
 }
-foreach ($pdo->query("
-    SELECT DATE(fecha_pago) d, COALESCE(SUM(monto_total),0) t
-    FROM ic_pagos_confirmados
-    WHERE fecha_pago >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
-    GROUP BY DATE(fecha_pago)
-")->fetchAll() as $r) {
-    if (array_key_exists($r['d'], $chart_map)) $chart_map[$r['d']] = (float)$r['t'];
+
+// Trae totales agrupados por día y cobrador
+$rows_cob = $pdo->query("
+    SELECT DATE(pc.fecha_pago) AS d,
+           pc.cobrador_id,
+           CONCAT(u.nombre, ' ', u.apellido) AS nombre_cob,
+           COALESCE(SUM(pc.monto_total),0) AS total
+    FROM ic_pagos_confirmados pc
+    JOIN ic_usuarios u ON pc.cobrador_id = u.id
+    WHERE pc.fecha_pago >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+    GROUP BY DATE(pc.fecha_pago), pc.cobrador_id
+    ORDER BY pc.cobrador_id
+")->fetchAll();
+
+// Construir estructura: cobrador_id → [nombre, mapa de días]
+$cob_data  = [];   // [id => ['nombre'=>..., 'dias'=>[d=>total]]]
+foreach ($rows_cob as $r) {
+    $cid = $r['cobrador_id'];
+    if (!isset($cob_data[$cid])) {
+        $cob_data[$cid] = ['nombre' => $r['nombre_cob'], 'dias' => []];
+    }
+    $cob_data[$cid]['dias'][$r['d']] = (float)$r['total'];
+}
+
+// Armar datasets: un array de valores por día para cada cobrador
+$chart_datasets_php = [];
+foreach ($cob_data as $cid => $info) {
+    $vals = [];
+    foreach ($chart_days as $d) {
+        $vals[] = $info['dias'][$d] ?? 0;
+    }
+    $chart_datasets_php[] = ['label' => $info['nombre'], 'data' => $vals];
+}
+
+// Total por día (para eje Y y línea total)
+$chart_map = array_fill_keys($chart_days, 0);
+foreach ($rows_cob as $r) {
+    if (array_key_exists($r['d'], $chart_map)) $chart_map[$r['d']] += (float)$r['total'];
 }
 $chart_vals = array_values($chart_map);
 
@@ -92,63 +123,65 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 <?php endif; ?>
 
-<!-- ── KPI Cards con indicadores circulares ──────────────────── -->
+<!-- ── KPI Cards estilo TailPanel ─────────────────────────────── -->
 <div class="db-kpi-grid mb-4">
 
     <div class="kpi-card" style="--kpi-color:var(--success)">
-        <div class="db-gauge-wrap">
-            <svg viewBox="0 0 36 36" width="56" height="56" style="transform:rotate(-90deg)">
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="2.5"/>
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#10b981" stroke-width="2.5"
-                    stroke-dasharray="<?= $g_clientes ?> 100" stroke-linecap="round"/>
-            </svg>
-            <span class="db-gauge-num"><?= $g_clientes ?>%</span>
+        <div class="kpi-icon-box" style="--icon-bg:rgba(16,185,129,.15);--icon-color:#10b981">
+            <i class="fa fa-users"></i>
         </div>
-        <div class="kpi-label"><i class="fa fa-users"></i> Clientes Activos</div>
-        <div class="kpi-value"><?= number_format($clientes_activos) ?></div>
-        <div class="kpi-sub">de <?= number_format($total_clientes) ?> registrados</div>
+        <div class="kpi-body">
+            <div class="kpi-label">Clientes Activos</div>
+            <div class="kpi-value"><?= number_format($clientes_activos) ?></div>
+            <div class="kpi-sub">
+                de <?= number_format($total_clientes) ?> registrados
+                <span class="kpi-pct" style="color:var(--success)">↑ <?= $g_clientes ?>%</span>
+            </div>
+        </div>
     </div>
 
     <div class="kpi-card" style="--kpi-color:var(--primary-light)">
-        <div class="db-gauge-wrap">
-            <svg viewBox="0 0 36 36" width="56" height="56" style="transform:rotate(-90deg)">
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="2.5"/>
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#818cf8" stroke-width="2.5"
-                    stroke-dasharray="<?= $g_creditos ?> 100" stroke-linecap="round"/>
-            </svg>
-            <span class="db-gauge-num"><?= $g_creditos ?>%</span>
+        <div class="kpi-icon-box" style="--icon-bg:rgba(144,153,232,.15);--icon-color:#9099e8">
+            <i class="fa fa-file-invoice-dollar"></i>
         </div>
-        <div class="kpi-label"><i class="fa fa-file-invoice-dollar"></i> Créditos en Curso</div>
-        <div class="kpi-value"><?= number_format($creditos_en_curso) ?></div>
-        <div class="kpi-sub">de <?= number_format($total_creditos) ?> totales</div>
+        <div class="kpi-body">
+            <div class="kpi-label">Créditos en Curso</div>
+            <div class="kpi-value"><?= number_format($creditos_en_curso) ?></div>
+            <div class="kpi-sub">
+                de <?= number_format($total_creditos) ?> totales
+                <span class="kpi-pct" style="color:var(--primary-light)">↑ <?= $g_creditos ?>%</span>
+            </div>
+        </div>
     </div>
 
     <div class="kpi-card" style="--kpi-color:var(--accent)">
-        <div class="db-gauge-wrap">
-            <svg viewBox="0 0 36 36" width="56" height="56" style="transform:rotate(-90deg)">
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="2.5"/>
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#06b6d4" stroke-width="2.5"
-                    stroke-dasharray="<?= $g_cobro ?> 100" stroke-linecap="round"/>
-            </svg>
-            <span class="db-gauge-num"><?= $g_cobro ?>%</span>
+        <div class="kpi-icon-box" style="--icon-bg:rgba(6,182,212,.15);--icon-color:#06b6d4">
+            <i class="fa fa-dollar-sign"></i>
         </div>
-        <div class="kpi-label"><i class="fa fa-dollar-sign"></i> Cobrado Hoy</div>
-        <div class="kpi-value" style="font-size:1.35rem"><?= formato_pesos($cobrado_hoy) ?></div>
-        <div class="kpi-sub"><?= $pagos_hoy ?> pago<?= $pagos_hoy !== 1 ? 's' : '' ?> aprobado<?= $pagos_hoy !== 1 ? 's' : '' ?></div>
+        <div class="kpi-body">
+            <div class="kpi-label">Cobrado Hoy</div>
+            <div class="kpi-value" style="font-size:1.45rem"><?= formato_pesos($cobrado_hoy) ?></div>
+            <div class="kpi-sub">
+                <?= $pagos_hoy ?> pago<?= $pagos_hoy !== 1 ? 's' : '' ?> aprobado<?= $pagos_hoy !== 1 ? 's' : '' ?>
+                <?php if ($g_cobro > 0): ?>
+                    <span class="kpi-pct" style="color:var(--accent)">↑ <?= $g_cobro ?>% del mes</span>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
 
     <div class="kpi-card" style="--kpi-color:var(--warning)">
-        <div class="db-gauge-wrap">
-            <svg viewBox="0 0 36 36" width="56" height="56" style="transform:rotate(-90deg)">
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="2.5"/>
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#f59e0b" stroke-width="2.5"
-                    stroke-dasharray="<?= $g_al_dia ?> 100" stroke-linecap="round"/>
-            </svg>
-            <span class="db-gauge-num"><?= $g_al_dia ?>%</span>
+        <div class="kpi-icon-box" style="--icon-bg:rgba(245,158,11,.15);--icon-color:#f59e0b">
+            <i class="fa fa-clock"></i>
         </div>
-        <div class="kpi-label"><i class="fa fa-clock"></i> Cuotas al Día</div>
-        <div class="kpi-value"><?= number_format($cartera['vigentes']) ?></div>
-        <div class="kpi-sub"><?= number_format($cartera['vencidas']) ?> vencidas</div>
+        <div class="kpi-body">
+            <div class="kpi-label">Cuotas al Día</div>
+            <div class="kpi-value"><?= number_format($cartera['vigentes']) ?></div>
+            <div class="kpi-sub">
+                <span style="color:var(--danger)"><?= number_format($cartera['vencidas']) ?> vencidas</span>
+                <span class="kpi-pct" style="color:var(--warning)">· <?= $g_al_dia ?>% vigente</span>
+            </div>
+        </div>
     </div>
 
 </div>
@@ -163,7 +196,7 @@ require_once __DIR__ . '/../views/layout.php';
                 Mes: <strong style="color:var(--primary-light)"><?= formato_pesos($cobrado_mes) ?></strong>
             </span>
         </div>
-        <div style="position:relative;height:220px;padding:6px 0">
+        <div style="position:relative;height:260px;padding:6px 0">
             <canvas id="chart-cobros"></canvas>
         </div>
     </div>
@@ -267,63 +300,109 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
-$js_labels   = json_encode($chart_labels);
-$js_vals     = json_encode($chart_vals);
-$js_vigentes = (int)$cartera['vigentes'];
-$js_vencidas = (int)$cartera['vencidas'];
-$js_pagadas  = (int)$cartera['pagadas'];
+$js_labels    = json_encode($chart_labels);
+$js_vals      = json_encode($chart_vals);
+$js_datasets  = json_encode($chart_datasets_php);
+$js_vigentes  = (int)$cartera['vigentes'];
+$js_vencidas  = (int)$cartera['vencidas'];
+$js_pagadas   = (int)$cartera['pagadas'];
 
 $page_scripts = <<<HTML
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-Chart.defaults.color          = 'rgba(255,255,255,.55)';
-Chart.defaults.borderColor    = 'rgba(255,255,255,.07)';
-Chart.defaults.font.family    = "'Inter', sans-serif";
-Chart.defaults.font.size      = 11;
+Chart.defaults.color       = 'rgba(255,255,255,.6)';
+Chart.defaults.borderColor = 'rgba(255,255,255,.07)';
+Chart.defaults.font.family = "'Sarabun', sans-serif";
+Chart.defaults.font.size   = 13;
 
-// ── Barras: Cobros últimos 7 días ─────────────────────────────
+// ── Paleta de colores para cobradores ─────────────────────────
+const COB_COLORS = [
+    { bg: 'rgba(103,112,210,.75)', border: '#6770d2' },
+    { bg: 'rgba(16,185,129,.75)',  border: '#10b981' },
+    { bg: 'rgba(6,182,212,.75)',   border: '#06b6d4' },
+    { bg: 'rgba(245,158,11,.75)',  border: '#f59e0b' },
+    { bg: 'rgba(239,68,68,.75)',   border: '#ef4444' },
+    { bg: 'rgba(168,85,247,.75)',  border: '#a855f7' },
+    { bg: 'rgba(249,115,22,.75)',  border: '#f97316' },
+    { bg: 'rgba(236,72,153,.75)',  border: '#ec4899' },
+];
+
+// ── Barras apiladas: Cobros por cobrador últimos 7 días ────────
+const rawDatasets = $js_datasets;
+const labels      = $js_labels;
+const totales     = $js_vals;
+
+const datasets = rawDatasets.map((ds, i) => {
+    const c = COB_COLORS[i % COB_COLORS.length];
+    return {
+        label: ds.label,
+        data: ds.data,
+        backgroundColor: c.bg,
+        borderColor: c.border,
+        borderWidth: 1,
+        borderRadius: 4,
+        borderSkipped: false,
+        stack: 'cobros',
+    };
+});
+
+// Línea de total diario
+datasets.push({
+    type: 'line',
+    label: 'Total',
+    data: totales,
+    borderColor: 'rgba(255,255,255,.5)',
+    borderWidth: 2,
+    borderDash: [4,3],
+    pointBackgroundColor: 'rgba(255,255,255,.8)',
+    pointRadius: 4,
+    tension: 0.35,
+    fill: false,
+    stack: undefined,
+    order: 0,
+});
+
 new Chart(document.getElementById('chart-cobros'), {
     type: 'bar',
-    data: {
-        labels: $js_labels,
-        datasets: [{
-            label: 'Cobrado',
-            data: $js_vals,
-            backgroundColor: 'rgba(79,70,229,.55)',
-            borderColor: '#4f46e5',
-            borderWidth: 1,
-            borderRadius: 5,
-            borderSkipped: false,
-        }, {
-            type: 'line',
-            label: 'Tendencia',
-            data: $js_vals,
-            borderColor: '#818cf8',
-            borderWidth: 2,
-            pointBackgroundColor: '#818cf8',
-            pointRadius: 3,
-            tension: 0.4,
-            fill: false,
-        }]
-    },
+    data: { labels, datasets },
     options: {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-            legend: { display: false },
+            legend: {
+                display: rawDatasets.length > 0,
+                position: 'bottom',
+                labels: {
+                    boxWidth: 12,
+                    boxHeight: 12,
+                    borderRadius: 3,
+                    useBorderRadius: true,
+                    padding: 14,
+                    font: { size: 12 },
+                    filter: item => item.text !== 'Total',
+                }
+            },
             tooltip: {
                 callbacks: {
-                    label: ctx => ' \$ ' + ctx.raw.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
+                    label: ctx => {
+                        if (ctx.raw === 0) return null;
+                        return ' ' + ctx.dataset.label + ': \$ ' +
+                            ctx.raw.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+                    }
                 }
             }
         },
         scales: {
+            x: { grid: { display: false }, stacked: true },
             y: {
+                stacked: true,
                 grid: { color: 'rgba(255,255,255,.06)' },
-                ticks: { callback: v => v >= 1000 ? '\$' + (v/1000).toFixed(0) + 'k' : '\$' + v }
-            },
-            x: { grid: { display: false } }
+                ticks: {
+                    font: { size: 12 },
+                    callback: v => v >= 1000 ? '\$' + (v/1000).toFixed(0)+'k' : '\$'+v
+                }
+            }
         }
     }
 });
@@ -348,54 +427,6 @@ new Chart(document.getElementById('chart-cartera'), {
     }
 });
 </script>
-<style>
-/* ── Dashboard layout ─────────────────────────────────────── */
-.db-kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-}
-.db-charts-grid {
-    display: grid;
-    grid-template-columns: 1fr 310px;
-    gap: 16px;
-}
-.db-bottom-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-}
-/* Gauge circular */
-.db-gauge-wrap {
-    position: absolute;
-    right: 14px;
-    top: 14px;
-    width: 56px;
-    height: 56px;
-}
-.db-gauge-num {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9.5px;
-    font-weight: 700;
-    color: var(--text-main);
-    line-height: 1;
-}
-/* Responsive */
-@media (max-width: 1200px) {
-    .db-charts-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 900px) {
-    .db-kpi-grid    { grid-template-columns: repeat(2, 1fr); }
-    .db-bottom-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 480px) {
-    .db-kpi-grid    { grid-template-columns: 1fr; }
-}
-</style>
 HTML;
 require_once __DIR__ . '/../views/layout_footer.php';
 ?>

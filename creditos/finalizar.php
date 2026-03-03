@@ -16,10 +16,10 @@ if (!$id) {
 
 // Obtener el crédito y validar estado
 $stmt = $pdo->prepare("
-    SELECT cr.*, cl.nombres, cl.apellidos, a.descripcion AS articulo
+    SELECT cr.*, cl.nombres, cl.apellidos, COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
-    JOIN ic_articulos a ON cr.articulo_id = a.id
+    LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
     WHERE cr.id = ?
 ");
 $stmt->execute([$id]);

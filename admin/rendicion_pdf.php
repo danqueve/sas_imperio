@@ -24,12 +24,12 @@ $dstmt = $pdo->prepare("
     SELECT pt.*,
            cl.nombres, cl.apellidos,
            cu.numero_cuota, cu.fecha_vencimiento,
-           a.descripcion AS articulo
+           COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_pagos_temporales pt
     JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
     JOIN ic_creditos cr ON cu.credito_id   = cr.id
     JOIN ic_clientes cl ON cr.cliente_id   = cl.id
-    JOIN ic_articulos a ON cr.articulo_id  = a.id
+    LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
     WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
     ORDER BY pt.fecha_registro
 ");

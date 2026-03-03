@@ -19,7 +19,7 @@ $offset = ($page - 1) * $limit;
 $where = ['1=1'];
 $params = [];
 if ($q !== '') {
-    $where[] = "(cl.nombres LIKE ? OR cl.apellidos LIKE ? OR a.descripcion LIKE ?)";
+    $where[] = "(cl.nombres LIKE ? OR cl.apellidos LIKE ? OR COALESCE(cr.articulo_desc, a.descripcion) LIKE ?)";
     $l = "%$q%";
     $params = array_merge($params, [$l, $l, $l]);
 }
@@ -33,20 +33,26 @@ if ($frec !== '') {
 }
 $whereStr = implode(' AND ', $where);
 
-$totalStmt = $pdo->prepare("SELECT COUNT(*) FROM ic_creditos cr JOIN ic_clientes cl ON cr.cliente_id=cl.id JOIN ic_articulos a ON cr.articulo_id=a.id WHERE $whereStr");
+$totalStmt = $pdo->prepare("
+    SELECT COUNT(*)
+    FROM ic_creditos cr
+    JOIN ic_clientes cl ON cr.cliente_id=cl.id
+    LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
+    WHERE $whereStr
+");
 $totalStmt->execute($params);
 $total = (int) $totalStmt->fetchColumn();
 $totalPags = max(1, (int) ceil($total / $limit));
 
 $stmt = $pdo->prepare("
     SELECT cr.*, cl.nombres, cl.apellidos, cl.telefono,
-           a.descripcion AS articulo,
+           COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            u.nombre AS cobrador_n, u.apellido AS cobrador_a,
            v.nombre AS vendedor_n, v.apellido AS vendedor_a,
            (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
-    JOIN ic_articulos a ON cr.articulo_id=a.id
+    LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
     LEFT JOIN ic_usuarios v ON cr.vendedor_id=v.id
     WHERE $whereStr

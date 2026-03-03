@@ -47,11 +47,11 @@ $stmt = $pdo->prepare("
            cr.id AS credito_id,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado AS cuota_estado,
-           a.descripcion AS articulo
+           COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_clientes cl
     JOIN ic_creditos cr  ON cr.cliente_id  = cl.id  AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
     JOIN ic_cuotas  cu   ON cu.credito_id  = cr.id  AND cu.estado IN ('PENDIENTE','VENCIDA')
-    JOIN ic_articulos a  ON a.id            = cr.articulo_id
+    LEFT JOIN ic_articulos a  ON a.id            = cr.articulo_id
     WHERE cl.dia_cobro IN ($placeholders)
     ORDER BY cl.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
