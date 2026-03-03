@@ -38,6 +38,24 @@ $cuotas = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? ORDER BY num
 $cuotas->execute([$id]);
 $lista_cuotas = $cuotas->fetchAll();
 
+// Mapa cuota_id → pago confirmado (id, solicitud_baja, motivo_baja) para acciones admin/supervisor
+$conf_map = [];
+if (es_admin() || es_supervisor()) {
+    $cuota_ids = array_column($lista_cuotas, 'id');
+    if ($cuota_ids) {
+        $placeholders = implode(',', array_fill(0, count($cuota_ids), '?'));
+        $conf_rows = $pdo->prepare("
+            SELECT id AS pc_id, cuota_id, solicitud_baja, motivo_baja
+            FROM ic_pagos_confirmados WHERE cuota_id IN ($placeholders) ORDER BY id DESC
+        ");
+        $conf_rows->execute($cuota_ids);
+        foreach ($conf_rows->fetchAll() as $pc) {
+            $cid = (int) $pc['cuota_id'];
+            if (!isset($conf_map[$cid])) $conf_map[$cid] = $pc; // solo el más reciente
+        }
+    }
+}
+
 // Calcular mora actualizada para cada cuota
 $hoy = new DateTime('today');
 foreach ($lista_cuotas as &$cuota) {
@@ -74,6 +92,13 @@ if ((es_admin() || es_supervisor()) && in_array($cr['estado'], ['EN_CURSO', 'MOR
 
 require_once __DIR__ . '/../views/layout.php';
 ?>
+
+<?php if (!empty($_SESSION['flash'])): ?>
+    <div class="alert-ic alert-<?= e($_SESSION['flash']['type']) ?>">
+        <?= e($_SESSION['flash']['msg']) ?>
+    </div>
+    <?php unset($_SESSION['flash']); ?>
+<?php endif; ?>
 
 <!-- KPI CARDS -->
 <div class="kpi-grid mb-4">
@@ -266,13 +291,24 @@ require_once __DIR__ . '/../views/layout.php';
                         <th>Total a Pagar</th>
                         <th>Estado</th>
                         <th>Pago</th>
+                        <?php if (es_admin() || es_supervisor()): ?>
+                        <th></th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($lista_cuotas as $q): ?>
                         <?php
                         $esAtrasada = $q['dias_atraso_calc'] > 0;
-                        $rowStyle = $esAtrasada && $q['estado'] !== 'PAGADA' ? 'background:rgba(239,68,68,.05)' : '';
+                        $pc_info    = $conf_map[$q['id']] ?? null;
+                        $pc_id      = $pc_info ? (int) $pc_info['pc_id'] : 0;
+                        $sol_baja   = $pc_info ? (int) $pc_info['solicitud_baja'] : 0;
+                        $mot_baja   = $pc_info ? $pc_info['motivo_baja'] : '';
+                        $rowStyle   = '';
+                        if ($sol_baja && $q['estado'] === 'PAGADA')
+                            $rowStyle = 'background:rgba(245,158,11,.07);border-left:3px solid var(--warning)';
+                        elseif ($esAtrasada && $q['estado'] !== 'PAGADA')
+                            $rowStyle = 'background:rgba(239,68,68,.05)';
                         ?>
                         <tr style="<?= $rowStyle ?>">
                             <td class="text-muted">
@@ -298,10 +334,46 @@ require_once __DIR__ . '/../views/layout.php';
                                 <span class="badge-ic <?= $badgeMap[$q['estado']] ?? 'badge-muted' ?>">
                                     <?= $q['estado'] ?>
                                 </span>
+                                <?php if ($sol_baja && $q['estado'] === 'PAGADA'): ?>
+                                    <br><span class="badge-ic badge-warning" style="font-size:.65rem;margin-top:2px"
+                                        title="<?= e($mot_baja) ?>"><i class="fa fa-flag"></i> Solicitud baja</span>
+                                <?php endif; ?>
                             </td>
                             <td class="nowrap">
                                 <?= $q['fecha_pago'] ? date('d/m/Y', strtotime($q['fecha_pago'])) : '—' ?>
                             </td>
+                            <?php if (es_admin() || es_supervisor()): ?>
+                            <td class="nowrap" style="display:flex;gap:4px;align-items:center">
+                                <?php if (in_array($q['estado'], ['PENDIENTE', 'VENCIDA'])): ?>
+                                    <button
+                                        onclick="abrirPagoDirecto(<?= $q['id'] ?>, <?= $q['numero_cuota'] ?>, <?= (float)$q['monto_cuota'] ?>, <?= (float)$q['mora_calc'] ?>, <?= (float)($q['monto_cuota'] + $q['mora_calc']) ?>)"
+                                        class="btn-ic btn-success btn-sm" title="Registrar pago directo">
+                                        <i class="fa fa-dollar-sign"></i>
+                                    </button>
+                                <?php elseif ($q['estado'] === 'PAGADA' && $pc_id): ?>
+                                    <?php if (es_admin()): ?>
+                                        <button
+                                            onclick="abrirRevertir(<?= $pc_id ?>, <?= $q['numero_cuota'] ?>, <?= $sol_baja ?>)"
+                                            class="btn-ic btn-sm <?= $sol_baja ? 'btn-warning' : 'btn-danger' ?>"
+                                            title="<?= $sol_baja ? 'Reversa solicitada — Revertir' : 'Revertir pago' ?>">
+                                            <i class="fa fa-undo"></i>
+                                        </button>
+                                    <?php elseif (es_supervisor()): ?>
+                                        <?php if (!$sol_baja): ?>
+                                            <button
+                                                onclick="abrirSolBaja(<?= $pc_id ?>, <?= $q['numero_cuota'] ?>)"
+                                                class="btn-ic btn-warning btn-sm" title="Solicitar reversa">
+                                                <i class="fa fa-flag"></i>
+                                            </button>
+                                        <?php else: ?>
+                                            <span class="text-warning" style="font-size:.75rem" title="Solicitud enviada — pendiente de admin">
+                                                <i class="fa fa-clock"></i>
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -309,5 +381,143 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
     </div>
 </div>
+
+<?php if (es_admin()): ?>
+<!-- MODAL REVERTIR PAGO (admin) -->
+<div class="modal-overlay" id="modal-revertir">
+    <div class="modal-box" style="max-width:440px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-undo"></i> Revertir Pago</div>
+            <button class="modal-close" onclick="closeModal('modal-revertir')">✕</button>
+        </div>
+        <div id="info-revertir"
+            style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
+        <form method="POST" action="gestionar_pago" class="form-ic">
+            <input type="hidden" name="accion" value="revertir_confirmado">
+            <input type="hidden" name="pago_conf_id" id="rev_pc_id">
+            <input type="hidden" name="credito_id" value="<?= $id ?>">
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-danger w-100" style="justify-content:center">
+                    <i class="fa fa-undo"></i> Confirmar Reversa
+                </button>
+                <button type="button" onclick="closeModal('modal-revertir')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php elseif (es_supervisor()): ?>
+<!-- MODAL SOLICITAR REVERSA (supervisor) -->
+<div class="modal-overlay" id="modal-sol-baja-conf">
+    <div class="modal-box" style="max-width:440px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-flag"></i> Solicitar Reversa de Pago</div>
+            <button class="modal-close" onclick="closeModal('modal-sol-baja-conf')">✕</button>
+        </div>
+        <div id="info-sol-baja"
+            style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:14px;font-size:.875rem"></div>
+        <form method="POST" action="gestionar_pago" class="form-ic">
+            <input type="hidden" name="accion" value="solicitar_baja_confirmado">
+            <input type="hidden" name="pago_conf_id" id="sol_pc_id">
+            <input type="hidden" name="credito_id" value="<?= $id ?>">
+            <div class="form-group mb-4">
+                <label>Motivo *</label>
+                <textarea name="motivo" rows="3" required
+                    placeholder="Ej: Pago duplicado, error de importe, cliente equivocado..."
+                    style="resize:vertical"></textarea>
+            </div>
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-warning w-100" style="justify-content:center">
+                    <i class="fa fa-paper-plane"></i> Enviar Solicitud
+                </button>
+                <button type="button" onclick="closeModal('modal-sol-baja-conf')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (es_admin() || es_supervisor()): ?>
+<!-- MODAL PAGO DIRECTO -->
+<div class="modal-overlay" id="modal-pago-directo">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-dollar-sign"></i> Registrar Pago</div>
+            <button class="modal-close" onclick="closeModal('modal-pago-directo')">✕</button>
+        </div>
+        <div id="info-pago-dir"
+            style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
+        <form method="POST" action="pagar_cuota" class="form-ic">
+            <input type="hidden" name="cuota_id" id="dir_cuota_id">
+            <input type="hidden" name="credito_id" value="<?= $id ?>">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Efectivo $</label>
+                    <input type="number" name="monto_efectivo" id="dir_efectivo"
+                        step="0.01" min="0" value="0" oninput="dirTotal()">
+                </div>
+                <div class="form-group">
+                    <label>Transferencia $</label>
+                    <input type="number" name="monto_transferencia" id="dir_transfer"
+                        step="0.01" min="0" value="0" oninput="dirTotal()">
+                </div>
+            </div>
+            <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <span class="text-muted">Total:</span>
+                <span id="dir_total" style="font-size:1.2rem;font-weight:800;color:var(--success)">$ 0,00</span>
+            </div>
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-success w-100" style="justify-content:center">
+                    <i class="fa fa-save"></i> Confirmar Pago
+                </button>
+                <button type="button" onclick="closeModal('modal-pago-directo')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php
+$page_scripts = <<<'JS'
+<script>
+function abrirPagoDirecto(cuota_id, num_cuota, capital, mora, total) {
+    document.getElementById('dir_cuota_id').value = cuota_id;
+    document.getElementById('dir_efectivo').value = total.toFixed(2);
+    document.getElementById('dir_transfer').value = '0';
+    document.getElementById('info-pago-dir').innerHTML =
+        'Cuota <strong>#' + num_cuota + '</strong><br>' +
+        'Capital: ' + formatPesos(capital) +
+        (mora > 0 ? ' + Mora: <span style="color:var(--danger)">' + formatPesos(mora) + '</span>' : '') +
+        '<br><strong>Total sugerido: ' + formatPesos(total) + '</strong>';
+    dirTotal();
+    openModal('modal-pago-directo');
+}
+
+function dirTotal() {
+    const ef = parseFloat(document.getElementById('dir_efectivo').value) || 0;
+    const tr = parseFloat(document.getElementById('dir_transfer').value) || 0;
+    document.getElementById('dir_total').textContent = formatPesos(ef + tr);
+}
+
+// Admin: revertir pago confirmado
+function abrirRevertir(pc_id, num_cuota, sol_baja) {
+    document.getElementById('rev_pc_id').value = pc_id;
+    document.getElementById('info-revertir').innerHTML =
+        'Se revertirá el pago de la <strong>Cuota #' + num_cuota + '</strong>.' +
+        (sol_baja ? '<br><span style="color:var(--warning)"><i class="fa fa-flag"></i> Hay una solicitud de reversa del supervisor.</span>' : '') +
+        '<br><span style="color:var(--danger);font-size:.82rem">La cuota volverá a PENDIENTE o VENCIDA y el pago quedará anulado.</span>';
+    openModal('modal-revertir');
+}
+
+// Supervisor: solicitar reversa de pago confirmado
+function abrirSolBaja(pc_id, num_cuota) {
+    document.getElementById('sol_pc_id').value = pc_id;
+    document.getElementById('info-sol-baja').innerHTML =
+        'Solicitar reversa del pago de la <strong>Cuota #' + num_cuota + '</strong>.<br>' +
+        '<span style="font-size:.82rem;color:var(--text-muted)">El administrador revisará la solicitud y decidirá si revierte el pago.</span>';
+    openModal('modal-sol-baja-conf');
+}
+</script>
+JS;
+?>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>

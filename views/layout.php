@@ -4,6 +4,17 @@
 // ============================================================
 $user = usuario_actual();
 $rol = $user['rol'];
+
+// Solicitudes de baja pendientes (badge sidebar — solo admin)
+$n_sol_baja = 0;
+if ($rol === 'admin') {
+    $_pdo_lay = obtener_conexion();
+    $n_sol_baja = (int)$_pdo_lay->query("
+        SELECT
+          (SELECT COUNT(*) FROM ic_pagos_temporales  WHERE solicitud_baja = 1) +
+          (SELECT COUNT(*) FROM ic_pagos_confirmados WHERE solicitud_baja = 1)
+    ")->fetchColumn();
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -74,6 +85,11 @@ $rol = $user['rol'];
                        data-tooltip="Rendiciones">
                         <i class="fa fa-clipboard-check"></i>
                         <span class="nav-text">Rendiciones</span>
+                        <?php if ($n_sol_baja > 0): ?>
+                            <span class="nav-badge" title="<?= $n_sol_baja ?> solicitud<?= $n_sol_baja !== 1 ? 'es' : '' ?> de anulación pendiente<?= $n_sol_baja !== 1 ? 's' : '' ?>">
+                                <?= $n_sol_baja ?>
+                            </span>
+                        <?php endif; ?>
                     </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'liquidaciones' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/liquidaciones"

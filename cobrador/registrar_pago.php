@@ -13,10 +13,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $pdo = obtener_conexion();
 $cuota_id = (int) ($_POST['cuota_id'] ?? 0);
-$ef = (float) ($_POST['monto_efectivo'] ?? 0);
-$tr = (float) ($_POST['monto_transferencia'] ?? 0);
-$mora_cobranda = (float) ($_POST['monto_mora_cobrada'] ?? 0);
-$total = $ef + $tr;
+$ef       = (float) ($_POST['monto_efectivo'] ?? 0);
+$tr       = (float) ($_POST['monto_transferencia'] ?? 0);
+$total    = $ef + $tr;
 
 if (!$cuota_id || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
@@ -24,24 +23,84 @@ if (!$cuota_id || $total <= 0) {
     exit;
 }
 
-// Verificar que la cuota existe y no tiene pago pendiente
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM ic_pagos_temporales WHERE cuota_id=? AND estado='PENDIENTE'");
+// Obtener credito_id e interes_moratorio de la cuota seleccionada
+$stmt = $pdo->prepare("
+    SELECT cu.credito_id, cr.interes_moratorio_pct
+    FROM ic_cuotas cu
+    JOIN ic_creditos cr ON cu.credito_id = cr.id
+    WHERE cu.id = ?
+");
 $stmt->execute([$cuota_id]);
-if ((int) $stmt->fetchColumn() > 0) {
-    $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Esta cuota ya tiene un pago registrado pendiente de aprobación.'];
+$row = $stmt->fetch();
+
+if (!$row) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Cuota no encontrada.'];
     header('Location: agenda');
     exit;
 }
 
-$pdo->prepare("
-    INSERT INTO ic_pagos_temporales
-      (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada)
-    VALUES (?,?,?,?,?,?)
-")->execute([$cuota_id, $_SESSION['user_id'], $ef, $tr, $total, $mora_cobranda]);
+$credito_id = (int) $row['credito_id'];
+$pct_mora   = (float) $row['interes_moratorio_pct'];
 
-registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota_id,
-    'Efectivo: ' . formato_pesos($ef) . ' | Transferencia: ' . formato_pesos($tr));
+// Obtener cuotas pendientes/vencidas del crédito, de más antigua a más nueva
+$cuotas_stmt = $pdo->prepare("
+    SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt
+            WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen
+    FROM ic_cuotas cu
+    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA')
+    ORDER BY cu.numero_cuota ASC
+");
+$cuotas_stmt->execute([$credito_id]);
+$cuotas_pendientes = $cuotas_stmt->fetchAll();
 
-$_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago registrado correctamente. Pendiente de aprobación del supervisor.'];
+$remaining    = $total;
+$ef_remaining = $ef;
+$tr_remaining = $tr;
+$cuotas_ok    = 0;
+
+foreach ($cuotas_pendientes as $cuota) {
+    if ($remaining <= 0.005) break;
+
+    // Saltar cuotas con pago pendiente de aprobación
+    if ((int) $cuota['pago_pen'] > 0) continue;
+
+    $dias_atraso = dias_atraso_habiles($cuota['fecha_vencimiento']);
+    $mora_cuota  = calcular_mora($cuota['monto_cuota'], $dias_atraso, $pct_mora);
+    $total_cuota = $cuota['monto_cuota'] + $mora_cuota;
+
+    $pago_en_esta = min($remaining, $total_cuota);
+
+    // Distribuir: primero efectivo, luego transferencia
+    $pago_ef = min($pago_en_esta, $ef_remaining);
+    $pago_tr = $pago_en_esta - $pago_ef;
+
+    // Mora sólo si cubre el total de la cuota
+    $mora_en_esta = ($pago_en_esta >= $total_cuota - 0.005) ? $mora_cuota : 0.0;
+
+    $pdo->prepare("
+        INSERT INTO ic_pagos_temporales
+          (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta]);
+
+    registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota['id'],
+        'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));
+
+    $ef_remaining -= $pago_ef;
+    $tr_remaining -= $pago_tr;
+    $remaining    -= $pago_en_esta;
+    $cuotas_ok++;
+}
+
+if ($cuotas_ok > 0) {
+    $msg = $cuotas_ok > 1
+        ? "Pago registrado para {$cuotas_ok} cuotas. Pendiente de aprobación."
+        : 'Pago registrado correctamente. Pendiente de aprobación del supervisor.';
+    $_SESSION['flash'] = ['type' => 'success', 'msg' => $msg];
+} else {
+    $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Todas las cuotas ya tienen un pago pendiente de aprobación.'];
+}
+
 header('Location: agenda');
 exit;

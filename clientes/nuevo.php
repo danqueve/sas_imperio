@@ -9,7 +9,20 @@ verificar_sesion();
 verificar_permiso('editar_clientes');
 
 $pdo = obtener_conexion();
-$cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
+$cobradores = $pdo->query("SELECT id, nombre, apellido, usuario FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
+
+// Zona predeterminada por cobrador (según username)
+$zona_por_usuario = [
+    'santizalazar' => 'Zona 1',
+    'jpbicego'     => 'Zona 2',
+    'enzoteceira'  => 'Zona 3',
+    'masanchez'    => 'Zona 4-6',
+];
+$cob_zona_map = [];
+foreach ($cobradores as $c) {
+    $cob_zona_map[(int)$c['id']] = $zona_por_usuario[$c['usuario']] ?? '';
+}
+
 $error = '';
 $v = [];
 
@@ -168,7 +181,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="form-grid">
                 <div class="form-group">
                     <label>Cobrador Asignado</label>
-                    <select name="cobrador_id">
+                    <select name="cobrador_id" id="cobrador_id" onchange="autoZona()">
                         <option value="">— Sin asignar —</option>
                         <?php foreach ($cobradores as $c): ?>
                             <option value="<?= $c['id'] ?>" <?= ($v['cobrador_id'] ?? '') == $c['id'] ? 'selected' : '' ?>>
@@ -246,8 +259,19 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
+$cob_zona_json = json_encode($cob_zona_map, JSON_UNESCAPED_UNICODE);
+
 $page_scripts = <<<JS
 <script>
+const cobZonaMap = $cob_zona_json;
+
+function autoZona() {
+    const cid  = parseInt(document.getElementById('cobrador_id').value) || 0;
+    const zona = cobZonaMap[cid] || '';
+    const inp  = document.querySelector('[name=zona]');
+    if (zona) inp.value = zona;
+}
+
 function toggleGarante() {
   const chk = document.getElementById('chk_garante');
   const sec = document.getElementById('seccion_garante');

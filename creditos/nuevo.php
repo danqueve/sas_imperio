@@ -11,9 +11,25 @@ verificar_permiso('alta_creditos');
 $pdo = obtener_conexion();
 $cliente_id = (int) ($_GET['cliente_id'] ?? 0);
 
-$clientes   = $pdo->query("SELECT id,nombres,apellidos FROM ic_clientes WHERE estado='ACTIVO' ORDER BY apellidos,nombres")->fetchAll();
-$cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
+$clientes = $pdo->query("
+    SELECT c.id, c.nombres, c.apellidos, c.cobrador_id, c.zona,
+           CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre
+    FROM ic_clientes c
+    LEFT JOIN ic_usuarios u ON c.cobrador_id = u.id AND u.activo = 1
+    WHERE c.estado='ACTIVO'
+    ORDER BY c.apellidos, c.nombres
+")->fetchAll();
 $vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE activo=1 ORDER BY nombre")->fetchAll();
+
+// Mapa cliente_id → {cob_id, cob_nombre} para JS
+$clientes_cob_map = [];
+foreach ($clientes as $cl) {
+    $clientes_cob_map[(int)$cl['id']] = [
+        'cob_id'     => $cl['cobrador_id'] ? (int)$cl['cobrador_id'] : null,
+        'cob_nombre' => $cl['cobrador_nombre'] ?? null,
+        'zona'       => $cl['zona'] ?? '',
+    ];
+}
 
 $error = '';
 $v = [
@@ -155,15 +171,38 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
 
                 <div class="form-group">
-                    <label>Cobrador *</label>
-                    <select name="cobrador_id" required>
-                        <option value="">— Seleccionar —</option>
-                        <?php foreach ($cobradores as $cob): ?>
-                            <option value="<?= $cob['id'] ?>" <?= ($v['cobrador_id'] ?? '') == $cob['id'] ? 'selected' : '' ?>>
-                                <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label>Cobrador</label>
+                    <div id="cobrador_display" style="padding:9px 13px;background:rgba(0,0,0,.25);border:1px solid var(--dark-border);border-radius:8px;font-size:.92rem;min-height:38px">
+                        <?php
+                        $cid_post = (int)($v['cobrador_id'] ?? 0);
+                        if ($cid_post) {
+                            foreach ($clientes_cob_map as $map) {
+                                if ($map['cob_id'] === $cid_post) {
+                                    echo '<span style="color:var(--primary-light)">' . e($map['cob_nombre']) . '</span>';
+                                    break;
+                                }
+                            }
+                        } else {
+                            echo '<span style="color:var(--text-muted)">— Seleccioná un cliente —</span>';
+                        }
+                        ?>
+                    </div>
+                    <input type="hidden" name="cobrador_id" id="cobrador_id"
+                           value="<?= e($v['cobrador_id'] ?? '') ?>">
+                </div>
+
+                <div class="form-group">
+                    <label>Zona</label>
+                    <div id="zona_display" style="padding:9px 13px;background:rgba(0,0,0,.25);border:1px solid var(--dark-border);border-radius:8px;font-size:.92rem;min-height:38px">
+                        <?php
+                        $cli_post = (int)($v['cliente_id'] ?? 0);
+                        if ($cli_post && isset($clientes_cob_map[$cli_post]['zona']) && $clientes_cob_map[$cli_post]['zona'] !== '') {
+                            echo '<span style="color:var(--primary-light)">' . e($clientes_cob_map[$cli_post]['zona']) . '</span>';
+                        } else {
+                            echo '<span style="color:var(--text-muted)">— Seleccioná un cliente —</span>';
+                        }
+                        ?>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -270,8 +309,40 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
+$clientes_cob_json = json_encode($clientes_cob_map, JSON_UNESCAPED_UNICODE);
+
 $page_scripts = <<<JS
 <script>
+const clientesCob = $clientes_cob_json;
+
+function actualizarCobrador() {
+    const sel    = document.querySelector('[name=cliente_id]');
+    const cid    = parseInt(sel.value) || 0;
+    const info   = clientesCob[cid];
+    const disp   = document.getElementById('cobrador_display');
+    const hidden = document.getElementById('cobrador_id');
+    const zdis   = document.getElementById('zona_display');
+
+    if (cid && info && info.cob_id) {
+        disp.innerHTML = '<span style="color:var(--primary-light)">' + info.cob_nombre + '</span>';
+        hidden.value   = info.cob_id;
+    } else if (cid && info && !info.cob_id) {
+        disp.innerHTML = '<span style="color:var(--danger)"><i class="fa fa-exclamation-triangle"></i> Sin cobrador asignado</span>';
+        hidden.value   = '';
+    } else {
+        disp.innerHTML = '<span style="color:var(--text-muted)">— Seleccioná un cliente —</span>';
+        hidden.value   = '';
+    }
+
+    if (cid && info && info.zona) {
+        zdis.innerHTML = '<span style="color:var(--primary-light)">' + info.zona + '</span>';
+    } else {
+        zdis.innerHTML = '<span style="color:var(--text-muted)">— Seleccioná un cliente —</span>';
+    }
+}
+
+document.querySelector('[name=cliente_id]').addEventListener('change', actualizarCobrador);
+
 function fmt(n) {
     return '\$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
@@ -295,6 +366,7 @@ function toggleDiaCobro() {
 }
 
 document.addEventListener('DOMContentLoaded', function(){
+    actualizarCobrador();
     toggleDiaCobro();
     calcularCuotas();
 });

@@ -29,11 +29,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'msg' => "Aprobados: {$res['aprobados']} — Errores: {$res['errores']}"
         ];
     } elseif ($accion === 'rechazar' && !empty($_POST['pago_id'])) {
+        if (!es_admin()) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Solo los administradores pueden rechazar pagos.'];
+        } else {
+            $pago_id = (int) $_POST['pago_id'];
+            $pdo->prepare("UPDATE ic_pagos_temporales SET estado='RECHAZADO' WHERE id=?")
+                ->execute([$pago_id]);
+            registrar_log($pdo, $_SESSION['user_id'], 'PAGO_RECHAZADO', 'pago_temporal', $pago_id);
+            $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Pago rechazado.'];
+        }
+    } elseif ($accion === 'solicitar_baja_temporal' && !empty($_POST['pago_id'])) {
         $pago_id = (int) $_POST['pago_id'];
-        $pdo->prepare("UPDATE ic_pagos_temporales SET estado='RECHAZADO' WHERE id=?")
-            ->execute([$pago_id]);
-        registrar_log($pdo, $_SESSION['user_id'], 'PAGO_RECHAZADO', 'pago_temporal', $pago_id);
-        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Pago rechazado.'];
+        $motivo  = trim($_POST['motivo'] ?? '');
+        if ($motivo) {
+            $pdo->prepare("UPDATE ic_pagos_temporales SET solicitud_baja=1, motivo_baja=? WHERE id=?")
+                ->execute([$motivo, $pago_id]);
+            registrar_log($pdo, $_SESSION['user_id'], 'SOLICITUD_BAJA_TEMP', 'pago_temporal', $pago_id, $motivo);
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Solicitud enviada al administrador.'];
+        } else {
+            $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Ingresá el motivo de la solicitud.'];
+        }
     }
     header('Location: rendiciones?fecha=' . urlencode($fecha_sel) . '&cobrador_id=' . $cobrador_id);
     exit;
@@ -56,7 +71,7 @@ $cobradores_pend = $cobradores_con_pend->fetchAll();
 $detalle_pagos = [];
 if ($cobrador_id) {
     $dstmt = $pdo->prepare("
-        SELECT pt.*,
+        SELECT pt.*, pt.solicitud_baja, pt.motivo_baja,
                cl.nombres, cl.apellidos,
                cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo
@@ -66,7 +81,7 @@ if ($cobrador_id) {
         JOIN ic_clientes cl ON cr.cliente_id = cl.id
         LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
         WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
-        ORDER BY pt.fecha_registro
+        ORDER BY pt.solicitud_baja DESC, pt.fecha_registro
     ");
     $dstmt->execute([$cobrador_id, $fecha_sel]);
     $detalle_pagos = $dstmt->fetchAll();
@@ -181,9 +196,14 @@ require_once __DIR__ . '/../views/layout.php';
                         </thead>
                         <tbody>
                             <?php foreach ($detalle_pagos as $p): ?>
-                                <tr>
+                                <tr <?= $p['solicitud_baja'] ? 'style="background:rgba(245,158,11,.08);border-left:3px solid var(--warning)"' : '' ?>>
                                     <td class="fw-bold">
                                         <?= e($p['apellidos'] . ', ' . $p['nombres']) ?>
+                                        <?php if ($p['solicitud_baja']): ?>
+                                            <div style="font-size:.72rem;color:var(--warning);margin-top:2px">
+                                                <i class="fa fa-flag"></i> Solicitud: <?= e($p['motivo_baja']) ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </td>
                                     <td>#<?= $p['numero_cuota'] ?> — <?= date('d/m/Y', strtotime($p['fecha_vencimiento'])) ?></td>
                                     <td><?= e($p['articulo']) ?></td>
@@ -194,15 +214,29 @@ require_once __DIR__ . '/../views/layout.php';
                                     </td>
                                     <td class="nowrap fw-bold"><?= formato_pesos($p['monto_total']) ?></td>
                                     <td class="no-print">
-                                        <form method="POST" style="display:inline">
-                                            <input type="hidden" name="accion" value="rechazar">
-                                            <input type="hidden" name="pago_id" value="<?= $p['id'] ?>">
-                                            <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
-                                            <button type="submit" class="btn-ic btn-danger btn-sm"
-                                                data-confirm="¿Rechazar este pago?">
-                                                <i class="fa fa-times"></i>
-                                            </button>
-                                        </form>
+                                        <?php if (es_admin()): ?>
+                                            <form method="POST" style="display:inline">
+                                                <input type="hidden" name="accion" value="rechazar">
+                                                <input type="hidden" name="pago_id" value="<?= $p['id'] ?>">
+                                                <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
+                                                <button type="submit"
+                                                    class="btn-ic btn-sm <?= $p['solicitud_baja'] ? 'btn-warning' : 'btn-danger' ?>"
+                                                    data-confirm="¿Rechazar este pago?">
+                                                    <i class="fa fa-times"></i>
+                                                </button>
+                                            </form>
+                                        <?php elseif (es_supervisor()): ?>
+                                            <?php if (!$p['solicitud_baja']): ?>
+                                                <button onclick="abrirSolBajaTemp(<?= $p['id'] ?>)"
+                                                    class="btn-ic btn-warning btn-sm" title="Solicitar baja">
+                                                    <i class="fa fa-flag"></i>
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-warning" style="font-size:.75rem" title="Solicitud enviada">
+                                                    <i class="fa fa-clock"></i>
+                                                </span>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -241,5 +275,49 @@ require_once __DIR__ . '/../views/layout.php';
         <?php endif; ?>
     </div>
 </div>
+
+<?php if (es_supervisor() && !es_admin()): ?>
+<!-- MODAL SOLICITAR BAJA DE PAGO TEMPORAL (supervisores) -->
+<div class="modal-overlay" id="modal-sol-baja-temp">
+    <div class="modal-box" style="max-width:440px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-flag"></i> Solicitar Baja de Pago</div>
+            <button class="modal-close" onclick="closeModal('modal-sol-baja-temp')">✕</button>
+        </div>
+        <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:14px">
+            La solicitud será revisada por el administrador, quien decidirá si rechaza el pago.
+        </p>
+        <form method="POST" class="form-ic">
+            <input type="hidden" name="accion" value="solicitar_baja_temporal">
+            <input type="hidden" name="pago_id" id="sol_temp_id">
+            <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
+            <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+            <div class="form-group mb-4">
+                <label>Motivo de la solicitud *</label>
+                <textarea name="motivo" rows="3" required
+                    placeholder="Ej: Pago duplicado, error de importe, cliente equivocado..."
+                    style="resize:vertical"></textarea>
+            </div>
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-warning w-100" style="justify-content:center">
+                    <i class="fa fa-paper-plane"></i> Enviar Solicitud
+                </button>
+                <button type="button" onclick="closeModal('modal-sol-baja-temp')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<?php
+$page_scripts = <<<'JS'
+<script>
+function abrirSolBajaTemp(pago_id) {
+    document.getElementById('sol_temp_id').value = pago_id;
+    openModal('modal-sol-baja-temp');
+}
+</script>
+JS;
+?>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>
