@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" -e \"SHOW DATABASES;\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" c2881399_creditos -e \"SHOW TABLES;\")"
+    ]
+  }
+}
