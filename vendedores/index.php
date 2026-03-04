@@ -4,7 +4,7 @@ require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
-verificar_rol('admin'); // Solo admin gestiona vendedores
+verificar_permiso('ver_reportes'); // admin y supervisor pueden ver
 
 $pdo = obtener_conexion();
 $b = trim($_GET['b'] ?? '');
@@ -23,7 +23,10 @@ $vendedores = $stmt->fetchAll();
 
 $page_title = 'Vendedores';
 $page_current = 'vendedores';
-$topbar_actions = '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Vendedor</a>';
+$topbar_actions = '<a href="estadisticas" class="btn-ic btn-ghost btn-sm"><i class="fa fa-chart-bar"></i> Estadísticas</a>';
+if (es_admin()) {
+    $topbar_actions .= ' <a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Vendedor</a>';
+}
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -66,11 +69,14 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <a href="editar?id=<?= $v['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar"><i class="fa fa-edit"></i></a>
-                                <?php if ($v['activo']): ?>
-                                    <a href="eliminar?id=<?= $v['id'] ?>&accion=baja" class="btn-ic btn-danger btn-sm btn-icon" title="Dar de baja" onclick="return confirm('¿Seguro que deseas dar de baja a este vendedor?')"><i class="fa fa-arrow-down"></i></a>
-                                <?php else: ?>
-                                    <a href="eliminar?id=<?= $v['id'] ?>&accion=alta" class="btn-ic btn-success btn-sm btn-icon" title="Dar de alta" onclick="return confirm('¿Seguro que deseas reactivar a este vendedor?')"><i class="fa fa-arrow-up"></i></a>
+                                <a href="estadisticas?id=<?= $v['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Ver estadísticas"><i class="fa fa-chart-line"></i></a>
+                                <?php if (es_admin()): ?>
+                                    <a href="editar?id=<?= $v['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar"><i class="fa fa-edit"></i></a>
+                                    <?php if ($v['activo']): ?>
+                                        <a href="eliminar?id=<?= $v['id'] ?>&accion=baja" class="btn-ic btn-danger btn-sm btn-icon" title="Dar de baja" onclick="return confirm('¿Seguro que deseas dar de baja a este vendedor?')"><i class="fa fa-arrow-down"></i></a>
+                                    <?php else: ?>
+                                        <a href="eliminar?id=<?= $v['id'] ?>&accion=alta" class="btn-ic btn-success btn-sm btn-icon" title="Dar de alta" onclick="return confirm('¿Seguro que deseas reactivar a este vendedor?')"><i class="fa fa-arrow-up"></i></a>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>

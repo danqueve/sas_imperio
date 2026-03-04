@@ -99,14 +99,24 @@ if ($rol === 'admin') {
                     </a>
                 <?php endif; ?>
 
-                <?php if ($rol === 'admin'): ?>
-                    <div class="nav-label">Administración</div>
+                <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>
+                    <div class="nav-label">Vendedores</div>
                     <a class="nav-item <?= ($page_current ?? '') === 'vendedores' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>vendedores/index"
                        data-tooltip="Vendedores">
                         <i class="fa fa-user-tag"></i>
                         <span class="nav-text">Vendedores</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'vendedores_stats' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>vendedores/estadisticas"
+                       data-tooltip="Estadísticas Ventas">
+                        <i class="fa fa-chart-bar"></i>
+                        <span class="nav-text">Estad. Ventas</span>
+                    </a>
+                <?php endif; ?>
+
+                <?php if ($rol === 'admin'): ?>
+                    <div class="nav-label">Administración</div>
                     <a class="nav-item <?= ($page_current ?? '') === 'usuarios' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/usuarios"
                        data-tooltip="Usuarios">

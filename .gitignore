@@ -21,3 +21,9 @@ Thumbs.db
 
 # PHP
 *.phar
+
+# Claude Code settings
+.claude/
+
+# Migraciones de datos (datos reales, no subir)
+sql/migration_cobros.sql

@@ -62,6 +62,40 @@ $stmt = $pdo->prepare("
 $stmt->execute($params);
 $creditos = $stmt->fetchAll();
 
+// ── Solicitudes de anulación pendientes (admin y supervisor) ──
+$sol_baja_creditos = []; // credito_id => true  (para marcar filas)
+$sol_baja_alert    = []; // items para el banner
+if (es_admin() || es_supervisor()) {
+    $stmt_sb = $pdo->query("
+        SELECT 'temporal' AS tipo,
+               cr.id AS credito_id,
+               CONCAT(cl.apellidos, ', ', cl.nombres) AS cliente,
+               cu.numero_cuota,
+               pt.motivo_baja
+        FROM ic_pagos_temporales pt
+        JOIN ic_cuotas cu  ON pt.cuota_id    = cu.id
+        JOIN ic_creditos cr ON cu.credito_id  = cr.id
+        JOIN ic_clientes cl ON cr.cliente_id  = cl.id
+        WHERE pt.solicitud_baja = 1
+        UNION ALL
+        SELECT 'confirmado' AS tipo,
+               cr.id AS credito_id,
+               CONCAT(cl.apellidos, ', ', cl.nombres) AS cliente,
+               cu.numero_cuota,
+               pc.motivo_baja
+        FROM ic_pagos_confirmados pc
+        JOIN ic_cuotas cu  ON pc.cuota_id    = cu.id
+        JOIN ic_creditos cr ON cu.credito_id  = cr.id
+        JOIN ic_clientes cl ON cr.cliente_id  = cl.id
+        WHERE pc.solicitud_baja = 1
+        ORDER BY credito_id DESC
+    ");
+    foreach ($stmt_sb->fetchAll() as $sb) {
+        $sol_baja_alert[] = $sb;
+        $sol_baja_creditos[(int)$sb['credito_id']] = true;
+    }
+}
+
 $page_title = 'Créditos';
 $page_current = 'creditos';
 $topbar_actions = '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Crédito</a>';
@@ -73,6 +107,43 @@ require_once __DIR__ . '/../views/layout.php';
         <?= e($_SESSION['flash']['msg']) ?>
     </div>
     <?php unset($_SESSION['flash']); ?>
+<?php endif; ?>
+
+<?php if (!empty($sol_baja_alert)): ?>
+<div class="alert-ic alert-danger mb-4" style="flex-direction:column;align-items:flex-start;gap:12px">
+    <div style="display:flex;align-items:center;gap:10px;width:100%">
+        <i class="fa fa-triangle-exclamation fa-lg"></i>
+        <strong>
+            <?= count($sol_baja_alert) ?> solicitud<?= count($sol_baja_alert) !== 1 ? 'es' : '' ?>
+            de anulación de pago pendiente<?= count($sol_baja_alert) !== 1 ? 's' : '' ?> de revisión
+        </strong>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <?php
+        $vistos = [];
+        foreach ($sol_baja_alert as $sb):
+            $cid = (int)$sb['credito_id'];
+            if (isset($vistos[$cid])) continue;
+            $vistos[$cid] = true;
+        ?>
+        <a href="ver?id=<?= $cid ?>"
+           style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);
+                  border:1px solid rgba(211,64,83,.5);border-radius:6px;padding:5px 10px;
+                  color:inherit;text-decoration:none;font-size:.8rem">
+            <i class="fa fa-user" style="opacity:.6;font-size:.7rem"></i>
+            <span class="fw-bold"><?= e($sb['cliente']) ?></span>
+            <span style="opacity:.6">· cuota #<?= (int)$sb['numero_cuota'] ?></span>
+            <?php if ($sb['motivo_baja']): ?>
+                <span style="opacity:.5;font-size:.72rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                      title="<?= e($sb['motivo_baja']) ?>">
+                    — <?= e($sb['motivo_baja']) ?>
+                </span>
+            <?php endif; ?>
+            <i class="fa fa-arrow-right" style="opacity:.5;font-size:.65rem;margin-left:2px"></i>
+        </a>
+        <?php endforeach; ?>
+    </div>
+</div>
 <?php endif; ?>
 
 <div class="card-ic mb-4">
@@ -131,14 +202,23 @@ require_once __DIR__ . '/../views/layout.php';
                     </tr>
                 <?php else: ?>
                     <?php foreach ($creditos as $cr): ?>
-                        <tr>
+                        <?php $tiene_sol_baja = isset($sol_baja_creditos[(int)$cr['id']]); ?>
+                        <tr <?= $tiene_sol_baja ? 'style="background:rgba(211,64,83,.08);outline:1px solid rgba(211,64,83,.25)"' : '' ?>>
                             <td class="text-muted nowrap">#
                                 <?= $cr['id'] ?>
                             </td>
                             <td>
-                                <div class="fw-bold"><a href="../clientes/ver?id=<?= $cr['cliente_id'] ?>">
+                                <div class="fw-bold" style="display:flex;align-items:center;gap:6px">
+                                    <a href="../clientes/ver?id=<?= $cr['cliente_id'] ?>">
                                         <?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?>
-                                    </a></div>
+                                    </a>
+                                    <?php if ($tiene_sol_baja): ?>
+                                        <span class="badge-ic badge-danger" title="Solicitud de anulación de pago pendiente"
+                                              style="font-size:.6rem;padding:2px 6px">
+                                            <i class="fa fa-triangle-exclamation"></i> Anulación
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="text-muted" style="font-size:.75rem">
                                     <?= e($cr['telefono']) ?>
                                 </div>
