@@ -2,7 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(/c/wamp64/bin/mysql/mysql8.0.31/bin/mysql.exe -u root -e \"SHOW DATABASES;\")",
-      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root -e \":*)"
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root -e \":*)",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" imperio_comercial -e \"SHOW TABLES LIKE ''ic_liquid%'';\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" imperio_comercial -e \":*)",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" imperio_comercial -e \"SHOW TABLES;\")",
+      "Bash(\"$MYSQL\" -u root c2881399_credit -e \":*)",
+      "Bash(\"$MYSQL\" -u root c2881399_credit --skip-column-names -e \":*)",
+      "Bash(\"$MYSQLDUMP\" -u root --no-create-info c2881399_credit ic_vendedores)",
+      "Bash(xargs grep -l \"ajax\\\\|obtener\\\\|cliente.*cobrador\")",
+      "Bash(xargs grep -l \"cobrador_id\")",
+      "Read(//c/wamp64/bin/mysql//**)",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root --password=\"\" -e \"SHOW DATABASES;\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root --password=\"\" c2881399_credit -e \"DESCRIBE ic_pagos_confirmados; DESCRIBE ic_pagos_temporales;\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root --password=\"\" c2881399_credit 2)",
+      "Bash(1:*)",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root --password=\"\" c2881399_credit -e \"SELECT id, nombre, apellido, usuario, rol, activo FROM ic_usuarios ORDER BY id;\")"
     ]
   }
 }
