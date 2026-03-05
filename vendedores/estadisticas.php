@@ -233,6 +233,20 @@ if ($vendedor_id > 0) {
 // ── Vista general: resumen de todos los vendedores ────────────
 } else {
 
+    // Opciones de ordenamiento
+    $orden_opts = [
+        'mayor_venta'   => ['label' => 'Mayor venta',         'sql' => 'monto_vendido DESC'],
+        'mas_creditos'  => ['label' => 'Más créditos',        'sql' => 'total_creditos DESC'],
+        'mas_atrasados' => ['label' => 'Más atrasados',       'sql' => 'atrasados DESC'],
+        'mas_pagados'   => ['label' => 'Más pagados',         'sql' => 'pagados DESC'],
+        'mas_retiros'   => ['label' => 'Más retiros',         'sql' => 'retirados DESC'],
+        'mejor_cumpl'   => ['label' => 'Mejor cumplimiento',  'sql' => 'al_dia DESC, atrasados ASC'],
+        'peor_cumpl'    => ['label' => 'Peor cumplimiento',   'sql' => 'atrasados DESC, al_dia ASC'],
+        'nombre'        => ['label' => 'Nombre A-Z',          'sql' => 'v.apellido ASC, v.nombre ASC'],
+    ];
+    $orden = isset($_GET['orden'], $orden_opts[$_GET['orden']]) ? $_GET['orden'] : 'mayor_venta';
+    $order_sql = $orden_opts[$orden]['sql'];
+
     $stmt = $pdo->query("
         SELECT
             v.id, v.nombre, v.apellido, v.telefono, v.activo,
@@ -254,7 +268,7 @@ if ($vendedor_id > 0) {
         FROM ic_vendedores v
         LEFT JOIN ic_creditos cr ON cr.vendedor_id = v.id
         GROUP BY v.id
-        ORDER BY monto_vendido DESC
+        ORDER BY $order_sql
     ");
     $vendedores = $stmt->fetchAll();
 
@@ -266,7 +280,21 @@ if ($vendedor_id > 0) {
     <div class="card-ic">
         <div class="card-ic-header">
             <span class="card-title"><i class="fa fa-chart-bar"></i> Rendimiento por Vendedor</span>
-            <a href="index" class="btn-ic btn-ghost btn-sm"><i class="fa fa-arrow-left"></i> Volver</a>
+            <div style="display:flex;align-items:center;gap:10px">
+                <form method="GET" style="margin:0">
+                    <select name="orden" onchange="this.form.submit()"
+                            style="background:var(--dark-card);border:1px solid var(--dark-border);
+                                   color:var(--text-main);border-radius:6px;padding:5px 10px;
+                                   font-size:.8rem;cursor:pointer">
+                        <?php foreach ($orden_opts as $key => $opt): ?>
+                            <option value="<?= $key ?>" <?= $orden === $key ? 'selected' : '' ?>>
+                                <?= $opt['label'] ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+                <a href="index" class="btn-ic btn-ghost btn-sm"><i class="fa fa-arrow-left"></i> Volver</a>
+            </div>
         </div>
         <div style="overflow-x:auto">
             <table class="table-ic">

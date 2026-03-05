@@ -21,7 +21,9 @@
       "Bash(grep -r \"ic_\" /c/wamp64/www/creditos/*.php)",
       "Bash(grep -r \"ic_\" /c/wamp64/www/creditos/admin/*.php /c/wamp64/www/creditos/creditos/*.php /c/wamp64/www/creditos/clientes/*.php /c/wamp64/www/creditos/cobrador/*.php)",
       "Bash(ls -d /c/wamp64/www/creditos/*/)",
-      "Bash(xargs -I {} basename {})"
+      "Bash(xargs -I {} basename {})",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe /c/wamp64/www/creditos/tools_regen_tokens.php)",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root c2881399_credit -e \"SELECT id, token_acceso FROM ic_clientes LIMIT 5;\")"
     ]
   }
 }

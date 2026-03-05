@@ -71,6 +71,40 @@ foreach ($todas as $c) {
     }
 }
 
+// ── Guardar totales originales para KPIs (antes de deduplicar) ─
+$kpi_del_dia   = count($del_dia);
+$kpi_vencidas  = count($vencidas);
+$kpi_total_hoy = array_sum(array_map(fn($c) => $c['total_a_cobrar'], $del_dia));
+$kpi_mora_venc = array_sum(array_map(fn($c) => $c['mora_calc'], $vencidas));
+
+// ── Deduplicar: un registro por cliente ────────────────────────
+// Si un cliente tiene varias cuotas atrasadas, aparece una sola vez
+// con un badge que indica cuántas cuotas acumula.
+$venc_por_cliente = [];
+foreach ($vencidas as $v) {
+    $venc_por_cliente[$v['cliente_id']][] = $v;
+}
+
+// del_dia: conservar la cuota de hoy, agregar count de atrasadas extras
+$del_dia_dedup = [];
+foreach ($del_dia as $c) {
+    $cid = $c['cliente_id'];
+    if (!isset($del_dia_dedup[$cid])) {
+        $c['cuotas_atrasadas'] = count($venc_por_cliente[$cid] ?? []);
+        $del_dia_dedup[$cid]   = $c;
+    }
+}
+$del_dia = array_values($del_dia_dedup);
+
+// vencidas: excluir clientes ya mostrados en del_dia, deduplicar el resto
+$vencidas = [];
+foreach ($venc_por_cliente as $cid => $cuotas) {
+    if (isset($del_dia_dedup[$cid])) continue; // ya aparece arriba con badge
+    $row = $cuotas[0]; // más antigua primero (ORDER BY fecha_vencimiento ASC)
+    $row['cuotas_atrasadas'] = count($cuotas);
+    $vencidas[] = $row;
+}
+
 // ── Vista semanal: clientes por dia_cobro ─────────────────────
 $semana_stmt = $pdo->prepare("
     SELECT cu.id,
@@ -196,7 +230,7 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-calendar-check kpi-icon"></i>
         <div class="kpi-label">Del día</div>
         <div class="kpi-value">
-            <?= count($del_dia) ?>
+            <?= $kpi_del_dia ?>
         </div>
         <div class="kpi-sub">cuotas a cobrar hoy</div>
     </div>
@@ -204,7 +238,7 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-fire kpi-icon"></i>
         <div class="kpi-label">Vencidas</div>
         <div class="kpi-value">
-            <?= count($vencidas) ?>
+            <?= $kpi_vencidas ?>
         </div>
         <div class="kpi-sub">cuotas sin cobrar</div>
     </div>
@@ -212,7 +246,7 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-dollar-sign kpi-icon"></i>
         <div class="kpi-label">Total a cobrar hoy</div>
         <div class="kpi-value" style="font-size:1.2rem">
-            <?= formato_pesos(array_sum(array_map(fn($c) => $c['total_a_cobrar'], $del_dia))) ?>
+            <?= formato_pesos($kpi_total_hoy) ?>
         </div>
         <div class="kpi-sub">capital + mora</div>
     </div>
@@ -220,7 +254,7 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-plus-circle kpi-icon"></i>
         <div class="kpi-label">Mora vencidas</div>
         <div class="kpi-value" style="font-size:1.2rem;color:var(--danger)">
-            <?= formato_pesos(array_sum(array_map(fn($c) => $c['mora_calc'], $vencidas))) ?>
+            <?= formato_pesos($kpi_mora_venc) ?>
         </div>
         <div class="kpi-sub">mora acumulada</div>
     </div>
@@ -260,6 +294,13 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <span class="agenda-nombre"><?= e(strtoupper($c['apellidos'] . ' ' . $c['nombres'])) ?></span>
                 <span class="agenda-zona">Zona: <?= e($c['zona'] ?: '—') ?></span>
             </button>
+            <?php if (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0): ?>
+                <span style="display:inline-flex;align-items:center;gap:4px;margin-top:3px;
+                             font-size:.68rem;font-weight:700;color:var(--danger)">
+                    <i class="fa fa-triangle-exclamation" style="font-size:.65rem"></i>
+                    <?= $c['cuotas_atrasadas'] ?> cuota<?= $c['cuotas_atrasadas'] > 1 ? 's' : '' ?> atrasada<?= $c['cuotas_atrasadas'] > 1 ? 's' : '' ?>
+                </span>
+            <?php endif; ?>
             <div class="agenda-articulo" id="art-<?= $c['id'] ?>" style="display:none">
                 <i class="fa fa-box-open"></i> <?= e($c['articulo']) ?>
             </div>

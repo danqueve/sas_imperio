@@ -176,7 +176,14 @@ function formato_pesos(float $valor): string
 
 function generar_token(): string
 {
-    return bin2hex(random_bytes(32));
+    // 10 chars de alfabeto sin caracteres ambiguos (0/O, 1/I/L)
+    $abc   = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    $bytes = random_bytes(10);
+    $token = '';
+    for ($i = 0; $i < 10; $i++) {
+        $token .= $abc[ord($bytes[$i]) % strlen($abc)];
+    }
+    return $token;
 }
 
 function nombre_dia(int $n): string
