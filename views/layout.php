@@ -55,7 +55,7 @@ if ($rol === 'admin') {
                     </a>
                 <?php endif; ?>
 
-                <?php if ($rol !== 'cobrador'): ?>
+                <?php if ($rol !== 'cobrador' && $rol !== 'vendedor'): ?>
                     <div class="nav-label">Gestión</div>
                     <a class="nav-item <?= ($page_current ?? '') === 'clientes' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>clientes/index"
@@ -69,8 +69,15 @@ if ($rol === 'admin') {
                         <i class="fa fa-file-invoice-dollar"></i>
                         <span class="nav-text">Créditos</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'articulos' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>articulos/index"
+                       data-tooltip="Artículos / Stock">
+                        <i class="fa fa-box-open"></i>
+                        <span class="nav-text">Artículos / Stock</span>
+                    </a>
                 <?php endif; ?>
 
+                <?php if ($rol !== 'vendedor'): ?>
                 <div class="nav-label">Cobranzas</div>
                 <a class="nav-item <?= ($page_current ?? '') === 'agenda' ? 'active' : '' ?>"
                    href="<?= BASE_URL ?>cobrador/agenda"
@@ -78,6 +85,7 @@ if ($rol === 'admin') {
                     <i class="fa fa-calendar-check"></i>
                     <span class="nav-text">Agenda del Día</span>
                 </a>
+                <?php endif; ?>
 
                 <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>
                     <a class="nav-item <?= ($page_current ?? '') === 'rendiciones' ? 'active' : '' ?>"
@@ -100,7 +108,13 @@ if ($rol === 'admin') {
                 <?php endif; ?>
 
                 <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>
-                    <div class="nav-label">Vendedores</div>
+                    <div class="nav-label">Ventas</div>
+                    <a class="nav-item <?= ($page_current ?? '') === 'ventas' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>ventas/index"
+                       data-tooltip="Ventas">
+                        <i class="fa fa-receipt"></i>
+                        <span class="nav-text">Ventas</span>
+                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'vendedores' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>vendedores/index"
                        data-tooltip="Vendedores">
@@ -112,6 +126,22 @@ if ($rol === 'admin') {
                        data-tooltip="Estadísticas Ventas">
                         <i class="fa fa-chart-bar"></i>
                         <span class="nav-text">Estad. Ventas</span>
+                    </a>
+                <?php endif; ?>
+
+                <?php if ($rol === 'vendedor'): ?>
+                    <div class="nav-label">Ventas</div>
+                    <a class="nav-item <?= ($page_current ?? '') === 'ventas_nueva' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>ventas/nueva"
+                       data-tooltip="Nueva Venta">
+                        <i class="fa fa-cart-plus"></i>
+                        <span class="nav-text">Nueva Venta</span>
+                    </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'ventas' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>ventas/index"
+                       data-tooltip="Mis Ventas">
+                        <i class="fa fa-receipt"></i>
+                        <span class="nav-text">Mis Ventas</span>
                     </a>
                 <?php endif; ?>
 

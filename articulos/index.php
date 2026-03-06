@@ -59,10 +59,13 @@ require_once __DIR__ . '/../views/layout.php';
             <thead>
                 <tr>
                     <th>#</th>
+                    <th>SKU</th>
                     <th>Descripción</th>
                     <th>Categoría</th>
                     <th>Precio Costo</th>
                     <th>Precio Venta</th>
+                    <th>Contado</th>
+                    <th>Tarjeta</th>
                     <th>Stock</th>
                     <th>Activo</th>
                     <th>Acciones</th>
@@ -71,25 +74,28 @@ require_once __DIR__ . '/../views/layout.php';
             <tbody>
                 <?php if (empty($lista)): ?>
                     <tr>
-                        <td colspan="8" class="text-center text-muted" style="padding:40px">Sin artículos.</td>
+                        <td colspan="11" class="text-center text-muted" style="padding:40px">Sin artículos.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($lista as $a): ?>
                         <tr>
-                            <td class="text-muted">#
-                                <?= $a['id'] ?>
+                            <td class="text-muted">#<?= $a['id'] ?></td>
+                            <td class="text-muted" style="font-size:.82rem;font-family:monospace">
+                                <?= e($a['sku'] ?: '—') ?>
                             </td>
-                            <td class="fw-bold">
-                                <?= e($a['descripcion']) ?>
-                            </td>
-                            <td>
-                                <?= e($a['categoria'] ?: '—') ?>
-                            </td>
+                            <td class="fw-bold"><?= e($a['descripcion']) ?></td>
+                            <td><?= e($a['categoria'] ?: '—') ?></td>
                             <td class="nowrap">
                                 <?= $a['precio_costo'] ? formato_pesos($a['precio_costo']) : '—' ?>
                             </td>
                             <td class="nowrap fw-bold">
                                 <?= $a['precio_venta'] ? formato_pesos($a['precio_venta']) : '—' ?>
+                            </td>
+                            <td class="nowrap">
+                                <?= $a['precio_contado'] ? formato_pesos($a['precio_contado']) : '—' ?>
+                            </td>
+                            <td class="nowrap">
+                                <?= $a['precio_tarjeta'] ? formato_pesos($a['precio_tarjeta']) : '—' ?>
                             </td>
                             <td class="text-center">
                                 <?php $st = (int) $a['stock']; ?>
@@ -101,6 +107,10 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= $a['activo'] ? '<span class="badge-ic badge-success">Sí</span>' : '<span class="badge-ic badge-muted">No</span>' ?>
                             </td>
                             <td class="nowrap">
+                                <a href="qr_label?id=<?= $a['id'] ?>" target="_blank"
+                                   class="btn-ic btn-ghost btn-sm btn-icon" title="Etiqueta QR">
+                                    <i class="fa fa-qrcode"></i>
+                                </a>
                                 <a href="editar?id=<?= $a['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar">
                                     <i class="fa fa-pencil"></i>
                                 </a>

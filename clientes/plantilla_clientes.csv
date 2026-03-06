@@ -1,0 +1,3 @@
+nombres,apellidos,dni,cuil,telefono,telefono_alt,fecha_nacimiento,direccion,direccion_laboral,coordenadas,cobrador_id,dia_cobro,zona,estado,tiene_garante,g_nombres,g_apellidos,g_dni,g_telefono,g_direccion,g_coordenadas
+Juan,Perez,12345678,20-12345678-0,1122334455,,1980-01-01,Calle Falsa 123,,,-34.6037,-58.3816,1,1,Zona 1,ACTIVO,1,Maria,Gomez,87654321,5544332211,Calle Verdad 456,
+Pedro,Gomez,23456789,20-23456789-0,1199887766,,1985-05-15,Avenida Siempre Viva 742,,,-34.5, -58.4,1,2,Zona 2,ACTIVO,0,,,,,,

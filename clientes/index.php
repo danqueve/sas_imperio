@@ -114,7 +114,10 @@ require_once __DIR__ . '/../views/layout.php';
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
         <a href="?" class="btn-ic btn-ghost"><i class="fa fa-times"></i> Limpiar</a>
         <?php if (!es_cobrador()): ?>
-            <a href="nuevo" class="btn-ic btn-primary" style="margin-left:auto">
+            <a href="importar" class="btn-ic btn-ghost" style="margin-left:auto; margin-right:8px">
+                <i class="fa fa-file-import"></i> Importar
+            </a>
+            <a href="nuevo" class="btn-ic btn-primary">
                 <i class="fa fa-plus"></i> Nuevo Cliente
             </a>
         <?php endif; ?>

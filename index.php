@@ -10,6 +10,8 @@ require_once __DIR__ . '/config/funciones.php';
 if (!empty($_SESSION['user_id'])) {
     if (es_cobrador()) {
         header('Location: cobrador/agenda');
+    } elseif (es_vendedor()) {
+        header('Location: ventas/index');
     } else {
         header('Location: admin/dashboard');
     }

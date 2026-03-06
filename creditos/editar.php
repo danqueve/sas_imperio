@@ -33,17 +33,28 @@ $clientes   = $pdo->query("SELECT id,nombres,apellidos FROM ic_clientes WHERE es
 $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
 $vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE activo=1 OR id=".($cr['vendedor_id'] ?? 0)." ORDER BY nombre")->fetchAll();
 
+// Catálogo de artículos para selector
+$articulos_raw = $pdo->query("SELECT id, descripcion, precio_venta, sku, stock FROM ic_articulos WHERE activo=1 ORDER BY descripcion")->fetchAll();
+$articulos_map = [];
+$articulos_search_map = [];
+foreach ($articulos_raw as $art) {
+    $label = $art['descripcion'] . ($art['sku'] ? ' [' . $art['sku'] . ']' : '');
+    $articulos_map[(int)$art['id']] = ['precio' => (float)$art['precio_venta'], 'desc' => $art['descripcion'], 'stock' => (int)$art['stock'], 'label' => $label];
+    $articulos_search_map[$label]   = ['id' => (int)$art['id'], 'desc' => $art['descripcion']];
+}
+
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $v = $_POST;
 
+    $articulo_id_edit = (int)($v['articulo_id'] ?? 0);
     if (
-        empty($v['cliente_id']) || empty(trim($v['articulo_desc'] ?? '')) ||
+        empty($v['cliente_id']) || !$articulo_id_edit ||
         empty($v['cobrador_id']) || empty($v['cant_cuotas']) ||
         ($cuotas_pagadas == 0 && empty($v['primer_vencimiento']))
     ) {
-        $error = 'Completá todos los campos obligatorios.';
+        $error = 'Completá todos los campos obligatorios (incluido el artículo).';
     } else {
         $precio      = (float) $v['precio_articulo'];
         $interes     = (float) $v['interes_pct'];
@@ -53,9 +64,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
 
+            // Snapshot descripción del artículo seleccionado
+            $articulo_desc_snap = trim($v['articulo_desc'] ?? '');
+            if (empty($articulo_desc_snap) && isset($articulos_map[$articulo_id_edit])) {
+                $articulo_desc_snap = $articulos_map[$articulo_id_edit]['desc'];
+            }
+
             $upd = $pdo->prepare("
                 UPDATE ic_creditos SET
-                    cliente_id=?, articulo_id=NULL, articulo_desc=?,
+                    cliente_id=?, articulo_id=?, articulo_desc=?,
                     cobrador_id=?, vendedor_id=?,
                     precio_articulo=?, monto_total=?, interes_pct=?, interes_moratorio_pct=?,
                     frecuencia=?, cant_cuotas=?, observaciones=?
@@ -63,7 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $upd->execute([
                 $v['cliente_id'],
-                trim($v['articulo_desc']),
+                $articulo_id_edit,
+                $articulo_desc_snap,
                 $v['cobrador_id'],
                 ($v['vendedor_id'] ?: null),
                 $precio,
@@ -102,6 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     // repopular
     $articulo_desc_actual = trim($v['articulo_desc'] ?? $articulo_desc_actual);
+    $cr['articulo_id'] = $v['articulo_id'] ?? $cr['articulo_id'];
 } else {
     $v = $cr;
 }
@@ -149,11 +168,28 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
 
                 <div class="form-group" style="grid-column:span 2">
-                    <label>Descripción del Artículo / Producto *</label>
-                    <input type="text" name="articulo_desc"
-                           value="<?= e($articulo_desc_actual) ?>"
-                           placeholder="Ej: Heladera Samsung 400L, Moto 150cc..."
-                           required maxlength="200">
+                    <label>Artículo del Catálogo *</label>
+                    <input type="text" id="articulo_search_edit" list="articulos_list_edit"
+                           value="<?php
+                               $ai_edit = (int)($cr['articulo_id'] ?? 0);
+                               if ($ai_edit && isset($articulos_map[$ai_edit])) {
+                                   echo e($articulos_map[$ai_edit]['label']);
+                               } elseif (!empty($articulo_desc_actual)) {
+                                   echo e($articulo_desc_actual);
+                               }
+                           ?>"
+                           placeholder="Buscar por nombre o SKU..."
+                           autocomplete="off" required style="width:100%">
+                    <datalist id="articulos_list_edit">
+                        <?php foreach ($articulos_raw as $art): ?>
+                            <option value="<?= e($art['descripcion'] . ($art['sku'] ? ' [' . $art['sku'] . ']' : '')) ?>"></option>
+                        <?php endforeach; ?>
+                    </datalist>
+                    <input type="hidden" name="articulo_id"   id="articulo_id_edit"
+                           value="<?= (int)($cr['articulo_id'] ?? 0) ?>">
+                    <input type="hidden" name="articulo_desc" id="articulo_desc_edit"
+                           value="<?= e($articulo_desc_actual) ?>">
+                    <small id="stock_info_edit" class="text-muted"></small>
                 </div>
 
                 <div class="form-group">
@@ -269,6 +305,28 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <script>
+const articulosMapEdit  = <?= json_encode($articulos_map,        JSON_UNESCAPED_UNICODE) ?>;
+const artSearchMapEdit  = <?= json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE) ?>;
+
+document.getElementById('articulo_search_edit').addEventListener('change', function() {
+    const val  = this.value.trim();
+    const item = artSearchMapEdit[val];
+    if (item) {
+        document.getElementById('articulo_id_edit').value   = item.id;
+        document.getElementById('articulo_desc_edit').value = item.desc;
+        const info = articulosMapEdit[item.id];
+        if (info) {
+            document.getElementById('precio_articulo').value = info.precio.toFixed(2);
+            document.getElementById('stock_info_edit').textContent = 'Stock disponible: ' + info.stock;
+            calcularCuotas();
+        }
+    } else if (val === '') {
+        document.getElementById('articulo_id_edit').value   = '';
+        document.getElementById('articulo_desc_edit').value = '';
+        document.getElementById('stock_info_edit').textContent = '';
+    }
+});
+
 function fmt(n) {
     return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }

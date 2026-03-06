@@ -7,7 +7,12 @@ require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 
 if (!empty($_SESSION['user_id'])) {
-    header('Location: ' . BASE_URL . (es_admin() || es_supervisor() ? 'admin/dashboard' : 'cobrador/agenda'));
+    $destino_ini = match($_SESSION['rol'] ?? '') {
+        'cobrador' => BASE_URL . 'cobrador/agenda',
+        'vendedor' => BASE_URL . 'ventas/index',
+        default    => BASE_URL . 'admin/dashboard',
+    };
+    header('Location: ' . $destino_ini);
     exit;
 }
 
@@ -32,7 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['apellido'] = $user['apellido'];
             $_SESSION['rol']      = $user['rol'];
 
-            $destino = BASE_URL . ($user['rol'] === 'cobrador' ? 'cobrador/agenda' : 'admin/dashboard');
+            $destino = match($user['rol']) {
+                'cobrador' => BASE_URL . 'cobrador/agenda',
+                'vendedor' => BASE_URL . 'ventas/index',
+                default    => BASE_URL . 'admin/dashboard',
+            };
             header("Location: $destino");
             exit;
         } else {

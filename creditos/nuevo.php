@@ -19,9 +19,30 @@ $clientes = $pdo->query("
     WHERE c.estado='ACTIVO'
     ORDER BY c.apellidos, c.nombres
 ")->fetchAll();
+
 $vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE activo=1 ORDER BY nombre")->fetchAll();
 
-// Mapa cliente_id → {cob_id, cob_nombre} para JS
+// Catálogo de artículos activos
+$articulos_raw = $pdo->query("
+    SELECT id, descripcion, precio_venta, sku, stock
+    FROM ic_articulos WHERE activo=1 ORDER BY descripcion
+")->fetchAll();
+
+// Mapa JS: id → {precio, desc, stock}
+$articulos_map = [];
+$articulos_search_map = []; // label → {id, desc}
+foreach ($articulos_raw as $art) {
+    $label = $art['descripcion'] . ($art['sku'] ? ' [' . $art['sku'] . ']' : '');
+    $articulos_map[(int)$art['id']] = [
+        'precio' => (float)$art['precio_venta'],
+        'desc'   => $art['descripcion'],
+        'stock'  => (int)$art['stock'],
+        'label'  => $label,
+    ];
+    $articulos_search_map[$label] = ['id' => (int)$art['id'], 'desc' => $art['descripcion']];
+}
+
+// Mapa cliente_id → {cob_id, cob_nombre, zona}
 $clientes_cob_map = [];
 foreach ($clientes as $cl) {
     $clientes_cob_map[(int)$cl['id']] = [
@@ -33,22 +54,24 @@ foreach ($clientes as $cl) {
 
 $error = '';
 $v = [
-    'cliente_id'          => $cliente_id,
-    'frecuencia'          => 'semanal',
-    'cant_cuotas'         => 12,
-    'interes_pct'         => 0,
+    'cliente_id'            => $cliente_id,
+    'frecuencia'            => 'semanal',
+    'cant_cuotas'           => 12,
+    'interes_pct'           => 0,
     'interes_moratorio_pct' => 15,
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $v = $_POST;
 
+    $articulo_id = (int)($v['articulo_id'] ?? 0);
+
     if (
-        empty($v['cliente_id']) || empty(trim($v['articulo_desc'] ?? '')) ||
+        empty($v['cliente_id']) || !$articulo_id ||
         empty($v['cobrador_id']) ||
         empty($v['cant_cuotas']) || empty($v['primer_vencimiento'])
     ) {
-        $error = 'Completá todos los campos obligatorios.';
+        $error = 'Completá todos los campos obligatorios (incluido el artículo).';
     } else {
         $precio     = (float) $v['precio_articulo'];
         $monto_tot  = (float) $v['monto_total'];
@@ -59,50 +82,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 $pdo->beginTransaction();
-                $ins = $pdo->prepare("
-                    INSERT INTO ic_creditos
-                      (cliente_id, articulo_id, articulo_desc, cobrador_id, vendedor_id,
-                       fecha_alta, precio_articulo, monto_total,
-                       interes_pct, interes_moratorio_pct, frecuencia, cant_cuotas, monto_cuota,
-                       dia_cobro, primer_vencimiento, estado, observaciones, created_by)
-                    VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ");
-                $ins->execute([
-                    $v['cliente_id'],
-                    trim($v['articulo_desc']),
-                    $v['cobrador_id'],
-                    ($v['vendedor_id'] ?: null),
-                    date('Y-m-d'),
-                    $precio,
-                    $monto_tot,
-                    (float) ($v['interes_pct'] ?? 0),
-                    (float) ($v['interes_moratorio_pct'] ?? 15),
-                    $v['frecuencia'],
-                    (int) $v['cant_cuotas'],
-                    $monto_cuot,
-                    ($v['dia_cobro'] ?: null),
-                    $v['primer_vencimiento'],
-                    'EN_CURSO',
-                    trim($v['observaciones'] ?? ''),
-                    $_SESSION['user_id'],
-                ]);
-                $credito_id = $pdo->lastInsertId();
 
-                generar_cuotas($credito_id, [
-                    'primer_vencimiento' => $v['primer_vencimiento'],
-                    'cant_cuotas'        => (int) $v['cant_cuotas'],
-                    'frecuencia'         => $v['frecuencia'],
-                    'monto_cuota'        => $monto_cuot,
-                ], $pdo);
+                // Lock de fila para atomicidad del stock
+                $art_stmt = $pdo->prepare("SELECT stock, descripcion FROM ic_articulos WHERE id=? FOR UPDATE");
+                $art_stmt->execute([$articulo_id]);
+                $art_row = $art_stmt->fetch();
 
-                $pdo->commit();
-                registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_CREADO', 'credito', (int)$credito_id,
-                    'Cuotas: ' . $v['cant_cuotas'] . ' | Total: ' . formato_pesos($monto_tot));
-                $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Crédito registrado y cuotas generadas.'];
-                header("Location: ver?id=$credito_id");
-                exit;
+                if (!$art_row || $art_row['stock'] < 1) {
+                    $pdo->rollBack();
+                    $error = 'Sin stock disponible para el artículo seleccionado (stock: ' . ($art_row['stock'] ?? 0) . ').';
+                } else {
+                    // Snapshot de descripción
+                    $articulo_desc_snap = trim($v['articulo_desc'] ?? '') ?: $art_row['descripcion'];
+
+                    $ins = $pdo->prepare("
+                        INSERT INTO ic_creditos
+                          (cliente_id, articulo_id, articulo_desc, cobrador_id, vendedor_id,
+                           fecha_alta, precio_articulo, monto_total,
+                           interes_pct, interes_moratorio_pct, frecuencia, cant_cuotas, monto_cuota,
+                           dia_cobro, primer_vencimiento, estado, observaciones, created_by)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ");
+                    $ins->execute([
+                        $v['cliente_id'],
+                        $articulo_id,
+                        $articulo_desc_snap,
+                        $v['cobrador_id'],
+                        ($v['vendedor_id'] ?: null),
+                        date('Y-m-d'),
+                        $precio,
+                        $monto_tot,
+                        (float) ($v['interes_pct'] ?? 0),
+                        (float) ($v['interes_moratorio_pct'] ?? 15),
+                        $v['frecuencia'],
+                        (int) $v['cant_cuotas'],
+                        $monto_cuot,
+                        ($v['dia_cobro'] ?: null),
+                        $v['primer_vencimiento'],
+                        'EN_CURSO',
+                        trim($v['observaciones'] ?? ''),
+                        $_SESSION['user_id'],
+                    ]);
+                    $credito_id = $pdo->lastInsertId();
+
+                    generar_cuotas($credito_id, [
+                        'primer_vencimiento' => $v['primer_vencimiento'],
+                        'cant_cuotas'        => (int) $v['cant_cuotas'],
+                        'frecuencia'         => $v['frecuencia'],
+                        'monto_cuota'        => $monto_cuot,
+                    ], $pdo);
+
+                    // Descontar stock
+                    $pdo->prepare("UPDATE ic_articulos SET stock = stock - 1 WHERE id=?")
+                        ->execute([$articulo_id]);
+
+                    $pdo->commit();
+                    registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_CREADO', 'credito', (int)$credito_id,
+                        'Cuotas: ' . $v['cant_cuotas'] . ' | Total: ' . formato_pesos($monto_tot));
+                    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Crédito registrado y cuotas generadas.'];
+                    header("Location: ver?id=$credito_id");
+                    exit;
+                }
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $error = 'Error al guardar: ' . $e->getMessage();
             }
         }
@@ -140,12 +182,36 @@ require_once __DIR__ . '/../views/layout.php';
                     </select>
                 </div>
 
+                <!-- Selector de artículo desde catálogo -->
                 <div class="form-group" style="grid-column:span 2">
-                    <label>Descripción del Artículo / Producto *</label>
-                    <input type="text" name="articulo_desc"
-                           value="<?= e($v['articulo_desc'] ?? '') ?>"
-                           placeholder="Ej: Heladera Samsung 400L, Moto 150cc, Colchón 2 plazas..."
-                           required maxlength="200">
+                    <label>Artículo del Catálogo *</label>
+                    <input type="text" id="articulo_search" list="articulos_list"
+                           value="<?php
+                               // Recuperar label si hubo POST con error
+                               if (!empty($v['articulo_id'])) {
+                                   $ai = (int)$v['articulo_id'];
+                                   echo e($articulos_map[$ai]['label'] ?? $v['articulo_desc'] ?? '');
+                               }
+                           ?>"
+                           placeholder="Buscar por nombre o SKU..."
+                           autocomplete="off" required style="width:100%">
+                    <datalist id="articulos_list">
+                        <?php foreach ($articulos_raw as $art): ?>
+                            <option value="<?= e($art['descripcion'] . ($art['sku'] ? ' [' . $art['sku'] . ']' : '')) ?>"></option>
+                        <?php endforeach; ?>
+                    </datalist>
+                    <input type="hidden" name="articulo_id"   id="articulo_id"
+                           value="<?= (int)($v['articulo_id'] ?? 0) ?>">
+                    <input type="hidden" name="articulo_desc" id="articulo_desc"
+                           value="<?= e($v['articulo_desc'] ?? '') ?>">
+                    <small id="stock_info" class="text-muted">
+                        <?php
+                        if (!empty($v['articulo_id'])) {
+                            $ai = (int)$v['articulo_id'];
+                            if (isset($articulos_map[$ai])) echo 'Stock disponible: ' . $articulos_map[$ai]['stock'];
+                        }
+                        ?>
+                    </small>
                 </div>
 
                 <div class="form-group">
@@ -154,6 +220,7 @@ require_once __DIR__ . '/../views/layout.php';
                            value="<?= $v['precio_articulo'] ?? '' ?>"
                            step="0.01" min="0" required oninput="calcularCuotas()"
                            placeholder="0.00">
+                    <small class="text-muted">Pre-llenado desde el catálogo, editable.</small>
                 </div>
 
                 <div class="form-group">
@@ -309,12 +376,37 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
-$clientes_cob_json = json_encode($clientes_cob_map, JSON_UNESCAPED_UNICODE);
+$clientes_cob_json   = json_encode($clientes_cob_map,    JSON_UNESCAPED_UNICODE);
+$articulos_map_json  = json_encode($articulos_map,        JSON_UNESCAPED_UNICODE);
+$art_search_json     = json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE);
 
 $page_scripts = <<<JS
 <script>
-const clientesCob = $clientes_cob_json;
+const clientesCob   = $clientes_cob_json;
+const articulosMap  = $articulos_map_json;
+const artSearchMap  = $art_search_json;
 
+// ── Artículo selector ────────────────────────────────────
+document.getElementById('articulo_search').addEventListener('change', function() {
+    const val  = this.value.trim();
+    const item = artSearchMap[val];
+    if (item) {
+        document.getElementById('articulo_id').value   = item.id;
+        document.getElementById('articulo_desc').value = item.desc;
+        const info = articulosMap[item.id];
+        if (info) {
+            document.getElementById('precio_articulo').value = info.precio.toFixed(2);
+            document.getElementById('stock_info').textContent = 'Stock disponible: ' + info.stock;
+            calcularCuotas();
+        }
+    } else if (val === '') {
+        document.getElementById('articulo_id').value   = '';
+        document.getElementById('articulo_desc').value = '';
+        document.getElementById('stock_info').textContent = '';
+    }
+});
+
+// ── Cobrador / Zona ──────────────────────────────────────
 function actualizarCobrador() {
     const sel    = document.querySelector('[name=cliente_id]');
     const cid    = parseInt(sel.value) || 0;
@@ -343,6 +435,7 @@ function actualizarCobrador() {
 
 document.querySelector('[name=cliente_id]').addEventListener('change', actualizarCobrador);
 
+// ── Calculador de cuotas ─────────────────────────────────
 function fmt(n) {
     return '\$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }

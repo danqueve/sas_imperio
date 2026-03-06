@@ -40,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $usuario = trim($_POST['usuario'] ?? '');
         $rol = $_POST['rol'] ?? 'cobrador';
         $telefono = trim($_POST['telefono'] ?? '');
+        $zona = trim($_POST['zona'] ?? '');
         $password = $_POST['password'] ?? '';
 
         if (!$nombre || !$apellido || !$usuario) {
@@ -51,13 +52,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Nuevo
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 try {
-                    $pdo->prepare("INSERT INTO ic_usuarios (nombre,apellido,usuario,password_hash,rol,telefono) VALUES (?,?,?,?,?,?)")
-                        ->execute([$nombre, $apellido, $usuario, $hash, $rol, $telefono]);
+                    $pdo->beginTransaction();
+                    $pdo->prepare("INSERT INTO ic_usuarios (nombre,apellido,usuario,password_hash,rol,telefono,zona) VALUES (?,?,?,?,?,?,?)")
+                        ->execute([$nombre, $apellido, $usuario, $hash, $rol, $telefono, $zona]);
                     $nuevo_id = (int) $pdo->lastInsertId();
+                    // Si es vendedor, crear registro en ic_vendedores vinculado
+                    if ($rol === 'vendedor') {
+                        $pdo->prepare("INSERT INTO ic_vendedores (usuario_id, nombre, apellido, telefono) VALUES (?,?,?,?)")
+                            ->execute([$nuevo_id, $nombre, $apellido, $telefono]);
+                    }
+                    $pdo->commit();
                     registrar_log($pdo, $_SESSION['user_id'], 'USUARIO_CREADO', 'usuario', $nuevo_id,
                         $rol . ': ' . $nombre . ' ' . $apellido);
                     $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Usuario creado.'];
                 } catch (PDOException $e) {
+                    $pdo->rollBack();
                     $error = 'El nombre de usuario ya existe.';
                 }
             } else {
@@ -67,12 +76,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = 'La contraseña debe tener al menos 8 caracteres.';
                     } else {
                         $hash = password_hash($password, PASSWORD_DEFAULT);
-                        $pdo->prepare("UPDATE ic_usuarios SET nombre=?,apellido=?,usuario=?,password_hash=?,rol=?,telefono=? WHERE id=?")
-                            ->execute([$nombre, $apellido, $usuario, $hash, $rol, $telefono, $id]);
+                        $pdo->prepare("UPDATE ic_usuarios SET nombre=?,apellido=?,usuario=?,password_hash=?,rol=?,telefono=?,zona=? WHERE id=?")
+                            ->execute([$nombre, $apellido, $usuario, $hash, $rol, $telefono, $zona, $id]);
                     }
                 } else {
-                    $pdo->prepare("UPDATE ic_usuarios SET nombre=?,apellido=?,usuario=?,rol=?,telefono=? WHERE id=?")
-                        ->execute([$nombre, $apellido, $usuario, $rol, $telefono, $id]);
+                    $pdo->prepare("UPDATE ic_usuarios SET nombre=?,apellido=?,usuario=?,rol=?,telefono=?,zona=? WHERE id=?")
+                        ->execute([$nombre, $apellido, $usuario, $rol, $telefono, $zona, $id]);
                 }
                 if (!$error) {
                     registrar_log($pdo, $_SESSION['user_id'], 'USUARIO_EDITADO', 'usuario', $id,
@@ -118,6 +127,7 @@ require_once __DIR__ . '/../views/layout.php';
                         <th>Usuario</th>
                         <th>Rol</th>
                         <th>Teléfono</th>
+                        <th>Zona</th>
                         <th>Estado</th>
                         <th></th>
                     </tr>
@@ -135,13 +145,16 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= e($usr['usuario']) ?>
                             </td>
                             <td>
-                                <?php $rolBadge = ['admin' => 'badge-danger', 'supervisor' => 'badge-primary', 'cobrador' => 'badge-success']; ?>
+                                <?php $rolBadge = ['admin' => 'badge-danger', 'supervisor' => 'badge-primary', 'cobrador' => 'badge-success', 'vendedor' => 'badge-warning']; ?>
                                 <span class="badge-ic <?= $rolBadge[$usr['rol']] ?? 'badge-muted' ?>">
                                     <?= strtoupper($usr['rol']) ?>
                                 </span>
                             </td>
                             <td>
                                 <?= e($usr['telefono'] ?: '—') ?>
+                            </td>
+                            <td>
+                                <?= e($usr['zona'] ?: '—') ?>
                             </td>
                             <td>
                                 <?php if ($usr['activo']): ?>
@@ -208,7 +221,7 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
                 <div class="form-group mb-3"><label>Rol</label>
                     <select name="rol">
-                        <?php foreach (['cobrador' => 'Cobrador', 'supervisor' => 'Supervisor', 'admin' => 'Admin'] as $k => $l): ?>
+                        <?php foreach (['cobrador' => 'Cobrador', 'vendedor' => 'Vendedor', 'supervisor' => 'Supervisor', 'admin' => 'Admin'] as $k => $l): ?>
                             <option value="<?= $k ?>" <?= ($u['rol'] ?? 'cobrador') === $k ? 'selected' : '' ?>>
                                 <?= $l ?>
                             </option>
@@ -217,6 +230,9 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
                 <div class="form-group mb-3"><label>Teléfono</label>
                     <input type="text" name="telefono" value="<?= e($u['telefono'] ?? '') ?>">
+                </div>
+                <div class="form-group mb-3"><label>Zona</label>
+                    <input type="text" name="zona" value="<?= e($u['zona'] ?? '') ?>" placeholder="Ej: Zona 1">
                 </div>
                 <div class="d-flex gap-3">
                     <button type="submit" class="btn-ic btn-primary"><i class="fa fa-save"></i> Guardar</button>

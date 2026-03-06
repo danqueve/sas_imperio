@@ -7,7 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-define('ROLES', ['admin', 'supervisor', 'cobrador']);
+define('ROLES', ['admin', 'supervisor', 'cobrador', 'vendedor']);
 
 /**
  * Verifica que el usuario tenga sesión activa.
@@ -51,6 +51,8 @@ $permisos = [
     'aprobar_rendiciones' => ['admin', 'supervisor'],
     'gestionar_usuarios' => ['admin'],
     'ver_reportes' => ['admin', 'supervisor'],
+    'registrar_ventas' => ['admin', 'supervisor', 'vendedor'],
+    'ver_ventas'       => ['admin', 'supervisor', 'vendedor'],
 ];
 
 function verificar_permiso(string $accion): void
@@ -82,6 +84,11 @@ function es_supervisor(): bool
 function es_cobrador(): bool
 {
     return isset($_SESSION['rol']) && $_SESSION['rol'] === 'cobrador';
+}
+
+function es_vendedor(): bool
+{
+    return isset($_SESSION['rol']) && $_SESSION['rol'] === 'vendedor';
 }
 
 function usuario_actual(): array
