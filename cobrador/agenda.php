@@ -77,6 +77,20 @@ $kpi_vencidas  = count($vencidas);
 $kpi_total_hoy = array_sum(array_map(fn($c) => $c['total_a_cobrar'], $del_dia));
 $kpi_mora_venc = array_sum(array_map(fn($c) => $c['mora_calc'], $vencidas));
 
+// KPI INGRESOS HOY (solo pendientes de rendición)
+$stmt_ingresos = $pdo->prepare("
+    SELECT SUM(monto_total) AS total,
+           SUM(monto_efectivo) AS efectivo,
+           SUM(monto_transferencia) AS transferencia
+    FROM ic_pagos_temporales 
+    WHERE cobrador_id = ? AND DATE(fecha_registro) = ? AND estado = 'PENDIENTE'
+");
+$stmt_ingresos->execute([$cobrador_filtro, $hoy]);
+$row_ingresos = $stmt_ingresos->fetch();
+$kpi_ingresos_hoy = (float) $row_ingresos['total'];
+$kpi_ingresos_efectivo = (float) $row_ingresos['efectivo'];
+$kpi_ingresos_transferencia = (float) $row_ingresos['transferencia'];
+
 // ── Deduplicar: un registro por cliente ────────────────────────
 // Si un cliente tiene varias cuotas atrasadas, aparece una sola vez
 // con un badge que indica cuántas cuotas acumula.
@@ -128,6 +142,8 @@ $semana_rows_raw = $semana_stmt->fetchAll();
 
 // Calcular mora para cada fila semanal
 $semana_rows = [];
+$semana_por_cliente = [];
+
 foreach ($semana_rows_raw as $r) {
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
     $mora        = calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
@@ -135,7 +151,23 @@ foreach ($semana_rows_raw as $r) {
     $r['mora_calc']        = $mora;
     $r['total_a_cobrar']   = $r['monto_cuota'] + $mora;
     $r['pago_pen']         = $r['pago_pen'] ?? 0;
-    $semana_rows[]         = $r;
+    
+    // Agrupar por cliente para deduplicar
+    $semana_por_cliente[$r['cliente_id']][] = $r;
+}
+
+// Extraer solo 1 cuota por cliente para la vista semanal y calcular el total de cuotas atrasadas de ese crédito
+foreach ($semana_por_cliente as $cid => $cuotas_cl) {
+    $row = $cuotas_cl[0]; // La primera es la más antigua según el ORDER BY
+    $row['cuotas_atrasadas'] = count($cuotas_cl);
+    
+    // Si la cuota ya está vencida en la semana actual y también figuraba en $venc_por_cliente, el número de cuotas total
+    // atrasadas será el de la totalidad de su historial. Nos aseguramos de cruzar ese dato.
+    if (isset($venc_por_cliente[$cid]) && count($venc_por_cliente[$cid]) > count($cuotas_cl)) {
+       $row['cuotas_atrasadas'] = count($venc_por_cliente[$cid]);
+    }
+    
+    $semana_rows[] = $row;
 }
 
 // Agrupar por día
@@ -227,12 +259,31 @@ require_once __DIR__ . '/../views/layout.php';
 <!-- SUMARIO DEL DÍA -->
 <div class="kpi-grid mb-4">
     <div class="kpi-card" style="--kpi-color:var(--success)">
+        <i class="fa fa-hand-holding-dollar kpi-icon"></i>
+        <div class="kpi-label">Ingresos Hoy</div>
+        <div class="kpi-value" style="font-size:1.2rem;color:var(--success)">
+            <?= formato_pesos($kpi_ingresos_hoy) ?>
+        </div>
+        <div class="kpi-sub" style="font-size:0.75rem;">
+            Efc: <?= formato_pesos($kpi_ingresos_efectivo) ?> <br>
+            Trf: <?= formato_pesos($kpi_ingresos_transferencia) ?>
+        </div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--warning)">
+        <i class="fa fa-dollar-sign kpi-icon"></i>
+        <div class="kpi-label">A Cobrar Hoy</div>
+        <div class="kpi-value" style="font-size:1.2rem">
+            <?= formato_pesos($kpi_total_hoy) ?>
+        </div>
+        <div class="kpi-sub">capital + mora programada</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--primary)">
         <i class="fa fa-calendar-check kpi-icon"></i>
-        <div class="kpi-label">Del día</div>
+        <div class="kpi-label">Cuotas del Día</div>
         <div class="kpi-value">
             <?= $kpi_del_dia ?>
         </div>
-        <div class="kpi-sub">cuotas a cobrar hoy</div>
+        <div class="kpi-sub">cuotas agendadas para hoy</div>
     </div>
     <div class="kpi-card" style="--kpi-color:var(--danger)">
         <i class="fa fa-fire kpi-icon"></i>
@@ -240,23 +291,7 @@ require_once __DIR__ . '/../views/layout.php';
         <div class="kpi-value">
             <?= $kpi_vencidas ?>
         </div>
-        <div class="kpi-sub">cuotas sin cobrar</div>
-    </div>
-    <div class="kpi-card" style="--kpi-color:var(--warning)">
-        <i class="fa fa-dollar-sign kpi-icon"></i>
-        <div class="kpi-label">Total a cobrar hoy</div>
-        <div class="kpi-value" style="font-size:1.2rem">
-            <?= formato_pesos($kpi_total_hoy) ?>
-        </div>
-        <div class="kpi-sub">capital + mora</div>
-    </div>
-    <div class="kpi-card" style="--kpi-color:var(--primary)">
-        <i class="fa fa-plus-circle kpi-icon"></i>
-        <div class="kpi-label">Mora vencidas</div>
-        <div class="kpi-value" style="font-size:1.2rem;color:var(--danger)">
-            <?= formato_pesos($kpi_mora_venc) ?>
-        </div>
-        <div class="kpi-sub">mora acumulada</div>
+        <div class="kpi-sub">cuotas sin cobrar acumuladas</div>
     </div>
 </div>
 
@@ -431,73 +466,17 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     Sin cuotas asignadas para <?= $nombre ?>.
                 </p>
             <?php else: ?>
-                <div style="overflow-x:auto">
-                    <table class="table-ic">
-                        <thead>
-                            <tr>
-                                <th>Cliente</th>
-                                <th class="text-center">N° Cuota</th>
-                                <th class="text-center">Vencim.</th>
-                                <th class="text-right">Capital</th>
-                                <th class="text-right">Mora</th>
-                                <th class="text-right">Total</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($por_dia[$n] as $r): ?>
-                                <tr <?= $r['dias_atraso_calc'] > 0 ? 'style="background:rgba(239,68,68,.05)"' : '' ?>>
-                                    <td>
-                                        <div class="fw-bold"><?= e($r['apellidos'] . ', ' . $r['nombres']) ?></div>
-                                        <div class="text-muted" style="font-size:.75rem"><?= e($r['telefono']) ?></div>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge-ic badge-muted">#<?= $r['numero_cuota'] ?></span>
-                                    </td>
-                                    <td class="text-center nowrap <?= $r['dias_atraso_calc'] > 0 ? 'text-danger' : '' ?>">
-                                        <?= date('d/m/Y', strtotime($r['fecha_vencimiento'])) ?>
-                                        <?php if ($r['dias_atraso_calc'] > 0): ?>
-                                            <div style="font-size:.7rem"><?= $r['dias_atraso_calc'] ?> días háb.</div>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="text-right nowrap"><?= formato_pesos($r['monto_cuota']) ?></td>
-                                    <td class="text-right nowrap <?= $r['mora_calc'] > 0 ? 'text-danger fw-bold' : '' ?>">
-                                        <?= $r['mora_calc'] > 0 ? formato_pesos($r['mora_calc']) : '—' ?>
-                                    </td>
-                                    <td class="text-right nowrap fw-bold" style="color:var(--success)">
-                                        <?= formato_pesos($r['total_a_cobrar']) ?>
-                                    </td>
-                                    <td class="nowrap">
-                                        <div class="d-flex gap-2">
-                                            <?php if ($r['pago_pen'] == 0): ?>
-                                                <button onclick="abrirPago(<?= htmlspecialchars(json_encode($r)) ?>)"
-                                                    class="btn-ic btn-success btn-sm" title="Registrar pago">
-                                                    <i class="fa fa-dollar-sign"></i> Cobrar
-                                                </button>
-                                            <?php else: ?>
-                                                <span class="badge-ic badge-warning">Registrado</span>
-                                            <?php endif; ?>
-                                            <a href="<?= whatsapp_url($r['telefono'], 'Hola ' . $r['nombres'] . ', le recordamos su cuota #' . $r['numero_cuota'] . ' vencida el ' . date('d/m/Y', strtotime($r['fecha_vencimiento'])) . '. Total: ' . formato_pesos($r['total_a_cobrar'])) ?>"
-                                                target="_blank" class="btn-ic btn-ghost btn-sm btn-icon" title="WhatsApp">
-                                                <i class="fa-brands fa-whatsapp"></i>
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="5" style="text-align:right;font-size:.8rem;color:var(--text-muted)">
-                                    Total <?= $nombre ?>:
-                                </td>
-                                <td class="text-right fw-bold" style="color:var(--success)">
-                                    <?= formato_pesos(array_sum(array_column($por_dia[$n], 'total_a_cobrar'))) ?>
-                                </td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                <div class="agenda-header" style="background:rgba(255,255,255,.02)">
+                    <span>Cliente</span><span>Importe</span><span>Cobro</span><span>Vencimiento</span><span>Acciones</span>
+                </div>
+                <?= render_tabla_cuotas($por_dia[$n], '', '') ?>
+                
+                <!-- Totales pie de panel -->
+                <div style="padding:16px; text-align:right; border-top:1px solid rgba(255,255,255,.1)">
+                    <span class="text-muted" style="margin-right:16px; font-size:.85rem">Total <?= $nombre ?>:</span>
+                    <span style="font-size:1.1rem; font-weight:700; color:var(--success)">
+                        <?= formato_pesos(array_sum(array_column($por_dia[$n], 'total_a_cobrar'))) ?>
+                    </span>
                 </div>
             <?php endif; ?>
         </div>
