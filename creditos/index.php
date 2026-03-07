@@ -190,7 +190,6 @@ require_once __DIR__ . '/../views/layout.php';
                     <th>Frec.</th>
                     <th>Avance</th>
                     <th>Cobrador</th>
-                    <th>Vendedor</th>
                     <th>Estado</th>
                     <th></th>
                 </tr>
@@ -247,9 +246,6 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td class="text-muted">
                                 <?= e($cr['cobrador_n'] . ' ' . $cr['cobrador_a']) ?>
-                            </td>
-                            <td class="text-muted">
-                                <?= isset($cr['vendedor_n']) ? e($cr['vendedor_n'] . ' ' . $cr['vendedor_a']) : '<span style="font-size:0.75rem">No asig.</span>' ?>
                             </td>
                             <td>
                                 <?= badge_estado_credito($cr['estado']) ?>
