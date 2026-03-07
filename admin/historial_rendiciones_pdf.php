@@ -1,7 +1,7 @@
 <?php
 // ============================================================
-// admin/rendicion_pdf.php — Exportación PDF con FPDF
-// A4 vertical, blanco y negro, sin rellenos (ahorro de tinta)
+// admin/historial_rendiciones_pdf.php — Exportación PDF del Historial
+// A4 vertical, blanco y negro (basado en rendicion_pdf.php)
 // ============================================================
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
@@ -10,31 +10,34 @@ verificar_sesion();
 verificar_permiso('aprobar_rendiciones');
 
 $pdo         = obtener_conexion();
-$fecha_sel   = $_GET['fecha']       ?? date('Y-m-d', strtotime('-1 day'));
+$fecha_sel   = $_GET['fecha']       ?? '';
 $cobrador_id = (int)($_GET['cobrador_id'] ?? 0);
 
-if (!$cobrador_id) die('Cobrador no especificado.');
+if (!$fecha_sel || !$cobrador_id) die('Faltan parametros de busqueda (fecha o cobrador).');
 
 $cob_stmt = $pdo->prepare("SELECT nombre, apellido FROM ic_usuarios WHERE id = ?");
 $cob_stmt->execute([$cobrador_id]);
 $cobrador = $cob_stmt->fetch();
 if (!$cobrador) die('Cobrador no encontrado.');
 
+// Extraer los pagos ya confirmados en esa fecha
 $dstmt = $pdo->prepare("
     SELECT pt.*,
            cl.nombres, cl.apellidos,
            cu.numero_cuota, cu.fecha_vencimiento,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
-    FROM ic_pagos_temporales pt
+    FROM ic_pagos_confirmados pt
     JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
     JOIN ic_creditos cr ON cu.credito_id   = cr.id
     JOIN ic_clientes cl ON cr.cliente_id   = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
-    WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
-    ORDER BY cl.apellidos ASC, cl.nombres ASC, pt.fecha_registro ASC
+    WHERE pt.cobrador_id = ? AND DATE(pt.fecha_aprobacion) = ?
+    ORDER BY cl.apellidos ASC, cl.nombres ASC, pt.fecha_pago ASC
 ");
 $dstmt->execute([$cobrador_id, $fecha_sel]);
 $pagos = $dstmt->fetchAll();
+
+if (empty($pagos)) die('No hay pagos confirmados en la rendicion de esta fecha.');
 
 $total_efectivo      = array_sum(array_column($pagos, 'monto_efectivo'));
 $total_transferencia = array_sum(array_column($pagos, 'monto_transferencia'));
@@ -45,7 +48,7 @@ function lat(string $s): string {
     return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
 }
 function fmt(float $v): string {
-    return '$ ' . number_format($v, 2, ',', '.');
+    return '$ ' . number_format($v, 0, ',', '.'); // Sin decimales según pedido anterior
 }
 
 require_once __DIR__ . '/../fpdf/fpdf.php';
@@ -56,7 +59,7 @@ $COLS   = [8, 45, 37, 13, 22, 22, 22, 21];
 $LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Efectivo', 'Transfer.', 'Total'];
 $ALIGNS = ['C', 'L', 'L', 'C', 'C', 'R', 'R', 'R'];
 
-class RendicionPDF extends FPDF
+class RendicionHistorialPDF extends FPDF
 {
     public string $cobrador_nombre = '';
     public string $fecha_label    = '';
@@ -74,12 +77,12 @@ class RendicionPDF extends FPDF
 
         $this->SetFont('Helvetica', 'B', 13);
         $this->SetXY(10, 8);
-        $this->Cell(190, 7, lat('Imperio Comercial - Rendicion de Cobranza'), 0, 1, 'L');
+        $this->Cell(190, 7, lat('Imperio Comercial - Rendicion Historicda'), 0, 1, 'L');
 
         $this->SetFont('Helvetica', '', 8);
         $this->SetX(10);
         $this->Cell(95, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
-        $this->Cell(95, 5, lat('Fecha: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
+        $this->Cell(95, 5, lat('Fecha Aprob.: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
 
         // Línea separadora
         $this->SetLineWidth(0.4);
@@ -105,7 +108,7 @@ class RendicionPDF extends FPDF
     }
 }
 
-$pdf = new RendicionPDF('P', 'mm', 'A4');
+$pdf = new RendicionHistorialPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->cobrador_nombre = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
 $pdf->fecha_label     = date('d/m/Y', strtotime($fecha_sel));
@@ -174,5 +177,5 @@ foreach ($resumen as $i => [$label, $valor]) {
     $pdf->Cell($bw2, 7, lat($valor), 1, 1, 'R', false);
 }
 
-$nombre = 'rendicion_' . str_replace('-', '', $fecha_sel) . '_' . $cobrador_id . '.pdf';
+$nombre = 'rendicion_historica_' . str_replace('-', '', $fecha_sel) . '_' . $cobrador_id . '.pdf';
 $pdf->Output('I', $nombre);

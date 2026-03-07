@@ -23,6 +23,14 @@ $ef         = (float) ($_POST['monto_efectivo'] ?? 0);
 $tr         = (float) ($_POST['monto_transferencia'] ?? 0);
 $total      = $ef + $tr;
 
+// Fecha de pago elegida (puede ser distinta a hoy para retroactivos)
+$fecha_pago_input = trim($_POST['fecha_pago'] ?? '');
+$fecha_hoy_real   = date('Y-m-d');
+// Validar formato y que no sea una fecha futura
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_pago_input) || $fecha_pago_input > $fecha_hoy_real) {
+    $fecha_pago_input = $fecha_hoy_real;
+}
+
 if (!$cuota_id || !$credito_id || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
     header('Location: ver?id=' . $credito_id);
@@ -43,13 +51,13 @@ if (!$cr || !in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
 $cobrador_id  = (int) $cr['cobrador_id'];
 $pct_mora     = (float) $cr['interes_moratorio_pct'];
 $aprobador_id = (int) $_SESSION['user_id'];
-$fecha_hoy    = date('Y-m-d');
+$fecha_hoy    = $fecha_pago_input; // usa la fecha elegida (puede ser retroactiva)
 
-// Cuotas pendientes/vencidas del crédito, de más antigua a más nueva
+// Cuotas pendientes/vencidas/parciales del crédito, de más antigua a más nueva
 $cuotas_stmt = $pdo->prepare("
-    SELECT id, numero_cuota, monto_cuota, fecha_vencimiento
+    SELECT id, numero_cuota, monto_cuota, fecha_vencimiento, saldo_pagado, monto_mora
     FROM ic_cuotas
-    WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA')
+    WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL')
     ORDER BY numero_cuota ASC
 ");
 $cuotas_stmt->execute([$credito_id]);
@@ -66,18 +74,34 @@ try {
     foreach ($cuotas_pendientes as $cuota) {
         if ($remaining <= 0.005) break;
 
-        $dias_atraso = dias_atraso_habiles($cuota['fecha_vencimiento']);
-        $mora_cuota  = calcular_mora($cuota['monto_cuota'], $dias_atraso, $pct_mora);
-        $total_cuota = $cuota['monto_cuota'] + $mora_cuota;
+        $saldo_prev  = (float) ($cuota['saldo_pagado'] ?? 0);
+        $mora_frozen = (float) $cuota['monto_mora'];
+        // Calcular mora usando la fecha de pago elegida (no necesariamente hoy)
+        $dias_atraso = dias_atraso_habiles($cuota['fecha_vencimiento'], $fecha_hoy);
 
-        $pago_en_esta = min($remaining, $total_cuota);
+        // Congelar mora si aún no está fijada en la cuota
+        if ($mora_frozen <= 0) {
+            $mora_frozen = calcular_mora($cuota['monto_cuota'], $dias_atraso, $pct_mora);
+        }
+
+        $total_cuota = $cuota['monto_cuota'] + $mora_frozen;
+        $pendiente   = max(0, $total_cuota - $saldo_prev);
+
+        if ($pendiente <= 0.005) continue;
+
+        $pago_en_esta = min($remaining, $pendiente);
 
         // Distribuir: primero efectivo, luego transferencia
         $pago_ef = min($pago_en_esta, $ef_remaining);
         $pago_tr = $pago_en_esta - $pago_ef;
 
-        // Mora sólo si cubre el total de la cuota
-        $mora_en_esta = ($pago_en_esta >= $total_cuota - 0.005) ? $mora_cuota : 0.0;
+        $nuevo_saldo  = $saldo_prev + $pago_en_esta;
+        $nuevo_estado = ($nuevo_saldo >= $cuota['monto_cuota'] + $mora_frozen - 0.005) ? 'PAGADA' : 'PARCIAL';
+        $fecha_pago_v = ($nuevo_estado === 'PAGADA') ? $fecha_hoy : null;
+        $mora_en_esta = ($nuevo_estado === 'PAGADA') ? $mora_frozen : 0.0;
+        
+        // Si no está pagada totalmente, mantenemos la mora de la BD (así no congelamos si el pago es parcial)
+        $monto_mora_guardar = ($nuevo_estado === 'PAGADA') ? $mora_frozen : (float) $cuota['monto_mora'];
 
         // 1. Insertar pago_temporal ya aprobado (para mantener integridad referencial)
         $pdo->prepare("
@@ -99,12 +123,12 @@ try {
             $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta,
         ]);
 
-        // 3. Marcar cuota como PAGADA
-        $pdo->prepare("UPDATE ic_cuotas SET estado='PAGADA', fecha_pago=? WHERE id=?")
-            ->execute([$fecha_hoy, $cuota['id']]);
+        // 3. Actualizar cuota: PAGADA o PARCIAL según saldo acumulado
+        $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
+            ->execute([$nuevo_estado, $nuevo_saldo, $monto_mora_guardar, $fecha_pago_v, $cuota['id']]);
 
         registrar_log($pdo, $aprobador_id, 'PAGO_DIRECTO', 'cuota', $cuota['id'],
-            'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));
+            'Cuota #' . $cuota['numero_cuota'] . ' [' . $nuevo_estado . '] — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));
 
         $ef_remaining -= $pago_ef;
         $tr_remaining -= $pago_tr;

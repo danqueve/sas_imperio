@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS `ic_cuotas` (
   `monto_cuota` DECIMAL(12,2) NOT NULL,
   `monto_mora` DECIMAL(12,2) DEFAULT 0.00,
   `dias_atraso` INT DEFAULT 0,
+  `saldo_pagado` DECIMAL(12,2) DEFAULT 0.00,
   `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL') DEFAULT 'PENDIENTE',
   `fecha_pago` DATE DEFAULT NULL,
   FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE

@@ -45,32 +45,53 @@ if ($accion === 'revertir_confirmado') {
     try {
         $pdo->beginTransaction();
 
-        // 1. Obtener fecha_vencimiento de la cuota para determinar nuevo estado
-        $venc = $pdo->prepare("SELECT fecha_vencimiento FROM ic_cuotas WHERE id = ?");
-        $venc->execute([$pc['cuota_id']]);
-        $cuota_row = $venc->fetch();
-        $nuevo_estado_cuota = (new DateTime($cuota_row['fecha_vencimiento'])) < new DateTime('today')
-            ? 'VENCIDA' : 'PENDIENTE';
+        $cuota_id_rev = (int) $pc['cuota_id'];
 
-        // 2. Revertir cuota
-        $pdo->prepare("UPDATE ic_cuotas SET estado=?, fecha_pago=NULL WHERE id=?")
-            ->execute([$nuevo_estado_cuota, $pc['cuota_id']]);
-
-        // 3. Marcar pago temporal como RECHAZADO (reversal)
+        // 1. Marcar pago temporal como RECHAZADO (reversal)
         $pdo->prepare("UPDATE ic_pagos_temporales SET estado='RECHAZADO', observaciones='Revertido por admin' WHERE id=?")
             ->execute([$pc['pago_temp_id']]);
 
-        // 4. Eliminar pago confirmado
+        // 2. Eliminar pago confirmado
         $pdo->prepare("DELETE FROM ic_pagos_confirmados WHERE id=?")
             ->execute([$pc_id]);
 
-        // 5. Si el crédito estaba FINALIZADO, reactivarlo
+        // 3. Recalcular saldo_pagado real sumando los pagos confirmados que quedan para esta cuota
+        $saldo_stmt = $pdo->prepare("SELECT COALESCE(SUM(monto_total), 0) FROM ic_pagos_confirmados WHERE cuota_id = ?");
+        $saldo_stmt->execute([$cuota_id_rev]);
+        $saldo_restante = (float) $saldo_stmt->fetchColumn();
+
+        // 4. Obtener datos de la cuota para determinar nuevo estado
+        $venc = $pdo->prepare("SELECT fecha_vencimiento, monto_cuota FROM ic_cuotas WHERE id = ?");
+        $venc->execute([$cuota_id_rev]);
+        $cuota_row = $venc->fetch();
+
+        if ($saldo_restante >= ($cuota_row['monto_cuota'] - 0.005)) {
+            // Aún cubre el capital: sigue PAGADA (no debería ocurrir normalmente)
+            $nuevo_estado_cuota = 'PAGADA';
+        } elseif ($saldo_restante > 0.005) {
+            // Pago parcial restante
+            $nuevo_estado_cuota = 'PARCIAL';
+        } else {
+            // Sin saldo: PENDIENTE o VENCIDA según fecha
+            $saldo_restante = 0.0;
+            $nuevo_estado_cuota = (new DateTime($cuota_row['fecha_vencimiento'])) < new DateTime('today')
+                ? 'VENCIDA' : 'PENDIENTE';
+        }
+
+        // 5. Actualizar cuota con el saldo real recalculado
+        $fecha_pago_v = ($nuevo_estado_cuota === 'PAGADA') ? date('Y-m-d') : null;
+        $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=0, fecha_pago=? WHERE id=?")
+            ->execute([$nuevo_estado_cuota, $saldo_restante, $fecha_pago_v, $cuota_id_rev]);
+
+        // 6. Recalcular estado del crédito (puede pasar FINALIZADO→EN_CURSO/MOROSO, o EN_CURSO→MOROSO)
         $cr_stmt = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");
         $cr_stmt->execute([$credito_id]);
-        if ($cr_stmt->fetchColumn() === 'FINALIZADO') {
+        $estado_cr_actual = $cr_stmt->fetchColumn();
+        if ($estado_cr_actual !== 'CANCELADO') {
             $venc_check = $pdo->prepare("SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=? AND estado='VENCIDA'");
             $venc_check->execute([$credito_id]);
-            $nuevo_cr = (int) $venc_check->fetchColumn() > 0 ? 'MOROSO' : 'EN_CURSO';
+            $tiene_vencidas = (int) $venc_check->fetchColumn() > 0;
+            $nuevo_cr = $tiene_vencidas ? 'MOROSO' : 'EN_CURSO';
             $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")
                 ->execute([$nuevo_cr, $credito_id]);
         }

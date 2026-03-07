@@ -42,17 +42,27 @@ if (!$row) {
 $credito_id = (int) $row['credito_id'];
 $pct_mora   = (float) $row['interes_moratorio_pct'];
 
-// Obtener cuotas pendientes/vencidas del crédito, de más antigua a más nueva
+// Obtener cuotas pendientes/vencidas/parciales del crédito, de más antigua a más nueva
 $cuotas_stmt = $pdo->prepare("
     SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
+           cu.saldo_pagado, cu.monto_mora,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt
             WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen
     FROM ic_cuotas cu
-    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA')
+    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL')
     ORDER BY cu.numero_cuota ASC
 ");
 $cuotas_stmt->execute([$credito_id]);
 $cuotas_pendientes = $cuotas_stmt->fetchAll();
+
+// Verificar si hay pagos pendientes en el crédito para evitar saltos y desincronización
+foreach ($cuotas_pendientes as $c) {
+    if ((int) $c['pago_pen'] > 0) {
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Este crédito tiene pagos pendientes de aprobación. No se pueden registrar nuevos pagos hasta que el supervisor los apruebe.'];
+        header('Location: agenda');
+        exit;
+    }
+}
 
 $remaining    = $total;
 $ef_remaining = $ef;
@@ -62,21 +72,28 @@ $cuotas_ok    = 0;
 foreach ($cuotas_pendientes as $cuota) {
     if ($remaining <= 0.005) break;
 
-    // Saltar cuotas con pago pendiente de aprobación
-    if ((int) $cuota['pago_pen'] > 0) continue;
-
+    $saldo_prev  = (float) ($cuota['saldo_pagado'] ?? 0);
+    $mora_frozen = (float) $cuota['monto_mora'];
     $dias_atraso = dias_atraso_habiles($cuota['fecha_vencimiento']);
-    $mora_cuota  = calcular_mora($cuota['monto_cuota'], $dias_atraso, $pct_mora);
-    $total_cuota = $cuota['monto_cuota'] + $mora_cuota;
 
-    $pago_en_esta = min($remaining, $total_cuota);
+    // Usar mora congelada; si no existe aún, calcularla
+    if ($mora_frozen <= 0) {
+        $mora_frozen = calcular_mora($cuota['monto_cuota'], $dias_atraso, $pct_mora);
+    }
+
+    $total_cuota = $cuota['monto_cuota'] + $mora_frozen;
+    $pendiente   = max(0, $total_cuota - $saldo_prev); // lo que falta pagar en esta cuota
+
+    if ($pendiente <= 0.005) continue;
+
+    $pago_en_esta = min($remaining, $pendiente);
 
     // Distribuir: primero efectivo, luego transferencia
     $pago_ef = min($pago_en_esta, $ef_remaining);
     $pago_tr = $pago_en_esta - $pago_ef;
 
-    // Mora sólo si cubre el total de la cuota
-    $mora_en_esta = ($pago_en_esta >= $total_cuota - 0.005) ? $mora_cuota : 0.0;
+    // Mora cobrada sólo si este pago completa la cuota
+    $mora_en_esta = ($saldo_prev + $pago_en_esta >= $total_cuota - 0.005) ? $mora_frozen : 0.0;
 
     $pdo->prepare("
         INSERT INTO ic_pagos_temporales

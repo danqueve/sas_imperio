@@ -37,15 +37,15 @@ function dias_habiles(DateTime $desde, DateTime $hasta): int
 }
 
 /**
- * Calcula días hábiles de atraso desde el vencimiento hasta hoy.
+ * Calcula días hábiles de atraso desde el vencimiento hasta hoy (o hasta $fecha_ref si se indica).
  */
-function dias_atraso_habiles(string $fecha_vencimiento): int
+function dias_atraso_habiles(string $fecha_vencimiento, ?string $fecha_ref = null): int
 {
-    $hoy = new DateTime('today');
+    $hoy  = $fecha_ref ? new DateTime($fecha_ref) : new DateTime('today');
     $venc = new DateTime($fecha_vencimiento);
     if ($hoy <= $venc)
         return 0;
-    // Días hábiles desde el día siguiente al vencimiento hasta hoy
+    // Días hábiles desde el día siguiente al vencimiento hasta la fecha de referencia
     $desde = clone $venc;
     $desde->modify('+1 day');
     return dias_habiles($desde, $hoy);
@@ -90,9 +90,11 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
     $resultado = ['aprobados' => 0, 'errores' => 0];
 
     $stmt = $pdo->prepare("
-        SELECT pt.*, c.credito_id
+        SELECT pt.*, cu.credito_id, cu.monto_cuota, cu.saldo_pagado, cu.monto_mora,
+               cu.fecha_vencimiento, cr.interes_moratorio_pct
         FROM ic_pagos_temporales pt
-        JOIN ic_cuotas c ON pt.cuota_id = c.id
+        JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
         WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
     ");
     $stmt->execute([$cobrador_id, $fecha]);
@@ -121,23 +123,59 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 $pago['monto_mora_cobrada']
             ]);
 
-            // 2. Marcar cuota como PAGADA
-            $pdo->prepare("UPDATE ic_cuotas SET estado='PAGADA', fecha_pago=? WHERE id=?")
-                ->execute([$fecha, $pago['cuota_id']]);
+            // 2. Calcular nuevo saldo y estado de la cuota
+            $monto_base  = (float) $pago['monto_cuota'];
+            $saldo_prev  = (float) ($pago['saldo_pagado'] ?? 0);
+            $mora_frozen = (float) $pago['monto_mora'];
+
+            // Congelar mora si aún no está fijada
+            if ($mora_frozen <= 0) {
+                $mora_frozen = calcular_mora(
+                    $monto_base,
+                    dias_atraso_habiles($pago['fecha_vencimiento']),
+                    (float) $pago['interes_moratorio_pct']
+                );
+            }
+
+            $nuevo_saldo  = $saldo_prev + (float) $pago['monto_total'];
+            $nuevo_estado = ($nuevo_saldo >= $monto_base + $mora_frozen - 0.005) ? 'PAGADA' : 'PARCIAL';
+            $fecha_pago_v = ($nuevo_estado === 'PAGADA') ? $fecha : null;
+            
+            // Si es parcial, no congelamos la mora calculada hoy, mantenemos la que ya tenía la cuota
+            $monto_mora_guardar = ($nuevo_estado === 'PAGADA') ? $mora_frozen : (float) $pago['monto_mora'];
+
+            $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
+                ->execute([$nuevo_estado, $nuevo_saldo, $monto_mora_guardar, $fecha_pago_v, $pago['cuota_id']]);
 
             // 3. Marcar pago temporal como APROBADO
             $pdo->prepare("UPDATE ic_pagos_temporales SET estado='APROBADO' WHERE id=?")
                 ->execute([$pago['id']]);
 
-            // 4. Verificar si el crédito quedó completamente pagado
-            $check = $pdo->prepare("
-                SELECT COUNT(*) FROM ic_cuotas
-                WHERE credito_id = ? AND estado != 'PAGADA'
-            ");
-            $check->execute([$pago['credito_id']]);
-            if ((int) $check->fetchColumn() === 0) {
-                $pdo->prepare("UPDATE ic_creditos SET estado='FINALIZADO' WHERE id=?")
-                    ->execute([$pago['credito_id']]);
+            // 4. Recalcular estado del crédito (FINALIZADO, MOROSO o EN_CURSO)
+            $cr_stmt = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");
+            $cr_stmt->execute([$pago['credito_id']]);
+            $estado_actual_cr = $cr_stmt->fetchColumn();
+
+            if ($estado_actual_cr !== 'CANCELADO') {
+                $check = $pdo->prepare("
+                    SELECT 
+                        SUM(CASE WHEN estado != 'PAGADA' THEN 1 ELSE 0 END) as pendientes,
+                        SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) as vencidas
+                    FROM ic_cuotas
+                    WHERE credito_id = ?
+                ");
+                $check->execute([$pago['credito_id']]);
+                $counts = $check->fetch(PDO::FETCH_ASSOC);
+
+                if ((int) $counts['pendientes'] === 0) {
+                    $nuevo_cr_estado = 'FINALIZADO';
+                } elseif ((int) $counts['vencidas'] > 0) {
+                    $nuevo_cr_estado = 'MOROSO';
+                } else {
+                    $nuevo_cr_estado = 'EN_CURSO';
+                }
+                $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")
+                    ->execute([$nuevo_cr_estado, $pago['credito_id']]);
             }
 
             $pdo->commit();
@@ -171,7 +209,7 @@ function maps_url(string $coordenadas): string
 
 function formato_pesos(float $valor): string
 {
-    return '$ ' . number_format($valor, 2, ',', '.');
+    return '$ ' . number_format($valor, 0, ',', '.');
 }
 
 function generar_token(): string

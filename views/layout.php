@@ -26,6 +26,97 @@ if ($rol === 'admin') {
     <link rel="icon" type="image/png" href="<?= BASE_URL ?>assets/img/logo.png">
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css?v=4">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <?php if ($rol === 'cobrador'): ?>
+    <style>
+        :root {
+            /* Tema claro para cobradores / interfaz de campo */
+            --body-bg: #f3f4f6;
+            --dark-bg: #ffffff;
+            --darker-bg: #e5e7eb;
+            --dark-border: #d1d5db;
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --secondary: #f9fafb;
+            --secondary-hover: #f3f4f6;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --accent: #0ea5e9;
+            --accent-hover: #0284c7;
+            /* Se mantienen rojo, verde y amarillo con más brillo */
+            --danger: #ef4444;    
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        /* Ajustes finos para que el texto resalte sobre blanco */
+        body {
+            color: var(--text-main);
+            background-color: var(--body-bg);
+        }
+        
+        /* Ajuste de tarjetas y paneles */
+        .card-ic, .modal-box {
+            background: var(--dark-bg);
+            border-color: var(--dark-border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .card-ic-header, .modal-header {
+            border-bottom: 1px solid var(--dark-border);
+            background: rgba(0,0,0,0.015);
+        }
+        
+        .sidebar {
+            background: #ffffff;
+            border-right: 1px solid var(--dark-border);
+        }
+        
+        .topbar {
+            background: #ffffff;
+            border-bottom: 1px solid var(--dark-border);
+        }
+        
+        .nav-item { color: var(--text-main); }
+        .nav-item:hover { background: var(--secondary-hover); }
+        .nav-item.active { 
+            background: rgba(79, 70, 229, 0.08); 
+            color: var(--primary); 
+            border-right: 3px solid var(--primary);
+        }
+        .nav-label { color: var(--text-muted); font-weight: 700; }
+        
+        /* Ajustar inputs para que luzcan bien en blanco */
+        input, select, textarea {
+            background: #ffffff !important;
+            border: 1px solid var(--dark-border) !important;
+            color: var(--text-main) !important;
+        }
+        input:focus, select:focus {
+            border-color: var(--primary) !important;
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1) !important;
+        }
+        
+        /* Ajustar textos que en oscuro forzaban blanco */
+        .page-header-title { color: var(--text-main); }
+        
+        /* El modal info block necesita contraste en light mode */
+        #modal-info { background: #f3f4f6 !important; border: 1px solid #e5e7eb; }
+        
+        /* Botones secundarios (ghost) */
+        .btn-ghost { color: var(--text-main); }
+        .btn-ghost:hover { background: var(--secondary-hover); }
+
+        /* Ajustes específicos para agenda.php en tema claro */
+        .agenda-row { border-bottom: 1px solid #e5e7eb; }
+        .agenda-row:hover { background: #f9fafb; }
+        .agenda-header { border-bottom: 2px solid #e5e7eb; color: var(--text-muted); }
+        .agenda-articulo { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+        .kpi-card { background: #ffffff; border: 1px solid #e5e7eb; }
+        .kpi-label { color: var(--text-muted); }
+        .kpi-value { color: var(--text-main); }
+    </style>
+    <?php endif; ?>
 </head>
 
 <body>

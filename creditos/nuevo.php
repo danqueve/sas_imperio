@@ -64,12 +64,14 @@ $v = [
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $v = $_POST;
 
-    $articulo_id = (int)($v['articulo_id'] ?? 0);
+    $articulo_id        = (int)($v['articulo_id'] ?? 0);
+    $articulo_desc_input = trim($v['articulo_desc'] ?? '');
 
     if (
-        empty($v['cliente_id']) || !$articulo_id ||
+        empty($v['cliente_id']) ||
         empty($v['cobrador_id']) ||
-        empty($v['cant_cuotas']) || empty($v['primer_vencimiento'])
+        empty($v['cant_cuotas']) || empty($v['primer_vencimiento']) ||
+        ($articulo_id === 0 && $articulo_desc_input === '')
     ) {
         $error = 'Completá todos los campos obligatorios (incluido el artículo).';
     } else {
@@ -83,18 +85,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo->beginTransaction();
 
-                // Lock de fila para atomicidad del stock
-                $art_stmt = $pdo->prepare("SELECT stock, descripcion FROM ic_articulos WHERE id=? FOR UPDATE");
-                $art_stmt->execute([$articulo_id]);
-                $art_row = $art_stmt->fetch();
+                $articulo_desc_snap = $articulo_desc_input;
+                $stock_ok = true;
 
-                if (!$art_row || $art_row['stock'] < 1) {
-                    $pdo->rollBack();
-                    $error = 'Sin stock disponible para el artículo seleccionado (stock: ' . ($art_row['stock'] ?? 0) . ').';
-                } else {
-                    // Snapshot de descripción
-                    $articulo_desc_snap = trim($v['articulo_desc'] ?? '') ?: $art_row['descripcion'];
+                if ($articulo_id > 0) {
+                    // Lock de fila para atomicidad del stock
+                    $art_stmt = $pdo->prepare("SELECT stock, descripcion FROM ic_articulos WHERE id=? FOR UPDATE");
+                    $art_stmt->execute([$articulo_id]);
+                    $art_row = $art_stmt->fetch();
 
+                    if (!$art_row || $art_row['stock'] < 1) {
+                        $pdo->rollBack();
+                        $error = 'Sin stock disponible para el artículo seleccionado (stock: ' . ($art_row['stock'] ?? 0) . ').';
+                        $stock_ok = false;
+                    } else {
+                        $articulo_desc_snap = $articulo_desc_input ?: $art_row['descripcion'];
+                    }
+                }
+
+                if ($stock_ok) {
                     $ins = $pdo->prepare("
                         INSERT INTO ic_creditos
                           (cliente_id, articulo_id, articulo_desc, cobrador_id, vendedor_id,
@@ -105,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ");
                     $ins->execute([
                         $v['cliente_id'],
-                        $articulo_id,
+                        $articulo_id ?: null,
                         $articulo_desc_snap,
                         $v['cobrador_id'],
                         ($v['vendedor_id'] ?: null),
@@ -132,9 +141,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'monto_cuota'        => $monto_cuot,
                     ], $pdo);
 
-                    // Descontar stock
-                    $pdo->prepare("UPDATE ic_articulos SET stock = stock - 1 WHERE id=?")
-                        ->execute([$articulo_id]);
+                    // Descontar stock solo si es artículo del catálogo
+                    if ($articulo_id > 0) {
+                        $pdo->prepare("UPDATE ic_articulos SET stock = stock - 1 WHERE id=?")
+                            ->execute([$articulo_id]);
+                    }
 
                     $pdo->commit();
                     registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_CREADO', 'credito', (int)$credito_id,
@@ -182,18 +193,19 @@ require_once __DIR__ . '/../views/layout.php';
                     </select>
                 </div>
 
-                <!-- Selector de artículo desde catálogo -->
+                <!-- Selector de artículo desde catálogo o texto libre -->
                 <div class="form-group" style="grid-column:span 2">
-                    <label>Artículo del Catálogo *</label>
+                    <label>Artículo * <small class="text-muted">(seleccioná del catálogo o escribí manualmente)</small></label>
                     <input type="text" id="articulo_search" list="articulos_list"
                            value="<?php
-                               // Recuperar label si hubo POST con error
                                if (!empty($v['articulo_id'])) {
                                    $ai = (int)$v['articulo_id'];
                                    echo e($articulos_map[$ai]['label'] ?? $v['articulo_desc'] ?? '');
+                               } elseif (!empty($v['articulo_desc'])) {
+                                   echo e($v['articulo_desc']);
                                }
                            ?>"
-                           placeholder="Buscar por nombre o SKU..."
+                           placeholder="Buscar en catálogo o escribir descripción..."
                            autocomplete="off" required style="width:100%">
                     <datalist id="articulos_list">
                         <?php foreach ($articulos_raw as $art): ?>
@@ -391,6 +403,7 @@ document.getElementById('articulo_search').addEventListener('change', function()
     const val  = this.value.trim();
     const item = artSearchMap[val];
     if (item) {
+        // Artículo del catálogo
         document.getElementById('articulo_id').value   = item.id;
         document.getElementById('articulo_desc').value = item.desc;
         const info = articulosMap[item.id];
@@ -400,9 +413,14 @@ document.getElementById('articulo_search').addEventListener('change', function()
             calcularCuotas();
         }
     } else if (val === '') {
-        document.getElementById('articulo_id').value   = '';
+        document.getElementById('articulo_id').value   = '0';
         document.getElementById('articulo_desc').value = '';
         document.getElementById('stock_info').textContent = '';
+    } else {
+        // Texto libre / artículo manual
+        document.getElementById('articulo_id').value   = '0';
+        document.getElementById('articulo_desc').value = val;
+        document.getElementById('stock_info').textContent = 'Artículo manual (sin descuento de stock)';
     }
 });
 

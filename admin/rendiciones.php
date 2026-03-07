@@ -89,6 +89,7 @@ if ($cobrador_id) {
 
 $page_title = 'Rendiciones';
 $page_current = 'rendiciones';
+$topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-history"></i> Historial de Rendiciones</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
