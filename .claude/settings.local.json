@@ -23,7 +23,20 @@
       "Bash(ls -d /c/wamp64/www/creditos/*/)",
       "Bash(xargs -I {} basename {})",
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe /c/wamp64/www/creditos/tools_regen_tokens.php)",
-      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root c2881399_credit -e \"SELECT id, token_acceso FROM ic_clientes LIMIT 5;\")"
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root c2881399_credit -e \"SELECT id, token_acceso FROM ic_clientes LIMIT 5;\")",
+      "Bash(php -r \"echo extension_loaded\\(''gd''\\) ? ''GD OK'' : ''GD MISSING'';\")",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -r \"echo extension_loaded\\(''gd''\\) ? ''GD: enabled'' : ''GD: missing''; echo PHP_EOL; echo ''PHP: ''.PHP_VERSION;\")",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -r \":*)",
+      "Read(//tmp/**)",
+      "Read(//c/tmp/**)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l ventas/index.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l ventas/nueva.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l ventas/eliminar.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l articulos/qr_label.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l articulos/editar.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l creditos/nuevo.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l creditos/editar.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l config/sesion.php)"
     ]
   }
 }

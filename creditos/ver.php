@@ -24,7 +24,7 @@ $stmt = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
-    LEFT JOIN ic_usuarios v ON cr.vendedor_id=v.id
+    LEFT JOIN ic_vendedores v ON cr.vendedor_id=v.id
     WHERE cr.id=?
 ");
 $stmt->execute([$id]);
@@ -59,10 +59,13 @@ if (es_admin() || es_supervisor()) {
 // Calcular mora actualizada para cada cuota
 $hoy = new DateTime('today');
 foreach ($lista_cuotas as &$cuota) {
-    if ($cuota['estado'] === 'PENDIENTE' || $cuota['estado'] === 'VENCIDA') {
+    if (in_array($cuota['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL'])) {
+        // Para PARCIAL usar mora congelada si existe, sino calcular
         $dias = dias_atraso_habiles($cuota['fecha_vencimiento']);
         $cuota['dias_atraso_calc'] = $dias;
-        $cuota['mora_calc'] = calcular_mora($cuota['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
+        $cuota['mora_calc'] = (float)$cuota['monto_mora'] > 0
+            ? (float)$cuota['monto_mora']
+            : calcular_mora($cuota['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
     } else {
         $cuota['dias_atraso_calc'] = 0;
         $cuota['mora_calc'] = 0;
@@ -227,7 +230,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <td class="text-muted" style="padding:5px 0">Vendedor</td>
                     <td>
-                        <?= isset($cr['vendedor_n']) ? e($cr['vendedor_n'] . ' ' . $cr['vendedor_a']) : '<span class="text-muted">No asignado</span>' ?>
+                        <?= !empty($cr['vendedor_n']) ? e($cr['vendedor_n'] . ' ' . $cr['vendedor_a']) : '<span class="text-muted">No asignado</span>' ?>
                         <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
                             <a href="cambiar_vendedor?id=<?= $id ?>" class="btn-ic btn-ghost btn-sm" title="Cambiar vendedor" style="padding:2px 5px; font-size:.7rem; margin-left:10px;"><i class="fa fa-edit"></i></a>
                         <?php endif; ?>
@@ -328,6 +331,9 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td class="nowrap fw-bold">
                                 <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
+                                <?php if ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
+                                    <br><span class="text-warning" style="font-size:.70rem;">Resta: <?= formato_pesos(max(0, ($q['monto_cuota'] + $q['mora_calc']) - $q['saldo_pagado'])) ?></span>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <?php $badgeMap = ['PENDIENTE' => 'badge-warning', 'PAGADA' => 'badge-success', 'VENCIDA' => 'badge-danger', 'PARCIAL' => 'badge-primary']; ?>
@@ -344,18 +350,21 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <?php if (es_admin() || es_supervisor()): ?>
                             <td class="nowrap" style="display:flex;gap:4px;align-items:center">
-                                <?php if (in_array($q['estado'], ['PENDIENTE', 'VENCIDA'])): ?>
+                                <?php if (in_array($q['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL'])): ?>
                                     <button
-                                        onclick="abrirPagoDirecto(<?= $q['id'] ?>, <?= $q['numero_cuota'] ?>, <?= (float)$q['monto_cuota'] ?>, <?= (float)$q['mora_calc'] ?>, <?= (float)($q['monto_cuota'] + $q['mora_calc']) ?>)"
-                                        class="btn-ic btn-success btn-sm" title="Registrar pago directo">
+                                        onclick="abrirPagoDirecto(<?= $q['id'] ?>, <?= $q['numero_cuota'] ?>, <?= (float)$q['monto_cuota'] ?>, '<?= $q['fecha_vencimiento'] ?>', <?= (float)($q['saldo_pagado'] ?? 0) ?>, <?= (float)($q['monto_mora'] ?? 0) ?>)"
+                                        class="btn-ic <?= $q['estado']==='PARCIAL' ? 'btn-warning' : 'btn-success' ?> btn-sm"
+                                        title="<?= $q['estado']==='PARCIAL' ? 'Completar pago parcial' : 'Registrar pago directo' ?>">
                                         <i class="fa fa-dollar-sign"></i>
                                     </button>
-                                <?php elseif ($q['estado'] === 'PAGADA' && $pc_id): ?>
+                                <?php endif; ?>
+                                
+                                <?php if (in_array($q['estado'], ['PAGADA', 'PARCIAL']) && $pc_id): ?>
                                     <?php if (es_admin()): ?>
                                         <button
                                             onclick="abrirRevertir(<?= $pc_id ?>, <?= $q['numero_cuota'] ?>, <?= $sol_baja ?>)"
                                             class="btn-ic btn-sm <?= $sol_baja ? 'btn-warning' : 'btn-danger' ?>"
-                                            title="<?= $sol_baja ? 'Reversa solicitada — Revertir' : 'Revertir pago' ?>">
+                                            title="<?= $sol_baja ? 'Reversa solicitada — Revertir' : 'Revertir último pago' ?>">
                                             <i class="fa fa-undo"></i>
                                         </button>
                                     <?php elseif (es_supervisor()): ?>
@@ -450,6 +459,13 @@ require_once __DIR__ . '/../views/layout.php';
             <input type="hidden" name="cuota_id" id="dir_cuota_id">
             <input type="hidden" name="credito_id" value="<?= $id ?>">
             <div class="form-grid">
+                <div class="form-group" style="grid-column:span 2">
+                    <label>Fecha de Pago</label>
+                    <input type="date" name="fecha_pago" id="dir_fecha_pago"
+                           value="<?= date('Y-m-d') ?>" max="<?= date('Y-m-d') ?>"
+                           onchange="recalcularMoraDirecto()">
+                    <small class="text-muted">Si el pago cae dentro del período la mora desaparece automáticamente.</small>
+                </div>
                 <div class="form-group">
                     <label>Efectivo $</label>
                     <input type="number" name="monto_efectivo" id="dir_efectivo"
@@ -477,19 +493,57 @@ require_once __DIR__ . '/../views/layout.php';
 <?php endif; ?>
 
 <?php
-$page_scripts = <<<'JS'
+$page_scripts = <<<JS
 <script>
-function abrirPagoDirecto(cuota_id, num_cuota, capital, mora, total) {
+const PCT_MORA_SEMANAL = {$cr['interes_moratorio_pct']};
+let _dir = {};
+
+function diasHabilesAtraso(vencStr, refStr) {
+    const venc = new Date(vencStr + 'T00:00:00');
+    const ref  = new Date(refStr  + 'T00:00:00');
+    if (ref <= venc) return 0;
+    let count = 0, cur = new Date(venc.getTime());
+    cur.setDate(cur.getDate() + 1);
+    while (cur <= ref) {
+        if (cur.getDay() !== 0) count++;
+        cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+}
+
+function calcularMoraJS(capital, vencStr, fechaRef) {
+    const dias = diasHabilesAtraso(vencStr, fechaRef);
+    if (dias <= 0) return 0;
+    return Math.round(capital * (PCT_MORA_SEMANAL / 6 / 100) * dias * 100) / 100;
+}
+
+function abrirPagoDirecto(cuota_id, num_cuota, capital, vencimiento, saldo_prev, mora_frozen) {
+    _dir = { cuota_id, num_cuota, capital, vencimiento,
+             saldo_prev: saldo_prev || 0, mora_frozen: mora_frozen || 0 };
     document.getElementById('dir_cuota_id').value = cuota_id;
-    document.getElementById('dir_efectivo').value = total.toFixed(2);
+    const hoy = new Date().toISOString().split('T')[0];
+    document.getElementById('dir_fecha_pago').value = hoy;
+    document.getElementById('dir_fecha_pago').max   = hoy;
     document.getElementById('dir_transfer').value = '0';
-    document.getElementById('info-pago-dir').innerHTML =
-        'Cuota <strong>#' + num_cuota + '</strong><br>' +
-        'Capital: ' + formatPesos(capital) +
-        (mora > 0 ? ' + Mora: <span style="color:var(--danger)">' + formatPesos(mora) + '</span>' : '') +
-        '<br><strong>Total sugerido: ' + formatPesos(total) + '</strong>';
-    dirTotal();
+    recalcularMoraDirecto();
     openModal('modal-pago-directo');
+}
+
+function recalcularMoraDirecto() {
+    const fecha = document.getElementById('dir_fecha_pago').value
+                  || new Date().toISOString().split('T')[0];
+    const { capital, vencimiento, saldo_prev, mora_frozen, num_cuota } = _dir;
+    const mora     = mora_frozen > 0 ? mora_frozen : calcularMoraJS(capital, vencimiento, fecha);
+    const pendiente = Math.max(0, capital + mora - saldo_prev);
+
+    document.getElementById('dir_efectivo').value = pendiente.toFixed(2);
+
+    let info = 'Cuota <strong>#' + num_cuota + '</strong><br>Capital: ' + formatPesos(capital);
+    if (mora > 0) info += ' + Mora: <span style="color:var(--danger)">' + formatPesos(mora) + '</span>';
+    if (saldo_prev > 0) info += '<br><span style="color:var(--warning)"><i class="fa fa-info-circle"></i> Ya abonado: ' + formatPesos(saldo_prev) + '</span>';
+    info += '<br><strong>Total sugerido: ' + formatPesos(pendiente) + '</strong>';
+    document.getElementById('info-pago-dir').innerHTML = info;
+    dirTotal();
 }
 
 function dirTotal() {
