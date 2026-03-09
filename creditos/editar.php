@@ -48,11 +48,13 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $v = $_POST;
 
-    $articulo_id_edit = (int)($v['articulo_id'] ?? 0);
+    $articulo_id_edit   = (int)($v['articulo_id'] ?? 0);
+    $articulo_desc_post = trim($v['articulo_desc'] ?? '');
     if (
-        empty($v['cliente_id']) || !$articulo_id_edit ||
+        empty($v['cliente_id']) ||
+        (!$articulo_id_edit && empty($articulo_desc_post)) ||
         empty($v['cobrador_id']) || empty($v['cant_cuotas']) ||
-        ($cuotas_pagadas == 0 && empty($v['primer_vencimiento']))
+        empty($v['primer_vencimiento'])
     ) {
         $error = 'Completá todos los campos obligatorios (incluido el artículo).';
     } else {
@@ -65,22 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
 
             // Snapshot descripción del artículo seleccionado
-            $articulo_desc_snap = trim($v['articulo_desc'] ?? '');
+            $articulo_desc_snap = $articulo_desc_post;
             if (empty($articulo_desc_snap) && isset($articulos_map[$articulo_id_edit])) {
                 $articulo_desc_snap = $articulos_map[$articulo_id_edit]['desc'];
             }
+            $articulo_id_db = $articulo_id_edit > 0 ? $articulo_id_edit : null;
 
             $upd = $pdo->prepare("
                 UPDATE ic_creditos SET
                     cliente_id=?, articulo_id=?, articulo_desc=?,
                     cobrador_id=?, vendedor_id=?,
                     precio_articulo=?, monto_total=?, interes_pct=?, interes_moratorio_pct=?,
-                    frecuencia=?, cant_cuotas=?, observaciones=?
+                    frecuencia=?, cant_cuotas=?, observaciones=?, primer_vencimiento=?
                 WHERE id=?
             ");
             $upd->execute([
                 $v['cliente_id'],
-                $articulo_id_edit,
+                $articulo_id_db,
                 $articulo_desc_snap,
                 $v['cobrador_id'],
                 ($v['vendedor_id'] ?: null),
@@ -91,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $v['frecuencia'],
                 $cant_cuotas,
                 trim($v['observaciones'] ?? ''),
+                $v['primer_vencimiento'],
                 $id,
             ]);
 
@@ -98,8 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($cuotas_pagadas == 0) {
                 $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id=?")->execute([$id]);
                 $monto_cuota = round($monto_tot / $cant_cuotas, 2);
-                $pdo->prepare("UPDATE ic_creditos SET monto_cuota=?, primer_vencimiento=? WHERE id=?")
-                    ->execute([$monto_cuota, $v['primer_vencimiento'], $id]);
+                $pdo->prepare("UPDATE ic_creditos SET monto_cuota=? WHERE id=?")
+                    ->execute([$monto_cuota, $id]);
                 generar_cuotas($id, [
                     'primer_vencimiento' => $v['primer_vencimiento'],
                     'cant_cuotas'        => $cant_cuotas,
@@ -179,7 +183,7 @@ require_once __DIR__ . '/../views/layout.php';
                                }
                            ?>"
                            placeholder="Buscar por nombre o SKU..."
-                           autocomplete="off" required style="width:100%">
+                           autocomplete="off" style="width:100%">
                     <datalist id="articulos_list_edit">
                         <?php foreach ($articulos_raw as $art): ?>
                             <option value="<?= e($art['descripcion'] . ($art['sku'] ? ' [' . $art['sku'] . ']' : '')) ?>"></option>
@@ -225,13 +229,14 @@ require_once __DIR__ . '/../views/layout.php';
                     </select>
                 </div>
 
-                <?php if ($cuotas_pagadas == 0): ?>
                 <div class="form-group">
                     <label>Primer Vencimiento *</label>
                     <input type="date" name="primer_vencimiento"
                            value="<?= $v['primer_vencimiento'] ?>" required>
+                    <?php if ($cuotas_pagadas > 0): ?>
+                        <small class="text-muted">Cambiar esta fecha no reordena las cuotas existentes.</small>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
 
                 <div class="form-group">
                     <label>Interés Moratorio % semanal</label>
@@ -323,6 +328,11 @@ document.getElementById('articulo_search_edit').addEventListener('change', funct
     } else if (val === '') {
         document.getElementById('articulo_id_edit').value   = '';
         document.getElementById('articulo_desc_edit').value = '';
+        document.getElementById('stock_info_edit').textContent = '';
+    } else {
+        // Texto escrito pero sin match exacto: guardar descripción, sin ID de catálogo
+        document.getElementById('articulo_id_edit').value   = '0';
+        document.getElementById('articulo_desc_edit').value = val;
         document.getElementById('stock_info_edit').textContent = '';
     }
 });
