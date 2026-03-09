@@ -9,9 +9,10 @@ verificar_sesion();
 verificar_permiso('alta_creditos');
 
 $pdo = obtener_conexion();
-$q = trim($_GET['q'] ?? '');
-$estado = trim($_GET['estado'] ?? '');
-$frec = trim($_GET['frecuencia'] ?? '');
+$q          = trim($_GET['q'] ?? '');
+$estado     = trim($_GET['estado'] ?? '');
+$frec       = trim($_GET['frecuencia'] ?? '');
+$cobrador_f = (int) ($_GET['cobrador_id'] ?? 0);
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $limit = 25;
 $offset = ($page - 1) * $limit;
@@ -31,7 +32,13 @@ if ($frec !== '') {
     $where[] = 'cr.frecuencia=?';
     $params[] = $frec;
 }
+if ($cobrador_f > 0) {
+    $where[] = 'cr.cobrador_id=?';
+    $params[] = $cobrador_f;
+}
 $whereStr = implode(' AND ', $where);
+
+$cobradores = $pdo->query("SELECT id, nombre, apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY apellido, nombre")->fetchAll();
 
 $totalStmt = $pdo->prepare("
     SELECT COUNT(*)
@@ -165,8 +172,20 @@ require_once __DIR__ . '/../views/layout.php';
                 </option>
             <?php endforeach; ?>
         </select>
+        <select name="cobrador_id">
+            <option value="">Todos los cobradores</option>
+            <?php foreach ($cobradores as $cob): ?>
+                <option value="<?= $cob['id'] ?>" <?= $cobrador_f === (int)$cob['id'] ? 'selected' : '' ?>>
+                    <?= e($cob['apellido'] . ', ' . $cob['nombre']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
         <a href="?" class="btn-ic btn-ghost">Limpiar</a>
+        <a href="creditos_print.php?<?= http_build_query(array_filter(['q' => $q, 'estado' => $estado, 'frecuencia' => $frec, 'cobrador_id' => $cobrador_f ?: ''])) ?>"
+           target="_blank" class="btn-ic btn-ghost" title="Exportar listado actual a PDF">
+            <i class="fa fa-file-pdf"></i> PDF
+        </a>
     </form>
 </div>
 
