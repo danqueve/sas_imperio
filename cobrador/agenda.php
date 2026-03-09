@@ -281,7 +281,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="modal-title"><i class="fa fa-file-pdf"></i> Exportar Ficha Semanal</div>
             <button class="modal-close" onclick="closeModal('modal-agenda-pdf')">✕</button>
         </div>
-        <form id="form-agenda-pdf" target="_blank" action="agenda_pdf" method="GET">
+        <form id="form-agenda-pdf" target="_blank" action="agenda_print.php" method="GET">
             <div class="form-group mb-3">
                 <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
                 <select name="cobrador_id" style="width:100%">

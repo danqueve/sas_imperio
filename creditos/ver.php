@@ -262,8 +262,8 @@ require_once __DIR__ . '/../views/layout.php';
             </div>
             <hr class="divider">
             <div class="d-flex gap-2">
-                <a href="imprimir_cronograma?id=<?= $id ?>" target="_blank" class="btn-ic btn-ghost btn-sm">
-                    <i class="fa fa-print"></i> PDF
+                <a href="cronograma_print.php?id=<?= $id ?>" target="_blank" class="btn-ic btn-ghost btn-sm">
+                    <i class="fa fa-print"></i> PDF / Imprimir
                 </a>
                 <a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="btn-ic btn-ghost btn-sm">
                     <i class="fa fa-user"></i> Cliente
