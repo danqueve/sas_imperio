@@ -54,6 +54,16 @@ function dias_atraso_habiles(string $fecha_vencimiento, ?string $fecha_ref = nul
 // ── Cuotas ───────────────────────────────────────────────────
 
 /**
+ * Determina si una cuota está pagada en su totalidad o de forma parcial,
+ * considerando un margen de tolerancia para errores de redondeo de centavos.
+ */
+function determinar_estado_cuota(float $monto_base, float $mora, float $saldo_pagado): string
+{
+    return ($saldo_pagado >= $monto_base + $mora - 0.005) ? 'PAGADA' : 'PARCIAL';
+}
+
+
+/**
  * Genera las cuotas de un crédito en la base de datos.
  */
 function generar_cuotas(int $credito_id, array $d, PDO $pdo): bool
@@ -138,7 +148,7 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
             }
 
             $nuevo_saldo  = $saldo_prev + (float) $pago['monto_total'];
-            $nuevo_estado = ($nuevo_saldo >= $monto_base + $mora_frozen - 0.005) ? 'PAGADA' : 'PARCIAL';
+            $nuevo_estado = determinar_estado_cuota($monto_base, $mora_frozen, $nuevo_saldo);
             $fecha_pago_v = ($nuevo_estado === 'PAGADA') ? $fecha : null;
             
             // Si es parcial, no congelamos la mora calculada hoy, mantenemos la que ya tenía la cuota

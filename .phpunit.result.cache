@@ -1,0 +1,1 @@
+{"version":2,"defects":[],"times":{"FinanzasTest::testCalcularMora":0.001,"FinanzasTest::testDiasHabilesAtraso":0.002,"FinanzasTest::testDeterminarEstadoCuotaPagadaExacta":0,"FinanzasTest::testDeterminarEstadoCuotaPagadaConTolerancia":0,"FinanzasTest::testDeterminarEstadoCuotaParcial":0}}

@@ -91,6 +91,34 @@ $kpi_ingresos_hoy = (float) $row_ingresos['total'];
 $kpi_ingresos_efectivo = (float) $row_ingresos['efectivo'];
 $kpi_ingresos_transferencia = (float) $row_ingresos['transferencia'];
 
+// ── Lista de Cobrados Hoy ──────────────────────────────────────
+$stmt_cobrados = $pdo->prepare("
+    SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
+           cr.cant_cuotas,
+           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
+           COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
+           1 AS pago_pen
+    FROM ic_pagos_temporales pt
+    JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+    JOIN ic_creditos cr ON cu.credito_id = cr.id
+    JOIN ic_clientes cl ON cr.cliente_id = cl.id
+    LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
+    WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
+    ORDER BY pt.fecha_registro DESC
+");
+$stmt_cobrados->execute([$cobrador_filtro, $hoy]);
+$cobrados_hoy_raw = $stmt_cobrados->fetchAll();
+
+$cobrados_hoy = [];
+foreach ($cobrados_hoy_raw as $c) {
+    $dias_atraso = dias_atraso_habiles($c['fecha_vencimiento']);
+    $mora = calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
+    $c['dias_atraso_calc'] = $dias_atraso;
+    $c['mora_calc'] = $mora;
+    $c['total_a_cobrar'] = $c['monto_cuota'] + $mora;
+    $cobrados_hoy[] = $c;
+}
+
 // ── Deduplicar: un registro por cliente ────────────────────────
 // Si un cliente tiene varias cuotas atrasadas, aparece una sola vez
 // con un badge que indica cuántas cuotas acumula.
@@ -316,112 +344,138 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
     if (empty($cuotas))
         return "<p class='text-muted text-center' style='padding:20px'>Sin cuotas en esta sección.</p>";
     ob_start();
+    echo '<div class="list-group list-group-flush agenda-list-group">';
     foreach ($cuotas as $c):
         $mora_pos = $c['mora_calc'] > 0;
         $data     = htmlspecialchars(json_encode($c), ENT_QUOTES);
         $wa_msg   = 'Hola ' . $c['nombres'] . ', le recordamos su cuota #' . $c['numero_cuota'] . ' vencida el ' . date('d/m/Y', strtotime($c['fecha_vencimiento'])) . '. Total: ' . formato_pesos($c['total_a_cobrar']);
 ?>
-    <div class="agenda-row <?= $mora_pos ? 'agenda-row--vencida' : '' ?>" id="row-<?= $c['id'] ?>">
-
-        <!-- Cliente -->
-        <div class="agenda-col agenda-col--cliente">
-            <button class="agenda-cliente-btn" onclick="toggleArticulo(<?= $c['id'] ?>)" title="Ver artículo">
-                <span class="agenda-nombre"><?= e(strtoupper($c['apellidos'] . ' ' . $c['nombres'])) ?></span>
-                <span class="agenda-zona">Zona: <?= e($c['zona'] ?: '—') ?></span>
-            </button>
-            <?php if (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0): ?>
-                <span style="display:inline-flex;align-items:center;gap:4px;margin-top:3px;
-                             font-size:.68rem;font-weight:700;color:var(--danger)">
-                    <i class="fa fa-triangle-exclamation" style="font-size:.65rem"></i>
-                    <?= $c['cuotas_atrasadas'] ?> cuota<?= $c['cuotas_atrasadas'] > 1 ? 's' : '' ?> atrasada<?= $c['cuotas_atrasadas'] > 1 ? 's' : '' ?>
-                </span>
-            <?php endif; ?>
-            <div class="agenda-articulo" id="art-<?= $c['id'] ?>" style="display:none">
-                <i class="fa fa-box-open"></i> <?= e($c['articulo']) ?>
+    <div class="list-group-item agenda-card <?= $mora_pos ? 'agenda-card--vencida' : '' ?>" id="row-<?= $c['id'] ?>">
+        
+        <div class="agenda-card-header">
+            <div class="agenda-card-client">
+                <button class="agenda-cliente-btn" onclick="toggleArticulo(<?= $c['id'] ?>)" title="Ver artículo">
+                    <span class="agenda-nombre"><?= e(strtoupper($c['apellidos'] . ' ' . $c['nombres'])) ?></span>
+                    <span class="agenda-zona">Zona: <?= e($c['zona'] ?: '—') ?></span>
+                </button>
+                <?php if (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0): ?>
+                    <span class="agenda-badge-danger">
+                        <i class="fa fa-triangle-exclamation"></i>
+                        <?= $c['cuotas_atrasadas'] ?> u. atrasadas
+                    </span>
+                <?php endif; ?>
+                <div class="agenda-articulo" id="art-<?= $c['id'] ?>" style="display:none">
+                    <i class="fa fa-box-open"></i> <?= e($c['articulo']) ?>
+                </div>
+            </div>
+            
+            <div class="agenda-card-amounts text-end" style="text-align: right;">
+                <span class="agenda-monto"><?= formato_pesos($c['monto_cuota']) ?></span>
+                <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
+                <?php if ($mora_pos): ?>
+                    <span class="agenda-mora">+Mora: <?= formato_pesos($c['mora_calc']) ?></span>
+                <?php endif; ?>
             </div>
         </div>
 
-        <!-- Importe -->
-        <div class="agenda-col agenda-col--importe">
-            <span class="agenda-monto"><?= formato_pesos($c['monto_cuota']) ?></span>
-            <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
-            <?php if ($mora_pos): ?>
-                <span class="agenda-mora">+Mora: <?= formato_pesos($c['mora_calc']) ?></span>
-            <?php endif; ?>
+        <div class="agenda-card-body">
+            <div class="agenda-card-cobro">
+                <?php if ($c['pago_pen'] == 0): ?>
+                    <div class="agenda-cobro-wrap" style="display: flex; gap: 8px; width: 100%;">
+                        <input type="number" class="agenda-cobro-input" style="flex: 1;" id="inp-<?= $c['id'] ?>"
+                            value="<?= number_format($c['total_a_cobrar'], 2, '.', '') ?>"
+                            step="0.01" min="0" placeholder="0.00">
+                        <button class="agenda-cobro-btn" onclick="abrirPagoDesdeRow(<?= $data ?>)"
+                            title="Registrar pago">
+                            <i class="fa fa-check"></i> <span style="margin-left:4px;">Cobrar</span>
+                        </button>
+                    </div>
+                <?php else: ?>
+                    <div style="width: 100%; text-align: center; padding: 12px 0; background: rgba(255,193,7,.1); border-radius: 8px;">
+                        <span style="color: var(--warning); font-weight: 700;"><i class="fa fa-clock"></i> Pago Registrado</span>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
 
-        <!-- Cobro inline -->
-        <div class="agenda-col agenda-col--cobro">
-            <?php if ($c['pago_pen'] == 0): ?>
-                <div class="agenda-cobro-wrap">
-                    <input type="number" class="agenda-cobro-input" id="inp-<?= $c['id'] ?>"
-                        value="<?= number_format($c['total_a_cobrar'], 2, '.', '') ?>"
-                        step="0.01" min="0" placeholder="0.00">
-                    <button class="agenda-cobro-btn" onclick="abrirPagoDesdeRow(<?= $data ?>)"
-                        title="Registrar pago">
-                        <i class="fa fa-check"></i>
-                    </button>
-                </div>
-            <?php else: ?>
-                <span class="badge-ic badge-warning" style="font-size:.72rem">Registrado</span>
-            <?php endif; ?>
-        </div>
-
-        <!-- Vencimiento -->
-        <div class="agenda-col agenda-col--vencim">
-            <span class="agenda-fecha"><?= date('d/m/Y', strtotime($c['fecha_vencimiento'])) ?></span>
-            <span class="agenda-relativa"><?= fecha_relativa($c['fecha_vencimiento']) ?></span>
-        </div>
-
-        <!-- Acciones -->
-        <div class="agenda-col agenda-col--acciones">
-            <a href="<?= whatsapp_url($c['telefono'], $wa_msg) ?>" target="_blank"
-               class="btn-ic btn-ghost btn-sm btn-icon agenda-action" title="WhatsApp">
-                <i class="fa-brands fa-whatsapp"></i>
-            </a>
-            <?php if ($c['coordenadas']): ?>
-                <a href="<?= maps_url($c['coordenadas']) ?>" target="_blank"
-                   class="btn-ic btn-accent btn-sm btn-icon agenda-action" title="Google Maps">
-                    <i class="fa fa-map-marker-alt"></i>
+        <div class="agenda-card-footer" style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 16px;">
+            <div class="agenda-vencimiento" style="line-height: 1.4;">
+                <span style="color: var(--text-muted); font-size: .8rem;">Venció:</span> <strong style="color: var(--text)"><?= date('d/m/Y', strtotime($c['fecha_vencimiento'])) ?></strong><br>
+                <?= fecha_relativa($c['fecha_vencimiento']) ?>
+            </div>
+            <div class="agenda-acciones" style="display: flex; gap: 8px;">
+                <?php if ($c['coordenadas']): ?>
+                    <a href="<?= maps_url($c['coordenadas']) ?>" target="_blank"
+                       class="btn-ic btn-ghost btn-icon" title="Google Maps" style="width: 44px; height: 44px; border-radius: 8px; font-size: 1.1rem; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa fa-map-marker-alt"></i>
+                    </a>
+                <?php endif; ?>
+                <a href="<?= whatsapp_url($c['telefono'], $wa_msg) ?>" target="_blank"
+                   class="btn-ic btn-ghost btn-icon" title="WhatsApp" style="width: 44px; height: 44px; border-radius: 8px; font-size: 1.2rem; color: #25D366; background: rgba(37,211,102,.1); display: flex; align-items: center; justify-content: center;">
+                    <i class="fa-brands fa-whatsapp"></i>
                 </a>
-            <?php endif; ?>
+            </div>
         </div>
 
     </div>
 <?php endforeach;
+    echo '</div>';
     return ob_get_clean();
 }
 ?>
 
 <!-- CUOTAS DEL DÍA -->
 <div class="card-ic mb-4">
-    <div class="card-ic-header">
-        <span class="card-title"><i class="fa fa-calendar-check" style="color:var(--success)"></i> Cuotas de Hoy
+    <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-hoy', 'icon-hoy')">
+        <span class="card-title">
+            <i class="fa fa-chevron-down" id="icon-hoy" style="transition: transform 0.2s; margin-right: 6px;"></i>
+            <i class="fa fa-calendar-check" style="color:var(--success)"></i> Cuotas de Hoy
             <span class="badge-ic badge-success" style="margin-left:8px">
                 <?= count($del_dia) ?>
             </span>
         </span>
     </div>
-    <div class="agenda-header">
-        <span>Cliente</span><span>Importe</span><span>Cobro</span><span>Vencimiento</span><span>Acciones</span>
+
+    <div id="col-hoy" style="display: block;">
+        <?= render_tabla_cuotas($del_dia, 'Hoy', 'success') ?>
     </div>
-    <?= render_tabla_cuotas($del_dia, 'Hoy', 'success') ?>
 </div>
 
 <!-- CUOTAS VENCIDAS -->
 <?php if (!empty($vencidas)): ?>
     <div class="card-ic mb-4">
-        <div class="card-ic-header">
-            <span class="card-title"><i class="fa fa-fire" style="color:var(--danger)"></i> Cuotas Vencidas
+        <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-vencidas', 'icon-vencidas')">
+            <span class="card-title">
+                <i class="fa fa-chevron-down" id="icon-vencidas" style="transition: transform 0.2s; margin-right: 6px;"></i>
+                <i class="fa fa-fire" style="color:var(--danger)"></i> Cuotas Vencidas
                 <span class="badge-ic badge-danger" style="margin-left:8px">
                     <?= count($vencidas) ?>
                 </span>
             </span>
         </div>
-        <div class="agenda-header">
-            <span>Cliente</span><span>Importe</span><span>Cobro</span><span>Vencimiento</span><span>Acciones</span>
+
+        <div id="col-vencidas" style="display: block;">
+            <?= render_tabla_cuotas($vencidas, 'Vencidas', 'danger') ?>
         </div>
-        <?= render_tabla_cuotas($vencidas, 'Vencidas', 'danger') ?>
+    </div>
+<?php endif; ?>
+
+<!-- COBRADOS HOY -->
+<?php if (!empty($cobrados_hoy)): ?>
+    <div class="card-ic mb-4">
+        <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-cobrados', 'icon-cobrados')">
+            <span class="card-title">
+                <i class="fa fa-chevron-right" id="icon-cobrados" style="transition: transform 0.2s; margin-right: 6px;"></i>
+                <i class="fa fa-hand-holding-dollar" style="color:var(--primary)"></i> Cobrados Hoy
+                <span class="badge-ic badge-primary" style="margin-left:8px">
+                    <?= count($cobrados_hoy) ?>
+                </span>
+            </span>
+        </div>
+
+        <div id="col-cobrados" style="display: none;">
+            <?= render_tabla_cuotas($cobrados_hoy, 'Cobrados Hoy', 'primary') ?>
+        </div>
     </div>
 <?php endif; ?>
 
@@ -466,9 +520,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     Sin cuotas asignadas para <?= $nombre ?>.
                 </p>
             <?php else: ?>
-                <div class="agenda-header" style="background:rgba(255,255,255,.02)">
-                    <span>Cliente</span><span>Importe</span><span>Cobro</span><span>Vencimiento</span><span>Acciones</span>
-                </div>
+
                 <?= render_tabla_cuotas($por_dia[$n], '', '') ?>
                 
                 <!-- Totales pie de panel -->
@@ -525,103 +577,86 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 <?php
 $page_scripts = <<<'JS'
 <style>
-/* ── Agenda filas ────────────────────────────────────────────── */
-.agenda-row {
-    display: grid;
-    grid-template-columns: 1fr auto auto auto auto;
-    align-items: center;
-    gap: 0 16px;
-    padding: 10px 16px;
-    border-bottom: 1px solid rgba(255,255,255,.06);
-    transition: background .15s;
+/* ── Agenda Cards Responsivas ─────────────────────── */
+.agenda-list-group { margin: 0 -16px; border-radius: 0; }
+.list-group-item.agenda-card {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    padding: 16px;
+    transition: background .2s;
 }
-.agenda-row:hover            { background: rgba(255,255,255,.04); }
-.agenda-row--vencida         { border-left: 3px solid var(--danger); }
+.list-group-item.agenda-card:last-child { border-bottom: none; }
+.list-group-item.agenda-card--vencida { border-left: 4px solid var(--danger); background: rgba(220,53,69,.04) !important; }
+.list-group-item.agenda-card:hover { background: rgba(255,255,255,.04); }
 
-/* Cliente */
+.agenda-card-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 12px;
+}
 .agenda-cliente-btn {
-    background: none; border: none; cursor: pointer;
-    text-align: left; padding: 0; color: inherit;
-    display: flex; flex-direction: column; gap: 2px;
+    background: transparent; border: none; padding: 0; text-align: left;
+    color: inherit; display: flex; flex-direction: column; cursor: pointer;
 }
 .agenda-nombre {
-    font-weight: 700; font-size: .9rem;
-    color: var(--primary); text-decoration: underline dotted;
+    font-size: 1.1rem; font-weight: 800; color: var(--primary);
+    line-height: 1.2; margin-bottom: 4px; text-decoration: underline dotted;
     text-underline-offset: 2px;
 }
-.agenda-zona  { font-size: .72rem; color: var(--text-muted); }
+.agenda-zona { font-size: 0.8rem; color: var(--text-muted); }
+.agenda-badge-danger {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px;
+    background: rgba(220,53,69,.15); color: var(--danger); font-size: .75rem;
+    border-radius: 4px; font-weight: 700; margin-top: 6px;
+}
 .agenda-articulo {
-    margin-top: 6px; font-size: .8rem;
-    color: var(--warning); display: flex; align-items: center; gap: 6px;
-    padding: 4px 8px; background: rgba(255,255,255,.05);
-    border-radius: 6px; width: fit-content;
+    margin-top: 8px; font-size: .85rem; color: var(--warning); display: flex; align-items: center; gap: 6px;
+    background: rgba(255,193,7,.1); padding: 6px 10px; border-radius: 6px; width: fit-content;
 }
 
-/* Importe */
-.agenda-col--importe  { text-align: right; white-space: nowrap; }
-.agenda-monto         { font-weight: 700; font-size: .95rem; display: block; }
-.agenda-cuota-num     { font-size: .72rem; color: var(--text-muted); display: block; }
-.agenda-mora          { font-size: .72rem; color: var(--danger); display: block; font-weight: 600; }
+.agenda-card-amounts { text-align: right; }
+.agenda-monto { font-size: 1.15rem; font-weight: 800; display: block; }
+.agenda-cuota-num { font-size: 0.8rem; color: var(--text-muted); display: block; }
+.agenda-mora { font-size: 0.85rem; color: var(--danger); font-weight: 700; display: block; margin-top: 2px; }
 
-/* Cobro inline */
-.agenda-cobro-wrap {
-    display: flex; align-items: center; gap: 4px;
-}
+/* Thumb zones (Botones de Cobro) */
+.agenda-cobro-wrap { display: flex; align-items: stretch; gap: 8px; }
 .agenda-cobro-input {
-    width: 90px; padding: 5px 8px; border-radius: 6px;
-    border: 1px solid rgba(255,255,255,.15);
-    background: rgba(255,255,255,.07); color: inherit;
-    font-size: .82rem; text-align: right;
+    min-height: 48px; border-radius: 8px;
+    font-size: 1.15rem; font-weight: 700; text-align: right;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.15);
+    color: inherit;
 }
-.agenda-cobro-input:focus { outline: none; border-color: var(--primary); }
+.agenda-cobro-input:focus { outline: none; border-color: var(--success); }
 .agenda-cobro-btn {
-    width: 30px; height: 30px; border-radius: 6px;
-    border: none; background: var(--success); color: #fff;
-    cursor: pointer; font-size: .85rem; display: flex;
-    align-items: center; justify-content: center;
+    min-height: 48px; padding: 0 16px; font-weight: 700; display: flex;
+    align-items: center; justify-content: center; border-radius: 8px;
+    background: var(--success); color: #fff; border: none; cursor: pointer;
     transition: opacity .15s;
 }
 .agenda-cobro-btn:hover { opacity: .85; }
-
-/* Vencimiento */
-.agenda-col--vencim { text-align: right; white-space: nowrap; }
-.agenda-fecha       { font-size: .85rem; display: block; }
-.agenda-relativa    { font-size: .72rem; display: block; }
-
-/* Acciones */
-.agenda-col--acciones { display: flex; gap: 6px; }
-.agenda-action        { font-size: .9rem !important; }
-
-/* Header de columnas */
-.agenda-header {
-    display: grid;
-    grid-template-columns: 1fr auto auto auto auto;
-    gap: 0 16px;
-    padding: 8px 16px;
-    font-size: .72rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .05em; color: var(--text-muted);
-    border-bottom: 1px solid rgba(255,255,255,.1);
-}
-
-/* ── Responsive agenda ≤768px ─────────────────────────────── */
-@media (max-width: 768px) {
-    .agenda-header { display: none; }
-    .agenda-row {
-        grid-template-columns: 1fr auto;
-        grid-template-rows: auto auto auto;
-        row-gap: 6px;
-        padding: 10px 12px;
-    }
-    .agenda-col--cliente  { grid-column: 1; grid-row: 1; }
-    .agenda-col--importe  { grid-column: 2; grid-row: 1; text-align: right; }
-    .agenda-col--cobro    { grid-column: 1; grid-row: 2; }
-    .agenda-col--vencim   { grid-column: 2; grid-row: 2; text-align: right; }
-    .agenda-col--acciones { grid-column: 1 / 3; grid-row: 3; }
-}
 </style>
 
 <script>
 let cuota_mora = 0;
+
+function toggleCollapse(colId, iconId) {
+    const col = document.getElementById(colId);
+    const icon = document.getElementById(iconId);
+    if (col.style.display === 'none') {
+        col.style.display = 'block';
+        if (icon) {
+            icon.classList.remove('fa-chevron-right');
+            icon.classList.add('fa-chevron-down');
+        }
+    } else {
+        col.style.display = 'none';
+        if (icon) {
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-right');
+        }
+    }
+}
 
 // Abre modal de pago (desde lista diaria — sin input inline)
 function abrirPago(c) {
