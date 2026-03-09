@@ -98,18 +98,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id,
             ]);
 
-            // Regenerar cuotas solo si no hay pagos
+            $monto_cuota = round($monto_tot / $cant_cuotas, 2);
+            $pdo->prepare("UPDATE ic_creditos SET monto_cuota=? WHERE id=?")->execute([$monto_cuota, $id]);
+
             if ($cuotas_pagadas == 0) {
+                // Sin pagos: eliminar todo y regenerar desde cero
                 $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id=?")->execute([$id]);
-                $monto_cuota = round($monto_tot / $cant_cuotas, 2);
-                $pdo->prepare("UPDATE ic_creditos SET monto_cuota=? WHERE id=?")
-                    ->execute([$monto_cuota, $id]);
                 generar_cuotas($id, [
                     'primer_vencimiento' => $v['primer_vencimiento'],
                     'cant_cuotas'        => $cant_cuotas,
                     'frecuencia'         => $v['frecuencia'],
                     'monto_cuota'        => $monto_cuota,
                 ], $pdo);
+            } else {
+                // Con pagos: recalcular fechas y monto de cuotas no pagadas
+                $cuotas_all = $pdo->prepare("SELECT id, estado FROM ic_cuotas WHERE credito_id=? ORDER BY numero_cuota");
+                $cuotas_all->execute([$id]);
+                $todas_cuotas = $cuotas_all->fetchAll();
+
+                $fecha_calc    = new DateTime($v['primer_vencimiento']);
+                $upd_fecha     = $pdo->prepare("UPDATE ic_cuotas SET fecha_vencimiento=? WHERE id=?");
+                $upd_fecha_mon = $pdo->prepare("UPDATE ic_cuotas SET fecha_vencimiento=?, monto_cuota=? WHERE id=?");
+                foreach ($todas_cuotas as $idx => $c) {
+                    if ($idx > 0) {
+                        switch ($v['frecuencia']) {
+                            case 'semanal':   $fecha_calc->modify('+7 days');  break;
+                            case 'quincenal': $fecha_calc->modify('+15 days'); break;
+                            case 'mensual':   $fecha_calc->modify('+1 month'); break;
+                        }
+                    }
+                    if (in_array($c['estado'], ['PAGADA', 'PARCIAL'])) {
+                        // Solo ajusta fecha; no toca el monto ya pagado
+                        $upd_fecha->execute([$fecha_calc->format('Y-m-d'), $c['id']]);
+                    } else {
+                        $upd_fecha_mon->execute([$fecha_calc->format('Y-m-d'), $monto_cuota, $c['id']]);
+                    }
+                }
             }
 
             $pdo->commit();
@@ -234,7 +258,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <input type="date" name="primer_vencimiento"
                            value="<?= $v['primer_vencimiento'] ?>" required>
                     <?php if ($cuotas_pagadas > 0): ?>
-                        <small class="text-muted">Cambiar esta fecha no reordena las cuotas existentes.</small>
+                        <small class="text-muted">Cambiar esta fecha reajusta las fechas de todas las cuotas (incluidas las ya pagadas).</small>
                     <?php endif; ?>
                 </div>
 
