@@ -70,7 +70,7 @@ $totales_monto   = array_sum(array_column($creditos, 'monto_total'));
 $totales_saldo   = array_sum(array_column($creditos, 'saldo_pendiente'));
 
 function fmt_p(float $v): string {
-    return '$ ' . number_format($v, 2, ',', '.');
+    return '$ ' . number_format($v, 0, ',', '.');
 }
 $estados_label = ['EN_CURSO' => 'En Curso', 'FINALIZADO' => 'Finalizado', 'MOROSO' => 'Moroso', 'CANCELADO' => 'Cancelado'];
 ?>
@@ -209,12 +209,12 @@ $estados_label = ['EN_CURSO' => 'En Curso', 'FINALIZADO' => 'Finalizado', 'MOROS
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($creditos as $cr):
+            <?php foreach ($creditos as $index => $cr):
                 $avance = $cr['cant_cuotas'] > 0 ? round($cr['cuotas_pagadas'] / $cr['cant_cuotas'] * 100) : 0;
                 $est_lc = strtolower($cr['estado']);
             ?>
             <tr>
-                <td class="text-muted">#<?= $cr['id'] ?></td>
+                <td class="text-muted">#<?= $index + 1 ?></td>
                 <td>
                     <span class="fw-bold"><?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?></span><br>
                     <span class="text-muted"><?= e($cr['telefono']) ?></span>
