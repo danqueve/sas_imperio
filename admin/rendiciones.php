@@ -38,6 +38,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             registrar_log($pdo, $_SESSION['user_id'], 'PAGO_RECHAZADO', 'pago_temporal', $pago_id);
             $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Pago rechazado.'];
         }
+    } elseif ($accion === 'editar_pago' && !empty($_POST['pago_id'])) {
+        $pago_id = (int) $_POST['pago_id'];
+        $ef      = (float) ($_POST['monto_efectivo'] ?? 0);
+        $tr      = (float) ($_POST['monto_transferencia'] ?? 0);
+        $total   = $ef + $tr;
+        if ($ef < 0 || $tr < 0 || $total <= 0) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Montos inválidos.'];
+        } else {
+            $pdo->prepare("UPDATE ic_pagos_temporales SET monto_efectivo=?, monto_transferencia=?, monto_total=? WHERE id=? AND estado='PENDIENTE'")
+                ->execute([$ef, $tr, $total, $pago_id]);
+            registrar_log($pdo, $_SESSION['user_id'], 'PAGO_EDITADO', 'pago_temporal', $pago_id,
+                'Ef: ' . formato_pesos($ef) . ' | Tr: ' . formato_pesos($tr));
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago actualizado correctamente.'];
+        }
     } elseif ($accion === 'solicitar_baja_temporal' && !empty($_POST['pago_id'])) {
         $pago_id = (int) $_POST['pago_id'];
         $motivo  = trim($_POST['motivo'] ?? '');
@@ -214,7 +228,11 @@ require_once __DIR__ . '/../views/layout.php';
                                         <?= formato_pesos($p['monto_mora_cobrada']) ?>
                                     </td>
                                     <td class="nowrap fw-bold"><?= formato_pesos($p['monto_total']) ?></td>
-                                    <td class="no-print">
+                                    <td class="no-print" style="display:flex;gap:4px;align-items:center">
+                                        <button onclick="abrirEditarPago(<?= $p['id'] ?>, <?= (float)$p['monto_efectivo'] ?>, <?= (float)$p['monto_transferencia'] ?>)"
+                                            class="btn-ic btn-ghost btn-sm" title="Editar montos">
+                                            <i class="fa fa-pencil"></i>
+                                        </button>
                                         <?php if (es_admin()): ?>
                                             <form method="POST" style="display:inline">
                                                 <input type="hidden" name="accion" value="rechazar">
@@ -308,17 +326,72 @@ require_once __DIR__ . '/../views/layout.php';
         </form>
     </div>
 </div>
+<?php endif; ?>
+
+<!-- MODAL EDITAR PAGO (admin + supervisor) -->
+<div class="modal-overlay" id="modal-editar-pago">
+    <div class="modal-box" style="max-width:420px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-pencil"></i> Editar Pago</div>
+            <button class="modal-close" onclick="closeModal('modal-editar-pago')">✕</button>
+        </div>
+        <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:14px">
+            Corregí la distribución entre efectivo y transferencia. El total se recalcula automáticamente.
+        </p>
+        <form method="POST" class="form-ic">
+            <input type="hidden" name="accion" value="editar_pago">
+            <input type="hidden" name="pago_id" id="edit_pago_id">
+            <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
+            <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Efectivo $</label>
+                    <input type="number" name="monto_efectivo" id="edit_efectivo"
+                        step="0.01" min="0" value="0" oninput="actualizarEditTotal()">
+                </div>
+                <div class="form-group">
+                    <label>Transferencia $</label>
+                    <input type="number" name="monto_transferencia" id="edit_transfer"
+                        step="0.01" min="0" value="0" oninput="actualizarEditTotal()">
+                </div>
+            </div>
+            <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <span class="text-muted">Total:</span>
+                <span id="edit_total_display" style="font-size:1.15rem;font-weight:800;color:var(--success)">$ 0,00</span>
+            </div>
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-primary w-100" style="justify-content:center">
+                    <i class="fa fa-save"></i> Guardar Cambios
+                </button>
+                <button type="button" onclick="closeModal('modal-editar-pago')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <?php
-$page_scripts = <<<'JS'
-<script>
-function abrirSolBajaTemp(pago_id) {
-    document.getElementById('sol_temp_id').value = pago_id;
-    openModal('modal-sol-baja-temp');
+$page_scripts = '<script>
+function abrirEditarPago(pago_id, ef, tr) {
+    document.getElementById("edit_pago_id").value = pago_id;
+    document.getElementById("edit_efectivo").value = ef.toFixed(2);
+    document.getElementById("edit_transfer").value = tr.toFixed(2);
+    actualizarEditTotal();
+    openModal("modal-editar-pago");
 }
-</script>
-JS;
+function actualizarEditTotal() {
+    const ef = parseFloat(document.getElementById("edit_efectivo").value) || 0;
+    const tr = parseFloat(document.getElementById("edit_transfer").value) || 0;
+    document.getElementById("edit_total_display").textContent = formatPesos(ef + tr);
+}
+</script>';
+if (es_supervisor() && !es_admin()) {
+    $page_scripts .= '<script>
+function abrirSolBajaTemp(pago_id) {
+    document.getElementById("sol_temp_id").value = pago_id;
+    openModal("modal-sol-baja-temp");
+}
+</script>';
+}
 ?>
-<?php endif; ?>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>

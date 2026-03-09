@@ -62,8 +62,18 @@ $total_general       = array_sum(array_column($detalle_pagos, 'monto_total'));
             color: var(--text-color);
             line-height: 1.5;
             margin: 0;
-            padding: 40px;
+            padding: 20px;
+            background: #e5e7eb;
+            display: flex;
+            justify-content: center;
+        }
+        .a4-page {
             background: #fff;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 15mm;
+            box-sizing: border-box;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .header {
             display: flex;
@@ -143,12 +153,24 @@ $total_general       = array_sum(array_column($detalle_pagos, 'monto_total'));
         }
 
         @media print {
-            body { padding: 0; margin: 0; }
-            @page { margin: 1.5cm; }
+            body { 
+                padding: 0; 
+                margin: 0; 
+                background: #fff;
+                display: block; 
+            }
+            .a4-page {
+                width: 100%;
+                min-height: auto;
+                box-shadow: none;
+                padding: 0;
+            }
+            @page { margin: 15mm; size: A4 portrait; }
         }
     </style>
 </head>
 <body>
+<div class="a4-page">
 
     <div class="header">
         <div>
@@ -225,6 +247,7 @@ $total_general       = array_sum(array_column($detalle_pagos, 'monto_total'));
         </div>
     <?php endif; ?>
 
+</div>
     <script>
         // Auto-print removed per user request
     </script>

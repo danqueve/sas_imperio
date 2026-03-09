@@ -77,8 +77,18 @@ foreach ($rows as $r) {
             color: var(--text-color);
             line-height: 1.4;
             margin: 0;
-            padding: 40px;
+            padding: 20px;
+            background: #e5e7eb;
+            display: flex;
+            justify-content: center;
+        }
+        .a4-page {
             background: #fff;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 10mm 15mm;
+            box-sizing: border-box;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .header {
             display: flex;
@@ -158,15 +168,27 @@ foreach ($rows as $r) {
         }
 
         @media print {
-            body { padding: 0; margin: 0; }
-            @page { margin: 1cm; }
-            /* Salto de página opcional entre días muy largos, o evitar que se corte una fila a la mitad */
+            body { 
+                padding: 0; 
+                margin: 0; 
+                background: #fff;
+                display: block; 
+            }
+            .a4-page {
+                width: 100%;
+                min-height: auto;
+                box-shadow: none;
+                padding: 0;
+            }
+            @page { margin: 10mm; size: A4 portrait; }
+            /* Salto de página opcional entre días muy largos */
             tr { page-break-inside: avoid; }
             .day-section { page-break-inside: avoid; }
         }
     </style>
 </head>
 <body>
+<div class="a4-page">
 
     <div class="header">
         <div>
@@ -229,6 +251,7 @@ foreach ($rows as $r) {
         </div>
     <?php endforeach; ?>
 
+</div>
     <script>
         // Auto-print removed per user request
     </script>

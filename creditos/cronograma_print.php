@@ -52,8 +52,19 @@ $total_cuotas = count($lista_cuotas);
             color: var(--text-color);
             line-height: 1.4;
             margin: 0;
-            padding: 40px;
+            padding: 20px;
+            background: #e5e7eb; /* Fondo gris tipo escritorio */
+            display: flex;
+            justify-content: center;
+        }
+        /* Contenedor que simula hoja A4 */
+        .a4-page {
             background: #fff;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 15mm;
+            box-sizing: border-box;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .header {
             display: flex;
@@ -149,14 +160,26 @@ $total_cuotas = count($lista_cuotas);
         }
 
         @media print {
-            body { padding: 0; margin: 0; }
-            @page { margin: 1cm; }
+            body { 
+                padding: 0; 
+                margin: 0; 
+                background: #fff;
+                display: block; 
+            }
+            .a4-page {
+                width: 100%;
+                min-height: auto;
+                box-shadow: none;
+                padding: 0;
+            }
+            @page { margin: 10mm; size: A4 portrait; }
             .info-grid { background: white !important; border: 1px solid #000 !important; }
             th { border-bottom: 2px solid #000 !important; }
         }
     </style>
 </head>
 <body>
+<div class="a4-page">
 
     <div class="header">
         <div>
@@ -263,6 +286,7 @@ $total_cuotas = count($lista_cuotas);
     </div>
     <?php endif; ?>
 
+</div> <!-- end a4-page -->
     <script>
         // Auto-print removed per user request
     </script>
