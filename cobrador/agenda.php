@@ -205,6 +205,40 @@ foreach ($semana_rows as $r) {
 }
 $nombres_dia = [1=>'Lunes',2=>'Martes',3=>'Miércoles',4=>'Jueves',5=>'Viernes',6=>'Sábado'];
 
+// ── Cuotas quincenales y mensuales ────────────────────────────
+$mensual_stmt = $pdo->prepare("
+    SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
+           cr.cant_cuotas,
+           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
+           COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
+    FROM ic_cuotas cu
+    JOIN ic_creditos cr ON cu.credito_id = cr.id
+    JOIN ic_clientes cl ON cr.cliente_id = cl.id
+    LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
+    WHERE cu.estado IN ('PENDIENTE', 'VENCIDA')
+      AND cr.estado = 'EN_CURSO'
+      AND cr.frecuencia IN ('quincenal', 'mensual')
+      AND cr.cobrador_id = ?
+    ORDER BY cu.fecha_vencimiento ASC, cl.apellidos ASC
+");
+$mensual_stmt->execute([$cobrador_filtro]);
+$mensual_rows_raw = $mensual_stmt->fetchAll();
+
+$mensual_rows = [];
+foreach ($mensual_rows_raw as $r) {
+    if ($q_busca !== '' && !str_contains(strtolower($r['apellidos'] . ' ' . $r['nombres']), strtolower($q_busca)))
+        continue;
+    $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
+    $mora        = calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
+    $r['dias_atraso_calc'] = $dias_atraso;
+    $r['mora_calc']        = $mora;
+    $r['total_a_cobrar']   = $r['monto_cuota'] + $mora;
+    $r['pago_pen']         = (int)($r['pago_pen'] ?? 0);
+    $r['cuotas_atrasadas'] = 0;
+    $mensual_rows[] = $r;
+}
+
 $page_title = 'Agenda del ' . $hoy_dt->format('d/m/Y');
 $page_current = 'agenda';
 require_once __DIR__ . '/../views/layout.php';
@@ -535,6 +569,81 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
     <?php endforeach; ?>
 </div>
 
+<!-- ── CRÉDITOS QUINCENALES Y MENSUALES ──────────────────────── -->
+<?php if (!empty($mensual_rows)): ?>
+<div class="card-ic mb-4">
+    <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-mensual', 'icon-mensual')">
+        <span class="card-title">
+            <i class="fa fa-chevron-down" id="icon-mensual" style="transition: transform 0.2s; margin-right: 6px;"></i>
+            <i class="fa fa-calendar-alt" style="color:var(--primary)"></i> Quincenales y Mensuales
+            <span class="badge-ic badge-primary" style="margin-left:8px">
+                <?= count($mensual_rows) ?>
+            </span>
+        </span>
+        <span class="text-muted" style="font-size:.82rem">
+            <?= count(array_filter($mensual_rows, fn($r) => $r['dias_atraso_calc'] > 0)) ?> vencida(s)
+        </span>
+    </div>
+    <div id="col-mensual">
+        <!-- Tabs quincenal / mensual -->
+        <?php
+        $tab_quincenal = array_values(array_filter($mensual_rows, fn($r) => $r['frecuencia'] === 'quincenal'));
+        $tab_mensual   = array_values(array_filter($mensual_rows, fn($r) => $r['frecuencia'] === 'mensual'));
+        ?>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;padding:12px 16px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+            <button onclick="switchTabMensual('quincenal')" id="tab-quincenal"
+                class="btn-ic btn-sm <?= !empty($tab_quincenal) ? 'btn-primary' : 'btn-ghost' ?>"
+                style="position:relative">
+                Quincenal
+                <?php if (!empty($tab_quincenal)): ?>
+                    <span style="position:absolute;top:-6px;right:-6px;background:var(--primary);color:#fff;border-radius:50%;width:18px;height:18px;font-size:.65rem;display:flex;align-items:center;justify-content:center;font-weight:700">
+                        <?= count($tab_quincenal) ?>
+                    </span>
+                <?php endif; ?>
+            </button>
+            <button onclick="switchTabMensual('mensual')" id="tab-mensual"
+                class="btn-ic btn-sm <?= empty($tab_quincenal) ? 'btn-primary' : 'btn-ghost' ?>"
+                style="position:relative">
+                Mensual
+                <?php if (!empty($tab_mensual)): ?>
+                    <span style="position:absolute;top:-6px;right:-6px;background:var(--primary);color:#fff;border-radius:50%;width:18px;height:18px;font-size:.65rem;display:flex;align-items:center;justify-content:center;font-weight:700">
+                        <?= count($tab_mensual) ?>
+                    </span>
+                <?php endif; ?>
+            </button>
+        </div>
+
+        <div id="panel-quincenal" style="display:<?= !empty($tab_quincenal) ? 'block' : 'none' ?>">
+            <?php if (empty($tab_quincenal)): ?>
+                <p class="text-muted text-center" style="padding:24px">Sin cuotas quincenales pendientes.</p>
+            <?php else: ?>
+                <?= render_tabla_cuotas($tab_quincenal, '', '') ?>
+                <div style="padding:16px;text-align:right;border-top:1px solid rgba(255,255,255,.1)">
+                    <span class="text-muted" style="margin-right:16px;font-size:.85rem">Total quincenal:</span>
+                    <span style="font-size:1.1rem;font-weight:700;color:var(--success)">
+                        <?= formato_pesos(array_sum(array_column($tab_quincenal, 'total_a_cobrar'))) ?>
+                    </span>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <div id="panel-mensual" style="display:<?= empty($tab_quincenal) ? 'block' : 'none' ?>">
+            <?php if (empty($tab_mensual)): ?>
+                <p class="text-muted text-center" style="padding:24px">Sin cuotas mensuales pendientes.</p>
+            <?php else: ?>
+                <?= render_tabla_cuotas($tab_mensual, '', '') ?>
+                <div style="padding:16px;text-align:right;border-top:1px solid rgba(255,255,255,.1)">
+                    <span class="text-muted" style="margin-right:16px;font-size:.85rem">Total mensual:</span>
+                    <span style="font-size:1.1rem;font-weight:700;color:var(--success)">
+                        <?= formato_pesos(array_sum(array_column($tab_mensual, 'total_a_cobrar'))) ?>
+                    </span>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- MODAL REGISTRAR PAGO -->
 <div class="modal-overlay" id="modal-pago">
     <div class="modal-box">
@@ -696,6 +805,19 @@ function actualizarTotal() {
 function toggleArticulo(id) {
   const el = document.getElementById('art-' + id);
   if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+function switchTabMensual(tab) {
+  ['quincenal','mensual'].forEach(t => {
+    const panel = document.getElementById('panel-' + t);
+    const btn   = document.getElementById('tab-' + t);
+    if (panel) panel.style.display = 'none';
+    if (btn)   { btn.classList.remove('btn-primary'); btn.classList.add('btn-ghost'); }
+  });
+  const sel = document.getElementById('panel-' + tab);
+  const selBtn = document.getElementById('tab-' + tab);
+  if (sel) sel.style.display = 'block';
+  if (selBtn) { selBtn.classList.remove('btn-ghost'); selBtn.classList.add('btn-primary'); }
 }
 
 function switchDia(n) {
