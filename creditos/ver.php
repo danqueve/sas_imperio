@@ -293,7 +293,7 @@ require_once __DIR__ . '/../views/layout.php';
                         <th>Mora</th>
                         <th>Total a Pagar</th>
                         <th>Estado</th>
-                        <th>Pago</th>
+                        <th>Pagado</th>
                         <?php if (es_admin() || es_supervisor()): ?>
                         <th></th>
                         <?php endif; ?>
@@ -330,9 +330,14 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= $q['mora_calc'] > 0 ? formato_pesos($q['mora_calc']) : '—' ?>
                             </td>
                             <td class="nowrap fw-bold">
-                                <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
-                                <?php if ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
+                                <?php if ($q['estado'] === 'PAGADA'): ?>
+                                    <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
+                                <?php elseif ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
+                                    <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
+                                    <br><span class="text-success" style="font-size:.70rem;font-weight:normal">A favor: <?= formato_pesos($q['saldo_pagado']) ?></span>
                                     <br><span class="text-warning" style="font-size:.70rem;">Resta: <?= formato_pesos(max(0, ($q['monto_cuota'] + $q['mora_calc']) - $q['saldo_pagado'])) ?></span>
+                                <?php else: ?>
+                                    <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -346,7 +351,17 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?php endif; ?>
                             </td>
                             <td class="nowrap">
-                                <?= $q['fecha_pago'] ? date('d/m/Y', strtotime($q['fecha_pago'])) : '—' ?>
+                                <?php if ($q['estado'] === 'PAGADA' && !empty($q['saldo_pagado'])): ?>
+                                    <span class="text-success fw-bold"><?= formato_pesos($q['saldo_pagado']) ?></span>
+                                    <?php if ($q['fecha_pago']): ?>
+                                        <br><span class="text-muted" style="font-size:.75rem"><?= date('d/m/Y', strtotime($q['fecha_pago'])) ?></span>
+                                    <?php endif; ?>
+                                <?php elseif ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
+                                    <span class="text-warning fw-bold"><?= formato_pesos($q['saldo_pagado']) ?></span>
+                                    <br><span class="text-muted" style="font-size:.75rem">a cuenta</span>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
                             </td>
                             <?php if (es_admin() || es_supervisor()): ?>
                             <td class="nowrap" style="display:flex;gap:4px;align-items:center">
