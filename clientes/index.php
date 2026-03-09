@@ -262,56 +262,39 @@ if (searchInput) {
     searchInput.addEventListener('input', function() {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
-            // Mostrar indicador de carga opcional
             const tbody = document.querySelector('tbody');
-            if(tbody) tbody.style.opacity = '0.5';
+            if (tbody) tbody.style.opacity = '0.5';
 
-            const formData = new FormData(filterForm);
-            const params = new URLSearchParams(formData);
-            
-            // Forzar página 1 en cada nueva búsqueda en vivo
+            const params = new URLSearchParams(new FormData(filterForm));
             params.set('page', '1');
-            params.append('ajax', '1');
 
             fetch('?' + params.toString())
                 .then(r => r.text())
                 .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    
-                    // Reemplazar tabla
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+
                     const newTbody = doc.querySelector('tbody');
-                    if(newTbody && tbody) {
+                    if (newTbody && tbody) {
                         tbody.innerHTML = newTbody.innerHTML;
                         tbody.style.opacity = '1';
                     }
-                    
-                    // Reemplazar paginación
+
                     const oldPagination = document.querySelector('.pagination');
                     const newPagination = doc.querySelector('.pagination');
-                    
-                    if(oldPagination && newPagination) {
+                    if (oldPagination && newPagination) {
                         oldPagination.innerHTML = newPagination.innerHTML;
                     } else if (newPagination && !oldPagination) {
                         document.querySelector('.card-ic').appendChild(newPagination);
                     } else if (oldPagination && !newPagination) {
                         oldPagination.remove();
                     }
-                    
-                    // Actualizar contador
+
                     const oldCounter = document.querySelector('.card-ic-header .text-muted');
                     const newCounter = doc.querySelector('.card-ic-header .text-muted');
-                    if(oldCounter && newCounter) {
-                        oldCounter.innerHTML = newCounter.innerHTML;
-                    }
-                    
-                    // Re-asignar eventos a botones si es necesario (el JS actual de layout.php delega eventos generalmente, pero por las dudas)
+                    if (oldCounter && newCounter) oldCounter.innerHTML = newCounter.innerHTML;
                 })
-                .catch(err => {
-                    console.error("Error en búsqueda en vivo:", err);
-                    if(tbody) tbody.style.opacity = '1';
-                });
-        }, 400); // Esperar 400ms después de que termine de teclear
+                .catch(() => { if (tbody) tbody.style.opacity = '1'; });
+        }, 400);
     });
 }
 </script>
