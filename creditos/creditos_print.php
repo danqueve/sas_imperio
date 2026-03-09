@@ -42,7 +42,8 @@ $stmt = $pdo->prepare("
            u.nombre AS cobrador_n, u.apellido AS cobrador_a,
            (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA')    AS cuotas_pagadas,
            (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado!='PAGADA')   AS cuotas_pendientes,
-           (SELECT SUM(monto_cuota) FROM ic_cuotas WHERE credito_id=cr.id AND estado NOT IN ('PAGADA'))  AS saldo_pendiente
+           (SELECT SUM(monto_cuota) FROM ic_cuotas WHERE credito_id=cr.id AND estado NOT IN ('PAGADA'))  AS saldo_pendiente,
+           (SELECT GREATEST(0, DATEDIFF(CURDATE(), MIN(fecha_vencimiento))) FROM ic_cuotas WHERE credito_id=cr.id AND estado IN ('PENDIENTE', 'VENCIDA')) AS dias_atraso
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
@@ -204,7 +205,7 @@ $estados_label = ['EN_CURSO' => 'En Curso', 'FINALIZADO' => 'Finalizado', 'MOROS
                 <th>Frec.</th>
                 <th class="text-center">Avance</th>
                 <th class="text-right">Saldo Pend.</th>
-                <th>Estado</th>
+                <th class="text-center">Atraso</th>
             </tr>
         </thead>
         <tbody>
@@ -230,7 +231,22 @@ $estados_label = ['EN_CURSO' => 'En Curso', 'FINALIZADO' => 'Finalizado', 'MOROS
                 <td class="text-right <?= ($cr['saldo_pendiente'] ?? 0) > 0 ? '' : 'text-muted' ?>">
                     <?= fmt_p((float)($cr['saldo_pendiente'] ?? 0)) ?>
                 </td>
-                <td><span class="badge badge-<?= $est_lc ?>"><?= $estados_label[$cr['estado']] ?? $cr['estado'] ?></span></td>
+                <td class="text-center">
+                    <?php 
+                    if ($cr['estado'] === 'FINALIZADO') {
+                        echo '<span class="text-muted">Finalizado</span>';
+                    } elseif ($cr['estado'] === 'CANCELADO') {
+                        echo '<span class="text-muted">Cancelado</span>';
+                    } else {
+                        $dias = (int)($cr['dias_atraso'] ?? 0);
+                        if ($dias > 0) {
+                            echo "<span class='badge badge-moroso'>{$dias} días</span>";
+                        } else {
+                            echo "<span class='text-muted'>Al día</span>";
+                        }
+                    }
+                    ?>
+                </td>
             </tr>
             <?php endforeach; ?>
         </tbody>
