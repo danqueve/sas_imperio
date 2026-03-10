@@ -136,13 +136,18 @@ try {
         $cuotas_ok++;
     }
 
-    // Verificar si el crédito quedó completamente pagado
-    $check = $pdo->prepare("SELECT COUNT(*) FROM ic_cuotas WHERE credito_id = ? AND estado != 'PAGADA'");
+    // Recalcular estado del crédito (FINALIZADO / MOROSO / EN_CURSO)
+    $check = $pdo->prepare("
+        SELECT SUM(CASE WHEN estado != 'PAGADA' THEN 1 ELSE 0 END) AS pendientes,
+               SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) AS vencidas
+        FROM ic_cuotas WHERE credito_id = ?
+    ");
     $check->execute([$credito_id]);
-    if ((int) $check->fetchColumn() === 0) {
-        $pdo->prepare("UPDATE ic_creditos SET estado='FINALIZADO' WHERE id=?")
-            ->execute([$credito_id]);
-    }
+    $counts = $check->fetch(PDO::FETCH_ASSOC);
+    if ((int)$counts['pendientes'] === 0)    $nuevo_cr_estado = 'FINALIZADO';
+    elseif ((int)$counts['vencidas'] > 0)    $nuevo_cr_estado = 'MOROSO';
+    else                                     $nuevo_cr_estado = 'EN_CURSO';
+    $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")->execute([$nuevo_cr_estado, $credito_id]);
 
     $pdo->commit();
 

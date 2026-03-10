@@ -119,15 +119,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'frecuencia'         => $v['frecuencia'],
                     'monto_cuota'        => $monto_cuota,
                 ], $pdo);
+                // FIX: cuotas regeneradas como PENDIENTE → crédito vuelve a EN_CURSO
+                $pdo->prepare("UPDATE ic_creditos SET estado='EN_CURSO' WHERE id=? AND estado != 'CANCELADO'")
+                    ->execute([$id]);
             } else {
                 // Con pagos: recalcular fechas y monto de cuotas no pagadas
                 $cuotas_all = $pdo->prepare("SELECT id, estado FROM ic_cuotas WHERE credito_id=? ORDER BY numero_cuota");
                 $cuotas_all->execute([$id]);
                 $todas_cuotas = $cuotas_all->fetchAll();
 
+                $hoy_str       = (new DateTime('today'))->format('Y-m-d');
                 $fecha_calc    = new DateTime($v['primer_vencimiento']);
                 $upd_fecha     = $pdo->prepare("UPDATE ic_cuotas SET fecha_vencimiento=? WHERE id=?");
-                $upd_fecha_mon = $pdo->prepare("UPDATE ic_cuotas SET fecha_vencimiento=?, monto_cuota=? WHERE id=?");
+                $upd_fecha_mon = $pdo->prepare("UPDATE ic_cuotas SET fecha_vencimiento=?, monto_cuota=?, estado=? WHERE id=?");
                 foreach ($todas_cuotas as $idx => $c) {
                     if ($idx > 0) {
                         switch ($v['frecuencia']) {
@@ -140,8 +144,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Solo ajusta fecha; no toca el monto ya pagado
                         $upd_fecha->execute([$fecha_calc->format('Y-m-d'), $c['id']]);
                     } else {
-                        $upd_fecha_mon->execute([$fecha_calc->format('Y-m-d'), $monto_cuota, $c['id']]);
+                        $nueva_fecha = $fecha_calc->format('Y-m-d');
+                        // FIX: si la nueva fecha es futura, una cuota VENCIDA vuelve a PENDIENTE
+                        $nuevo_est = ($c['estado'] === 'VENCIDA' && $nueva_fecha > $hoy_str)
+                            ? 'PENDIENTE' : $c['estado'];
+                        $upd_fecha_mon->execute([$nueva_fecha, $monto_cuota, $nuevo_est, $c['id']]);
                     }
+                }
+
+                // FIX: recalcular estado del crédito tras actualizar fechas/estados
+                $cr_est = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");
+                $cr_est->execute([$id]);
+                if ($cr_est->fetchColumn() !== 'CANCELADO') {
+                    $cr_cnt = $pdo->prepare("
+                        SELECT SUM(CASE WHEN estado != 'PAGADA' THEN 1 ELSE 0 END) AS pendientes,
+                               SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) AS vencidas
+                        FROM ic_cuotas WHERE credito_id=?
+                    ");
+                    $cr_cnt->execute([$id]);
+                    $cnts = $cr_cnt->fetch(PDO::FETCH_ASSOC);
+                    if ((int)$cnts['pendientes'] === 0)      $nuevo_cr = 'FINALIZADO';
+                    elseif ((int)$cnts['vencidas'] > 0)      $nuevo_cr = 'MOROSO';
+                    else                                     $nuevo_cr = 'EN_CURSO';
+                    $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")->execute([$nuevo_cr, $id]);
                 }
             }
 
