@@ -103,6 +103,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($cuotas_pagadas == 0) {
                 // Sin pagos: eliminar todo y regenerar desde cero
+                // Primero eliminar dependencias FK antes de borrar cuotas
+                $cuota_ids_stmt = $pdo->prepare("SELECT id FROM ic_cuotas WHERE credito_id=?");
+                $cuota_ids_stmt->execute([$id]);
+                $cuota_ids = $cuota_ids_stmt->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($cuota_ids)) {
+                    $ph = implode(',', array_fill(0, count($cuota_ids), '?'));
+                    $pdo->prepare("DELETE FROM ic_pagos_confirmados WHERE cuota_id IN ($ph)")->execute($cuota_ids);
+                    $pdo->prepare("DELETE FROM ic_pagos_temporales WHERE cuota_id IN ($ph)")->execute($cuota_ids);
+                }
                 $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id=?")->execute([$id]);
                 generar_cuotas($id, [
                     'primer_vencimiento' => $v['primer_vencimiento'],
