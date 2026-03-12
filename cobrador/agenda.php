@@ -168,6 +168,7 @@ $semana_stmt = $pdo->prepare("
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
     FROM ic_clientes cl
     JOIN ic_creditos cr ON cr.cliente_id  = cl.id AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
+                       AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
     LEFT JOIN ic_articulos a ON a.id           = cr.articulo_id
     WHERE cl.dia_cobro BETWEEN 1 AND 6
@@ -304,7 +305,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="form-group mb-4">
+            <div class="form-group mb-3">
                 <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:8px">Días a incluir</label>
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
                     <?php
@@ -318,6 +319,14 @@ require_once __DIR__ . '/../views/layout.php';
                         </label>
                     <?php endforeach; ?>
                 </div>
+            </div>
+            <div class="form-group mb-4">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.9rem;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:8px;border:1px solid rgba(255,255,255,.1)">
+                    <input type="hidden" name="incluir_qm" value="0">
+                    <input type="checkbox" name="incluir_qm" value="1" checked
+                        style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)">
+                    <span>Incluir <strong>Quincenales y Mensuales</strong></span>
+                </label>
             </div>
             <div class="d-flex gap-3">
                 <button type="submit" class="btn-ic btn-primary w-100" style="justify-content:center">

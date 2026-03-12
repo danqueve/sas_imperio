@@ -15,7 +15,16 @@ Este documento resume las actualizaciones y mejoras realizadas en la tercera eta
 - **Condonación de Mora:** Se agregó una nueva funcionalidad para "Condonar Mora" en cuotas con capital pagado. Esto permite al administrador o supervisor dar por saldada la mora congelada, pasando la cuota a estado `PAGADA`.
 - **Cálculos de Deuda:** Se actualizaron los cálculos de "Deuda Capital" y "Mora Acumulada" en los KPIs para reflejar correctamente el impacto de las cuotas en estado `CAP_PAGADA`.
 
-### 3. Correcciones de Compatibilidad
+### 3. Integración con WhatsApp Cloud API (Base)
+- **Infraestructura de Notificaciones:** Se sentaron las bases para el envío de mensajes automáticos mediante la WhatsApp Cloud API de Meta.
+- **Servicios Automatizados:** Se creó `services/WhatsAppService.php` para gestionar la comunicación con Meta.
+- **Notificación de Pago:** El sistema ahora puede enviar una confirmación automática al cliente por WhatsApp cuando el administrador aprueba una rendición (sujeto a configuración en `WA_ENABLED`).
+- **Seguridad:** Se implementó una gestión de credenciales aislada para proteger los tokens de acceso de la API.
+
+### 4. Mejoras en la Agenda del Cobrador
+- **Resaltado de Notas:** Se implementó una función para resaltar automáticamente palabras clave como "IMPORTANTE" o "URGENTE" en los comentarios de los clientes en la agenda diaria, facilitando la lectura crítica del cobrador.
+
+### 5. Correcciones de Compatibilidad
 - **Codificación en PDF:** Se ajustaron los marcadores de posición en el PDF para evitar caracteres extraños en columnas vacías, asegurando una visualización limpia en todos los lectores de PDF.
 
 ## 🚀 Impacto General

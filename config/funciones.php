@@ -101,10 +101,13 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
 
     $stmt = $pdo->prepare("
         SELECT pt.*, cu.credito_id, cu.monto_cuota, cu.saldo_pagado, cu.monto_mora,
-               cu.fecha_vencimiento, cu.estado AS cuota_estado, cr.interes_moratorio_pct
+               cu.fecha_vencimiento, cu.estado AS cuota_estado, cu.numero_cuota,
+               cr.interes_moratorio_pct,
+               cl.telefono AS cliente_tel, cl.nombres AS cliente_nombres
         FROM ic_pagos_temporales pt
-        JOIN ic_cuotas cu ON pt.cuota_id = cu.id
-        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_cuotas cu  ON pt.cuota_id    = cu.id
+        JOIN ic_creditos cr ON cu.credito_id  = cr.id
+        JOIN ic_clientes cl ON cr.cliente_id  = cl.id
         WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
     ");
     $stmt->execute([$cobrador_id, $fecha]);
@@ -203,6 +206,34 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
 
             $pdo->commit();
             $resultado['aprobados']++;
+
+            // 5. Notificación WhatsApp — pago confirmado (fire-and-forget)
+            if ($nuevo_estado === 'PAGADA' && !empty($pago['cliente_tel'])) {
+                try {
+                    static $wa_loaded = false;
+                    if (!$wa_loaded) {
+                        $wa_cfg = __DIR__ . '/whatsapp.php';
+                        $wa_svc = __DIR__ . '/../services/WhatsAppService.php';
+                        if (file_exists($wa_cfg) && file_exists($wa_svc)) {
+                            require_once $wa_cfg;
+                            require_once $wa_svc;
+                            $wa_loaded = true;
+                        }
+                    }
+                    if ($wa_loaded && defined('WA_ENABLED') && WA_ENABLED) {
+                        (new WhatsAppService())->enviarTemplate(
+                            $pago['cliente_tel'],
+                            WA_TPL_PAGO,
+                            WA_TPL_LANG,
+                            [
+                                $pago['cliente_nombres'],
+                                formato_pesos((float) $pago['monto_total']),
+                                (string) $pago['numero_cuota'],
+                            ]
+                        );
+                    }
+                } catch (Throwable $ignored) { /* silencioso — no afecta el flujo */ }
+            }
         } catch (Exception $e) {
             $pdo->rollBack();
             $resultado['errores']++;

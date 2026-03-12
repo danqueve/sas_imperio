@@ -13,9 +13,10 @@ $is_cobrador = es_cobrador();
 $user_id     = $_SESSION['user_id'];
 
 // ── Parámetros GET ─────────────────────────────────────────────
-$cobrador_id = $is_cobrador ? $user_id : (int)($_GET['cobrador_id'] ?? 0);
-$dias_sel    = array_map('intval', (array)($_GET['dias'] ?? [1,2,3,4,5,6]));
-$dias_sel    = array_filter($dias_sel, fn($d) => $d >= 1 && $d <= 6);
+$cobrador_id  = $is_cobrador ? $user_id : (int)($_GET['cobrador_id'] ?? 0);
+$dias_sel     = array_map('intval', (array)($_GET['dias'] ?? [1,2,3,4,5,6]));
+$dias_sel     = array_filter($dias_sel, fn($d) => $d >= 1 && $d <= 6);
+$incluir_qm   = ($_GET['incluir_qm'] ?? '1') !== '0'; // quincenales y mensuales
 sort($dias_sel);
 
 if (!$cobrador_id) die('Seleccioná un cobrador.');
@@ -30,21 +31,22 @@ if (!$cobrador) die('Cobrador no encontrado.');
 $nombres_dia = [1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles',
                 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado'];
 
-// ── Consulta: clientes activos del cobrador con cuotas pendientes
+// ── Consulta: clientes SEMANALES del cobrador ─────────────────
 $placeholders = implode(',', array_fill(0, count($dias_sel), '?'));
 $params = array_merge([$cobrador_id], $dias_sel);
 
 $stmt = $pdo->prepare("
     SELECT cl.id AS cliente_id,
            cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.dia_cobro,
-           cr.id AS credito_id,
+           cr.id AS credito_id, cr.interes_moratorio_pct,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
-           cu.estado AS cuota_estado,
+           cu.estado AS cuota_estado, cu.monto_mora,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_clientes cl
     JOIN ic_creditos cr  ON cr.cliente_id  = cl.id  AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
-    JOIN ic_cuotas  cu   ON cu.credito_id  = cr.id  AND cu.estado IN ('PENDIENTE','VENCIDA')
-    LEFT JOIN ic_articulos a  ON a.id            = cr.articulo_id
+                        AND cr.frecuencia = 'semanal'
+    JOIN ic_cuotas  cu   ON cu.credito_id  = cr.id  AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
+    LEFT JOIN ic_articulos a  ON a.id = cr.articulo_id
     WHERE cl.dia_cobro IN ($placeholders)
     ORDER BY cl.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
@@ -59,7 +61,44 @@ foreach ($rows as $r) {
     $clave = $r['dia_cobro'] . '-' . $r['cliente_id'];
     if (isset($visto[$clave])) continue;
     $visto[$clave] = true;
+    // Calcular total a cobrar (cap + mora)
+    $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
+        ? (float) $r['monto_mora']
+        : calcular_mora((float)$r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float)$r['interes_moratorio_pct']);
+    $r['total_a_cobrar'] = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : (float)$r['monto_cuota'] + $mora;
+    $r['mora_calc']      = $mora;
     $por_dia[$r['dia_cobro']][] = $r;
+}
+
+// ── Consulta: quincenales y mensuales ─────────────────────────
+$rows_qm = [];
+$qm_grupos = ['quincenal' => [], 'mensual' => []];
+if ($incluir_qm) {
+    $stmt_qm = $pdo->prepare("
+        SELECT cl.nombres, cl.apellidos, cl.telefono, cl.zona,
+               cr.frecuencia, cr.interes_moratorio_pct,
+               cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
+               cu.estado AS cuota_estado, cu.monto_mora,
+               COALESCE(cr.articulo_desc, a.descripcion) AS articulo
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_clientes cl ON cr.cliente_id = cl.id
+        LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
+        WHERE cr.cobrador_id = ?
+          AND cr.estado = 'EN_CURSO'
+          AND cr.frecuencia IN ('quincenal', 'mensual')
+          AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA')
+        ORDER BY cr.frecuencia ASC, cu.fecha_vencimiento ASC, cl.apellidos ASC
+    ");
+    $stmt_qm->execute([$cobrador_id]);
+    foreach ($stmt_qm->fetchAll() as $r) {
+        $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
+            ? (float) $r['monto_mora']
+            : calcular_mora((float)$r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float)$r['interes_moratorio_pct']);
+        $r['total_a_cobrar'] = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : (float)$r['monto_cuota'] + $mora;
+        $r['mora_calc']      = $mora;
+        $qm_grupos[$r['frecuencia']][] = $r;
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -104,7 +143,6 @@ foreach ($rows as $r) {
             letter-spacing: 0.5px;
             margin: 0;
         }
-        
         table {
             width: 100%;
             border-collapse: collapse;
@@ -124,15 +162,11 @@ foreach ($rows as $r) {
             font-size: 10px;
             color: #4b5563;
         }
-        
-        /* Reduciendo altura para que entren más filas */
         tr { height: 32px; }
-
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         .fw-bold { font-weight: bold; }
         .nowrap { white-space: nowrap; }
-
         .day-title {
             font-size: 14px;
             font-weight: 700;
@@ -143,12 +177,17 @@ foreach ($rows as $r) {
             border-bottom: 1px dashed #9ca3af;
             padding-bottom: 4px;
         }
-        .day-total {
-            font-size: 12px;
-            font-weight: normal;
+        .day-total { font-size: 12px; font-weight: normal; }
+        .section-title {
+            font-size: 15px;
+            font-weight: 800;
+            margin: 30px 0 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2px solid #374151;
+            padding-bottom: 6px;
         }
-
-        /* Checkbox box */
         .check-box {
             width: 14px;
             height: 14px;
@@ -156,7 +195,6 @@ foreach ($rows as $r) {
             display: inline-block;
             vertical-align: middle;
         }
-
         .no-data {
             padding: 15px;
             text-align: center;
@@ -166,22 +204,12 @@ foreach ($rows as $r) {
             border-radius: 4px;
             margin-bottom: 30px;
         }
-
+        .cap-pagada-row { background: #fffbeb; }
+        .mora-note { font-size: 9px; color: #92400e; font-style: italic; }
         @media print {
-            body { 
-                padding: 0; 
-                margin: 0; 
-                background: #fff;
-                display: block; 
-            }
-            .a4-page {
-                width: 100%;
-                min-height: auto;
-                box-shadow: none;
-                padding: 0;
-            }
+            body { padding: 0; margin: 0; background: #fff; display: block; }
+            .a4-page { width: 100%; min-height: auto; box-shadow: none; padding: 0; }
             @page { margin: 10mm; size: A4 portrait; }
-            /* Salto de página opcional entre días muy largos */
             tr { page-break-inside: avoid; }
             .day-section { page-break-inside: avoid; }
         }
@@ -204,12 +232,12 @@ foreach ($rows as $r) {
         </div>
     </div>
 
+    <!-- ── Secciones por día (semanales) ── -->
     <?php foreach ($dias_sel as $dia): ?>
-        <?php 
-        $clientes_dia = $por_dia[$dia]; 
-        $total_dia = array_sum(array_column($clientes_dia, 'monto_cuota'));
+        <?php
+        $clientes_dia = $por_dia[$dia];
+        $total_dia = array_sum(array_column($clientes_dia, 'total_a_cobrar'));
         ?>
-        
         <div class="day-section">
             <div class="day-title">
                 <span><?= mb_strtoupper($nombres_dia[$dia]) ?> — <?= count($clientes_dia) ?> cuota(s)</span>
@@ -222,27 +250,34 @@ foreach ($rows as $r) {
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 25%;">Cliente</th>
-                            <th style="width: 13%;">Teléfono</th>
-                            <th style="width: 15%;">Zona</th>
-                            <th style="width: 20%;">Artículo</th>
-                            <th style="width: 10%;" class="text-center">Vencimiento</th>
-                            <th style="width: 12%;" class="text-right">Monto</th>
-                            <th style="width: 5%;" class="text-center">Ok</th>
+                            <th style="width:25%">Cliente</th>
+                            <th style="width:13%">Teléfono</th>
+                            <th style="width:13%">Zona</th>
+                            <th style="width:20%">Artículo</th>
+                            <th style="width:12%" class="text-center">Vencimiento</th>
+                            <th style="width:12%" class="text-right">Monto</th>
+                            <th style="width:5%" class="text-center">Ok</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($clientes_dia as $r): ?>
-                            <tr>
+                            <tr <?= $r['cuota_estado'] === 'CAP_PAGADA' ? 'class="cap-pagada-row"' : '' ?>>
                                 <td class="fw-bold"><?= e(mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 40, '..')) ?></td>
                                 <td><?= e($r['telefono']) ?></td>
-                                <td><?= e(mb_strimwidth($r['zona'] ?: '-', 0, 20, '..')) ?></td>
-                                <td><?= e(mb_strimwidth($r['articulo'], 0, 30, '..')) ?></td>
-                                <td class="text-center nowrap">#<?= $r['numero_cuota'] ?> (<?= date('d/m', strtotime($r['fecha_vencimiento'])) ?>)</td>
-                                <td class="text-right fw-bold nowrap"><?= formato_pesos($r['monto_cuota']) ?></td>
-                                <td class="text-center">
-                                    <div class="check-box"></div>
+                                <td><?= e(mb_strimwidth($r['zona'] ?: '-', 0, 18, '..')) ?></td>
+                                <td><?= e(mb_strimwidth($r['articulo'], 0, 28, '..')) ?></td>
+                                <td class="text-center nowrap">
+                                    #<?= $r['numero_cuota'] ?> (<?= date('d/m', strtotime($r['fecha_vencimiento'])) ?>)
                                 </td>
+                                <td class="text-right fw-bold nowrap">
+                                    <?= formato_pesos($r['total_a_cobrar']) ?>
+                                    <?php if ($r['cuota_estado'] === 'CAP_PAGADA'): ?>
+                                        <br><span class="mora-note">solo mora</span>
+                                    <?php elseif ($r['mora_calc'] > 0): ?>
+                                        <br><span class="mora-note">c/mora</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-center"><div class="check-box"></div></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -251,9 +286,56 @@ foreach ($rows as $r) {
         </div>
     <?php endforeach; ?>
 
+    <!-- ── Quincenales y Mensuales ── -->
+    <?php foreach ($qm_grupos as $frec => $lista): ?>
+        <?php if (empty($lista)) continue; ?>
+        <?php
+        $titulo      = $frec === 'quincenal' ? 'QUINCENALES' : 'MENSUALES';
+        $total_frec  = array_sum(array_column($lista, 'total_a_cobrar'));
+        ?>
+        <div class="day-section">
+            <div class="section-title">
+                <span><?= $titulo ?> — <?= count($lista) ?> cuota(s)</span>
+                <span class="day-total">Total: <strong><?= formato_pesos($total_frec) ?></strong></span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:25%">Cliente</th>
+                        <th style="width:13%">Teléfono</th>
+                        <th style="width:13%">Zona</th>
+                        <th style="width:20%">Artículo</th>
+                        <th style="width:12%" class="text-center">Vencimiento</th>
+                        <th style="width:12%" class="text-right">Monto</th>
+                        <th style="width:5%" class="text-center">Ok</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($lista as $r): ?>
+                        <tr <?= $r['cuota_estado'] === 'CAP_PAGADA' ? 'class="cap-pagada-row"' : '' ?>>
+                            <td class="fw-bold"><?= e(mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 40, '..')) ?></td>
+                            <td><?= e($r['telefono']) ?></td>
+                            <td><?= e(mb_strimwidth($r['zona'] ?: '-', 0, 18, '..')) ?></td>
+                            <td><?= e(mb_strimwidth($r['articulo'] ?? '-', 0, 28, '..')) ?></td>
+                            <td class="text-center nowrap">
+                                #<?= $r['numero_cuota'] ?> (<?= date('d/m/Y', strtotime($r['fecha_vencimiento'])) ?>)
+                            </td>
+                            <td class="text-right fw-bold nowrap">
+                                <?= formato_pesos($r['total_a_cobrar']) ?>
+                                <?php if ($r['cuota_estado'] === 'CAP_PAGADA'): ?>
+                                    <br><span class="mora-note">solo mora</span>
+                                <?php elseif ($r['mora_calc'] > 0): ?>
+                                    <br><span class="mora-note">c/mora</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-center"><div class="check-box"></div></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endforeach; ?>
+
 </div>
-    <script>
-        // Auto-print removed per user request
-    </script>
 </body>
 </html>
