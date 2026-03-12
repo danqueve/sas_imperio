@@ -27,7 +27,7 @@ $nombre_cobrador = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
 
 // Obtener detalle de pagos
 $dstmt = $pdo->prepare("
-    SELECT pt.*, pt.solicitud_baja, pt.motivo_baja,
+    SELECT pt.*, pt.solicitud_baja, pt.motivo_baja, pt.es_cuota_pura,
            cl.nombres, cl.apellidos,
            cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
@@ -42,10 +42,18 @@ $dstmt = $pdo->prepare("
 $dstmt->execute([$cobrador_id, $fecha_sel]);
 $detalle_pagos = $dstmt->fetchAll();
 
-$total_efectivo      = array_sum(array_column($detalle_pagos, 'monto_efectivo'));
-$total_transferencia = array_sum(array_column($detalle_pagos, 'monto_transferencia'));
-$total_mora          = array_sum(array_column($detalle_pagos, 'monto_mora_cobrada'));
-$total_general       = array_sum(array_column($detalle_pagos, 'monto_total'));
+$total_efectivo        = array_sum(array_column($detalle_pagos, 'monto_efectivo'));
+$total_transferencia   = array_sum(array_column($detalle_pagos, 'monto_transferencia'));
+$total_general         = array_sum(array_column($detalle_pagos, 'monto_total'));
+$total_mora_cobrada    = 0;
+$total_mora_no_cobrada = 0;
+foreach ($detalle_pagos as $p) {
+    if ((int)$p['es_cuota_pura']) {
+        $total_mora_no_cobrada += (float)$p['monto_mora_cobrada'];
+    } else {
+        $total_mora_cobrada += (float)$p['monto_mora_cobrada'];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -209,7 +217,14 @@ $total_general       = array_sum(array_column($detalle_pagos, 'monto_total'));
                         <td><?= e($p['articulo']) ?></td>
                         <td class="text-right nowrap"><?= formato_pesos($p['monto_efectivo']) ?></td>
                         <td class="text-right nowrap"><?= formato_pesos($p['monto_transferencia']) ?></td>
-                        <td class="text-right nowrap"><?= formato_pesos($p['monto_mora_cobrada']) ?></td>
+                        <td class="text-right nowrap">
+                            <?php if ((int)$p['es_cuota_pura'] && $p['monto_mora_cobrada'] > 0): ?>
+                                <span style="color:#d97706;font-style:italic"><?= formato_pesos($p['monto_mora_cobrada']) ?></span>
+                                <span style="font-size:10px;color:#d97706;display:block">pendiente</span>
+                            <?php else: ?>
+                                <?= formato_pesos($p['monto_mora_cobrada']) ?>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-right nowrap fw-bold"><?= formato_pesos($p['monto_total']) ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -226,10 +241,18 @@ $total_general       = array_sum(array_column($detalle_pagos, 'monto_total'));
                 <span style="color:#6b7280;">Total Transferencias:</span>
                 <span><?= formato_pesos($total_transferencia) ?></span>
             </div>
+            <?php if ($total_mora_cobrada > 0): ?>
             <div class="totals-row">
-                <span style="color:#6b7280;">Total Mora Cobrada:</span>
-                <span><?= formato_pesos($total_mora) ?></span>
+                <span style="color:#6b7280;">Mora Cobrada:</span>
+                <span><?= formato_pesos($total_mora_cobrada) ?></span>
             </div>
+            <?php endif; ?>
+            <?php if ($total_mora_no_cobrada > 0): ?>
+            <div class="totals-row">
+                <span style="color:#d97706;">Mora No Cobrada:</span>
+                <span style="color:#d97706;"><?= formato_pesos($total_mora_no_cobrada) ?></span>
+            </div>
+            <?php endif; ?>
             <div class="totals-row grand-total">
                 <span>TOTAL RENDIDO:</span>
                 <span><?= formato_pesos($total_general) ?></span>

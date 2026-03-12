@@ -277,14 +277,6 @@ $total_cuotas = count($lista_cuotas);
         <?= $cr['estado'] === 'FINALIZADO' ? '<span style="color:#10b981;font-weight:bold">CRÉDITO SALDADO DENTRO DE LOS TÉRMINOS.</span>' : '' ?>
     </div>
 
-    <!-- Firma Conformidad -->
-    <?php if ($cr['estado'] !== 'FINALIZADO'): ?>
-    <div class="signature-area">
-        <div class="signature-line">
-            Firma del Cliente (Conformidad)
-        </div>
-    </div>
-    <?php endif; ?>
 
 </div> <!-- end a4-page -->
     <script>

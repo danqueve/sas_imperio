@@ -66,6 +66,10 @@ foreach ($lista_cuotas as &$cuota) {
         $cuota['mora_calc'] = (float)$cuota['monto_mora'] > 0
             ? (float)$cuota['monto_mora']
             : calcular_mora($cuota['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
+    } elseif ($cuota['estado'] === 'CAP_PAGADA') {
+        // Capital pagado, mora congelada en monto_mora
+        $cuota['dias_atraso_calc'] = 0;
+        $cuota['mora_calc'] = (float)$cuota['monto_mora'];
     } else {
         $cuota['dias_atraso_calc'] = 0;
         $cuota['mora_calc'] = 0;
@@ -80,7 +84,10 @@ $total_cuotas = count($lista_cuotas);
 $porc = $total_cuotas > 0 ? round($pagadas / $total_cuotas * 100) : 0;
 
 $total_mora_pendiente = array_sum(array_map(fn($c) => $c['mora_calc'], $lista_cuotas));
-$deuda_pendiente = array_sum(array_map(fn($c) => $c['estado'] !== 'PAGADA' ? $c['monto_cuota'] : 0, $lista_cuotas));
+$deuda_pendiente = array_sum(array_map(fn($c) =>
+    $c['estado'] === 'CAP_PAGADA' ? $c['mora_calc']
+    : ($c['estado'] !== 'PAGADA'  ? $c['monto_cuota'] : 0),
+    $lista_cuotas));
 
 $page_title   = 'Crédito #' . $id;
 $page_current = 'creditos';
@@ -262,7 +269,7 @@ require_once __DIR__ . '/../views/layout.php';
             </div>
             <hr class="divider">
             <div class="d-flex gap-2">
-                <a href="cronograma_print.php?id=<?= $id ?>" target="_blank" class="btn-ic btn-ghost btn-sm">
+                <a href="cronograma_pdf.php?id=<?= $id ?>" target="_blank" class="btn-ic btn-ghost btn-sm">
                     <i class="fa fa-print"></i> PDF / Imprimir
                 </a>
                 <a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="btn-ic btn-ghost btn-sm">
@@ -332,6 +339,9 @@ require_once __DIR__ . '/../views/layout.php';
                             <td class="nowrap fw-bold">
                                 <?php if ($q['estado'] === 'PAGADA'): ?>
                                     <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
+                                <?php elseif ($q['estado'] === 'CAP_PAGADA'): ?>
+                                    <span style="color:var(--warning)"><?= formato_pesos($q['mora_calc']) ?></span>
+                                    <br><span class="text-muted" style="font-size:.70rem;font-weight:normal">mora pendiente</span>
                                 <?php elseif ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
                                     <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
                                     <br><span class="text-success" style="font-size:.70rem;font-weight:normal">A favor: <?= formato_pesos($q['saldo_pagado']) ?></span>
@@ -342,12 +352,19 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td>
                                 <?php $badgeMap = ['PENDIENTE' => 'badge-warning', 'PAGADA' => 'badge-success', 'VENCIDA' => 'badge-danger', 'PARCIAL' => 'badge-primary']; ?>
-                                <span class="badge-ic <?= $badgeMap[$q['estado']] ?? 'badge-muted' ?>">
-                                    <?= $q['estado'] ?>
-                                </span>
-                                <?php if ($sol_baja && $q['estado'] === 'PAGADA'): ?>
-                                    <br><span class="badge-ic badge-warning" style="font-size:.65rem;margin-top:2px"
-                                        title="<?= e($mot_baja) ?>"><i class="fa fa-flag"></i> Solicitud baja</span>
+                                <?php if ($q['estado'] === 'CAP_PAGADA'): ?>
+                                    <span class="badge-ic badge-success">Capital ✓</span>
+                                    <br><span class="badge-ic badge-warning" style="font-size:.65rem;margin-top:3px">
+                                        Mora <?= formato_pesos($q['mora_calc']) ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge-ic <?= $badgeMap[$q['estado']] ?? 'badge-muted' ?>">
+                                        <?= $q['estado'] ?>
+                                    </span>
+                                    <?php if ($sol_baja && $q['estado'] === 'PAGADA'): ?>
+                                        <br><span class="badge-ic badge-warning" style="font-size:.65rem;margin-top:2px"
+                                            title="<?= e($mot_baja) ?>"><i class="fa fa-flag"></i> Solicitud baja</span>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                             <td class="nowrap">
@@ -356,6 +373,9 @@ require_once __DIR__ . '/../views/layout.php';
                                     <?php if ($q['fecha_pago']): ?>
                                         <br><span class="text-muted" style="font-size:.75rem"><?= date('d/m/Y', strtotime($q['fecha_pago'])) ?></span>
                                     <?php endif; ?>
+                                <?php elseif ($q['estado'] === 'CAP_PAGADA' && !empty($q['saldo_pagado'])): ?>
+                                    <span class="text-success fw-bold"><?= formato_pesos($q['saldo_pagado']) ?></span>
+                                    <br><span class="text-warning" style="font-size:.75rem">capital pagado</span>
                                 <?php elseif ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
                                     <span class="text-warning fw-bold"><?= formato_pesos($q['saldo_pagado']) ?></span>
                                     <br><span class="text-muted" style="font-size:.75rem">a cuenta</span>
@@ -365,12 +385,20 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <?php if (es_admin() || es_supervisor()): ?>
                             <td class="nowrap" style="display:flex;gap:4px;align-items:center">
-                                <?php if (in_array($q['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL'])): ?>
+                                <?php if (in_array($q['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA'])): ?>
                                     <button
                                         onclick="abrirPagoDirecto(<?= $q['id'] ?>, <?= $q['numero_cuota'] ?>, <?= (float)$q['monto_cuota'] ?>, '<?= $q['fecha_vencimiento'] ?>', <?= (float)($q['saldo_pagado'] ?? 0) ?>, <?= (float)($q['monto_mora'] ?? 0) ?>)"
                                         class="btn-ic <?= $q['estado']==='PARCIAL' ? 'btn-warning' : 'btn-success' ?> btn-sm"
                                         title="<?= $q['estado']==='PARCIAL' ? 'Completar pago parcial' : 'Registrar pago directo' ?>">
                                         <i class="fa fa-dollar-sign"></i>
+                                    </button>
+                                <?php endif; ?>
+                                <?php if ($q['estado'] === 'CAP_PAGADA' && $q['mora_calc'] > 0): ?>
+                                    <button
+                                        onclick="abrirCondonarMora(<?= $q['id'] ?>, <?= $q['numero_cuota'] ?>, <?= $q['mora_calc'] ?>)"
+                                        class="btn-ic btn-warning btn-sm"
+                                        title="Condonar mora congelada">
+                                        <i class="fa fa-times-circle"></i>
                                     </button>
                                 <?php endif; ?>
                                 
@@ -461,6 +489,28 @@ require_once __DIR__ . '/../views/layout.php';
 <?php endif; ?>
 
 <?php if (es_admin() || es_supervisor()): ?>
+<!-- MODAL CONDONAR MORA -->
+<div class="modal-overlay" id="modal-condonar-mora">
+    <div class="modal-box" style="max-width:440px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-times-circle"></i> Condonar Mora</div>
+            <button class="modal-close" onclick="closeModal('modal-condonar-mora')">✕</button>
+        </div>
+        <div id="info-condonar"
+            style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
+        <form method="POST" action="condonar_mora" class="form-ic">
+            <input type="hidden" name="cuota_id" id="cond_cuota_id">
+            <input type="hidden" name="credito_id" value="<?= $id ?>">
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-warning w-100" style="justify-content:center">
+                    <i class="fa fa-check"></i> Confirmar Condonación
+                </button>
+                <button type="button" onclick="closeModal('modal-condonar-mora')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- MODAL PAGO DIRECTO -->
 <div class="modal-overlay" id="modal-pago-directo">
     <div class="modal-box">
@@ -575,6 +625,16 @@ function abrirRevertir(pc_id, num_cuota, sol_baja) {
         (sol_baja ? '<br><span style="color:var(--warning)"><i class="fa fa-flag"></i> Hay una solicitud de reversa del supervisor.</span>' : '') +
         '<br><span style="color:var(--danger);font-size:.82rem">La cuota volverá a PENDIENTE o VENCIDA y el pago quedará anulado.</span>';
     openModal('modal-revertir');
+}
+
+// Admin/supervisor: condonar mora congelada (CAP_PAGADA)
+function abrirCondonarMora(cuota_id, num_cuota, mora) {
+    document.getElementById('cond_cuota_id').value = cuota_id;
+    document.getElementById('info-condonar').innerHTML =
+        'Se condonará la mora de la <strong>Cuota #' + num_cuota + '</strong>.<br>' +
+        'Mora a eliminar: <span style="color:var(--warning);font-weight:700">' + formatPesos(mora) + '</span><br>' +
+        '<span style="font-size:.82rem;color:var(--text-muted)">La cuota pasará a estado PAGADA sin cobrar la mora. Esta acción no se puede deshacer.</span>';
+    openModal('modal-condonar-mora');
 }
 
 // Supervisor: solicitar reversa de pago confirmado

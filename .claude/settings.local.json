@@ -36,7 +36,9 @@
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l articulos/editar.php)",
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l creditos/nuevo.php)",
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l creditos/editar.php)",
-      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l config/sesion.php)"
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l config/sesion.php)",
+      "Read(//c/Users/Usuario/.claude/skills/phpunit-best-practices/rules/**)",
+      "Read(//c/Users/Usuario/.agents/skills/phpunit-best-practices/rules/**)"
     ]
   }
 }

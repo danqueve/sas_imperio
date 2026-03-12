@@ -101,7 +101,7 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
 
     $stmt = $pdo->prepare("
         SELECT pt.*, cu.credito_id, cu.monto_cuota, cu.saldo_pagado, cu.monto_mora,
-               cu.fecha_vencimiento, cr.interes_moratorio_pct
+               cu.fecha_vencimiento, cu.estado AS cuota_estado, cr.interes_moratorio_pct
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu ON pt.cuota_id = cu.id
         JOIN ic_creditos cr ON cu.credito_id = cr.id
@@ -149,10 +149,23 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
 
             $nuevo_saldo  = $saldo_prev + (float) $pago['monto_total'];
             $nuevo_estado = determinar_estado_cuota($monto_base, $mora_frozen, $nuevo_saldo);
+
+            // Cuota pura: cobrador pagó solo el capital (es_cuota_pura=1) o
+            // bien era CAP_PAGADA y se hizo un pago parcial de mora → mantener CAP_PAGADA
+            if ($nuevo_estado === 'PARCIAL') {
+                $capital_cubierto = ($nuevo_saldo >= $monto_base - 0.005);
+                $era_cap_pagada   = ($pago['cuota_estado'] === 'CAP_PAGADA');
+                if ($capital_cubierto && ((int) $pago['es_cuota_pura'] || $era_cap_pagada)) {
+                    $nuevo_estado = 'CAP_PAGADA';
+                }
+            }
+
             $fecha_pago_v = ($nuevo_estado === 'PAGADA') ? $fecha : null;
-            
-            // Si es parcial, no congelamos la mora calculada hoy, mantenemos la que ya tenía la cuota
-            $monto_mora_guardar = ($nuevo_estado === 'PAGADA') ? $mora_frozen : (float) $pago['monto_mora'];
+
+            // CAP_PAGADA y PAGADA congelan la mora calculada; PARCIAL mantiene la mora previa
+            $monto_mora_guardar = ($nuevo_estado === 'PAGADA' || $nuevo_estado === 'CAP_PAGADA')
+                ? $mora_frozen
+                : (float) $pago['monto_mora'];
 
             $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
                 ->execute([$nuevo_estado, $nuevo_saldo, $monto_mora_guardar, $fecha_pago_v, $pago['cuota_id']]);

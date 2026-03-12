@@ -12,10 +12,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $pdo = obtener_conexion();
-$cuota_id = (int) ($_POST['cuota_id'] ?? 0);
-$ef       = (float) ($_POST['monto_efectivo'] ?? 0);
-$tr       = (float) ($_POST['monto_transferencia'] ?? 0);
-$total    = $ef + $tr;
+$cuota_id      = (int) ($_POST['cuota_id'] ?? 0);
+$ef            = (float) ($_POST['monto_efectivo'] ?? 0);
+$tr            = (float) ($_POST['monto_transferencia'] ?? 0);
+$total         = $ef + $tr;
+$es_cuota_pura = (int) ($_POST['es_cuota_pura'] ?? 0);
 
 if (!$cuota_id || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
@@ -45,11 +46,11 @@ $pct_mora   = (float) $row['interes_moratorio_pct'];
 // Obtener cuotas pendientes/vencidas/parciales del crédito, de más antigua a más nueva
 $cuotas_stmt = $pdo->prepare("
     SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
-           cu.saldo_pagado, cu.monto_mora,
+           cu.saldo_pagado, cu.monto_mora, cu.estado,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt
             WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen
     FROM ic_cuotas cu
-    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL')
+    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')
     ORDER BY cu.numero_cuota ASC
 ");
 $cuotas_stmt->execute([$credito_id]);
@@ -72,6 +73,9 @@ $cuotas_ok    = 0;
 foreach ($cuotas_pendientes as $cuota) {
     if ($remaining <= 0.005) break;
 
+    // Cuota pura: saltar mora congelada de CAP_PAGADA; se cobra en otra visita
+    if ($es_cuota_pura && $cuota['estado'] === 'CAP_PAGADA') continue;
+
     $saldo_prev  = (float) ($cuota['saldo_pagado'] ?? 0);
     $mora_frozen = (float) $cuota['monto_mora'];
     $dias_atraso = dias_atraso_habiles($cuota['fecha_vencimiento']);
@@ -81,7 +85,10 @@ foreach ($cuotas_pendientes as $cuota) {
         $mora_frozen = calcular_mora($cuota['monto_cuota'], $dias_atraso, $pct_mora);
     }
 
-    $total_cuota = $cuota['monto_cuota'] + $mora_frozen;
+    // Cuota pura (flag del cobrador) y aún no es CAP_PAGADA → tratar como si no hubiera mora
+    $total_cuota = ($es_cuota_pura && $cuota['estado'] !== 'CAP_PAGADA')
+        ? $cuota['monto_cuota']
+        : $cuota['monto_cuota'] + $mora_frozen;
     $pendiente   = max(0, $total_cuota - $saldo_prev); // lo que falta pagar en esta cuota
 
     if ($pendiente <= 0.005) continue;
@@ -97,9 +104,9 @@ foreach ($cuotas_pendientes as $cuota) {
 
     $pdo->prepare("
         INSERT INTO ic_pagos_temporales
-          (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta]);
+          (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, es_cuota_pura)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $es_cuota_pura]);
 
     registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota['id'],
         'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));

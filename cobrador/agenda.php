@@ -36,7 +36,7 @@ $sql = "
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
-    WHERE cu.estado IN ('PENDIENTE','VENCIDA')
+    WHERE cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
       AND cr.estado = 'EN_CURSO'
       $condCobrador
     ORDER BY cu.fecha_vencimiento ASC, cl.apellidos ASC
@@ -53,10 +53,16 @@ $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol=
 
 foreach ($todas as $c) {
     $dias_atraso = dias_atraso_habiles($c['fecha_vencimiento']);
-    $mora = calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
+    // CAP_PAGADA: mora ya congelada en monto_mora (no recalcular)
+    $mora = ($c['estado'] === 'CAP_PAGADA')
+        ? (float) $c['monto_mora']
+        : calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
     $c['dias_atraso_calc'] = $dias_atraso;
     $c['mora_calc'] = $mora;
-    $c['total_a_cobrar'] = $c['monto_cuota'] + $mora;
+    // CAP_PAGADA: el cobrador solo debe la mora (capital ya pagado)
+    $c['total_a_cobrar'] = ($c['estado'] === 'CAP_PAGADA')
+        ? $mora
+        : $c['monto_cuota'] + $mora;
 
     // Filtro búsqueda
     if ($q_busca !== '' && !str_contains(strtolower($c['apellidos'] . ' ' . $c['nombres']), strtolower($q_busca)))
@@ -112,10 +118,12 @@ $cobrados_hoy_raw = $stmt_cobrados->fetchAll();
 $cobrados_hoy = [];
 foreach ($cobrados_hoy_raw as $c) {
     $dias_atraso = dias_atraso_habiles($c['fecha_vencimiento']);
-    $mora = calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
+    $mora = ($c['estado'] === 'CAP_PAGADA')
+        ? (float) $c['monto_mora']
+        : calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
     $c['dias_atraso_calc'] = $dias_atraso;
-    $c['mora_calc'] = $mora;
-    $c['total_a_cobrar'] = $c['monto_cuota'] + $mora;
+    $c['mora_calc']        = $mora;
+    $c['total_a_cobrar']   = ($c['estado'] === 'CAP_PAGADA') ? $mora : $c['monto_cuota'] + $mora;
     $cobrados_hoy[] = $c;
 }
 
@@ -155,12 +163,12 @@ $semana_stmt = $pdo->prepare("
            cl.coordenadas,
            cr.interes_moratorio_pct, cr.cant_cuotas,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
-           cu.estado AS cuota_estado,
+           cu.estado, cu.monto_mora,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
     FROM ic_clientes cl
     JOIN ic_creditos cr ON cr.cliente_id  = cl.id AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
-    JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA')
+    JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
     LEFT JOIN ic_articulos a ON a.id           = cr.articulo_id
     WHERE cl.dia_cobro BETWEEN 1 AND 6
     ORDER BY cl.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
@@ -174,10 +182,12 @@ $semana_por_cliente = [];
 
 foreach ($semana_rows_raw as $r) {
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
-    $mora        = calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
+    $mora        = ($r['estado'] === 'CAP_PAGADA')
+        ? (float) $r['monto_mora']
+        : calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
     $r['dias_atraso_calc'] = $dias_atraso;
     $r['mora_calc']        = $mora;
-    $r['total_a_cobrar']   = $r['monto_cuota'] + $mora;
+    $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : $r['monto_cuota'] + $mora;
     $r['pago_pen']         = $r['pago_pen'] ?? 0;
     
     // Agrupar por cliente para deduplicar
@@ -216,7 +226,7 @@ $mensual_stmt = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
-    WHERE cu.estado IN ('PENDIENTE', 'VENCIDA')
+    WHERE cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA')
       AND cr.estado = 'EN_CURSO'
       AND cr.frecuencia IN ('quincenal', 'mensual')
       AND cr.cobrador_id = ?
@@ -230,10 +240,12 @@ foreach ($mensual_rows_raw as $r) {
     if ($q_busca !== '' && !str_contains(strtolower($r['apellidos'] . ' ' . $r['nombres']), strtolower($q_busca)))
         continue;
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
-    $mora        = calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
+    $mora        = ($r['estado'] === 'CAP_PAGADA')
+        ? (float) $r['monto_mora']
+        : calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
     $r['dias_atraso_calc'] = $dias_atraso;
     $r['mora_calc']        = $mora;
-    $r['total_a_cobrar']   = $r['monto_cuota'] + $mora;
+    $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : $r['monto_cuota'] + $mora;
     $r['pago_pen']         = (int)($r['pago_pen'] ?? 0);
     $r['cuotas_atrasadas'] = 0;
     $mensual_rows[] = $r;
@@ -384,7 +396,12 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         $data     = htmlspecialchars(json_encode($c), ENT_QUOTES);
         $wa_msg   = 'Hola ' . $c['nombres'] . ', le recordamos su cuota #' . $c['numero_cuota'] . ' vencida el ' . date('d/m/Y', strtotime($c['fecha_vencimiento'])) . '. Total: ' . formato_pesos($c['total_a_cobrar']);
 ?>
-    <div class="list-group-item agenda-card <?= $mora_pos ? 'agenda-card--vencida' : '' ?>" id="row-<?= $c['id'] ?>">
+    <?php
+        $cardClass = '';
+        if ($c['estado'] === 'CAP_PAGADA') $cardClass = 'agenda-card--cap-pagada';
+        elseif ($mora_pos)                 $cardClass = 'agenda-card--vencida';
+    ?>
+    <div class="list-group-item agenda-card <?= $cardClass ?>" id="row-<?= $c['id'] ?>">
         
         <div class="agenda-card-header">
             <div class="agenda-card-client">
@@ -404,10 +421,16 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             </div>
             
             <div class="agenda-card-amounts text-end" style="text-align: right;">
-                <span class="agenda-monto"><?= formato_pesos($c['monto_cuota']) ?></span>
-                <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
-                <?php if ($mora_pos): ?>
-                    <span class="agenda-mora">+Mora: <?= formato_pesos($c['mora_calc']) ?></span>
+                <?php if ($c['estado'] === 'CAP_PAGADA'): ?>
+                    <span class="agenda-monto" style="color:var(--warning)"><?= formato_pesos($c['mora_calc']) ?></span>
+                    <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
+                    <span class="agenda-mora" style="color:var(--warning)">Capital pagado — Mora pendiente</span>
+                <?php else: ?>
+                    <span class="agenda-monto"><?= formato_pesos($c['monto_cuota']) ?></span>
+                    <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
+                    <?php if ($mora_pos): ?>
+                        <span class="agenda-mora">+Mora: <?= formato_pesos($c['mora_calc']) ?></span>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>
@@ -415,6 +438,14 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         <div class="agenda-card-body">
             <div class="agenda-card-cobro">
                 <?php if ($c['pago_pen'] == 0): ?>
+                    <?php if ($mora_pos && $c['estado'] !== 'CAP_PAGADA'): ?>
+                    <label class="agenda-cuota-pura-toggle" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:.82rem;color:var(--text-muted)">
+                        <input type="checkbox" id="pura-<?= $c['id'] ?>"
+                            style="width:16px;height:16px;cursor:pointer;accent-color:var(--warning)"
+                            onchange="toggleCuotaPura(<?= $c['id'] ?>, <?= number_format($c['monto_cuota'], 2, '.', '') ?>, <?= number_format($c['mora_calc'], 2, '.', '') ?>)">
+                        Cuota pura — solo capital (<?= formato_pesos($c['monto_cuota']) ?>)
+                    </label>
+                    <?php endif; ?>
                     <div class="agenda-cobro-wrap" style="display: flex; gap: 8px; width: 100%;">
                         <input type="number" class="agenda-cobro-input" style="flex: 1;" id="inp-<?= $c['id'] ?>"
                             value="<?= number_format($c['total_a_cobrar'], 2, '.', '') ?>"
@@ -653,6 +684,21 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         </div>
         <div id="modal-info"
             style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
+
+        <!-- Toggle cuota pura: solo visible cuando la cuota tiene mora y no es CAP_PAGADA -->
+        <div id="modal-cuota-pura-wrap" style="display:none;margin-bottom:14px;padding:10px 14px;background:rgba(245,158,11,.1);border-radius:8px;border:1px solid rgba(245,158,11,.3)">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
+                <input type="checkbox" id="modal_pura_cb"
+                    style="width:18px;height:18px;cursor:pointer;accent-color:var(--warning);flex-shrink:0"
+                    onchange="onModalCuotaPuraChange()">
+                <span style="font-size:.88rem;color:var(--text)">Cuota pura — cobrar solo capital</span>
+                <span id="modal_pura_capital" style="margin-left:auto;font-weight:700;color:var(--warning);font-size:.9rem"></span>
+            </label>
+            <div id="modal_pura_info" style="display:none;margin-top:6px;font-size:.78rem;color:var(--text-muted);padding-left:28px">
+                La mora queda congelada y pendiente de cobro en una próxima visita.
+            </div>
+        </div>
+
         <form method="POST" action="registrar_pago" class="form-ic" id="form-pago">
             <input type="hidden" name="cuota_id" id="input_cuota_id">
             <div class="form-grid">
@@ -673,6 +719,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <span id="total_display" style="font-size:1.2rem;font-weight:800;color:var(--success)">$ 0,00</span>
             </div>
             <input type="hidden" name="monto_mora_cobrada" id="inp_mora_cobrada" value="0">
+            <input type="hidden" name="es_cuota_pura" id="inp_cuota_pura" value="0">
             <div class="d-flex gap-3">
                 <button type="submit" class="btn-ic btn-success w-100" style="justify-content:center">
                     <i class="fa fa-save"></i> Confirmar Pago
@@ -697,6 +744,7 @@ $page_scripts = <<<'JS'
 }
 .list-group-item.agenda-card:last-child { border-bottom: none; }
 .list-group-item.agenda-card--vencida { border-left: 4px solid var(--danger); background: rgba(220,53,69,.04) !important; }
+.list-group-item.agenda-card--cap-pagada { border-left: 4px solid var(--warning); background: rgba(245,158,11,.04) !important; }
 .list-group-item.agenda-card:hover { background: rgba(255,255,255,.04); }
 
 .agenda-card-header {
@@ -747,7 +795,32 @@ $page_scripts = <<<'JS'
 </style>
 
 <script>
-let cuota_mora = 0;
+let cuota_mora    = 0;
+let cuota_capital = 0;
+
+// Checkbox en tarjeta → ajusta el input inline de la tarjeta
+function toggleCuotaPura(id, capital, mora) {
+  const cb  = document.getElementById('pura-' + id);
+  const inp = document.getElementById('inp-' + id);
+  if (!cb || !inp) return;
+  inp.value = cb.checked ? capital.toFixed(2) : (capital + mora).toFixed(2);
+}
+
+// Checkbox DENTRO del modal → actualiza importes y flag
+function onModalCuotaPuraChange() {
+  const cb     = document.getElementById('modal_pura_cb');
+  const esPura = cb && cb.checked ? 1 : 0;
+  document.getElementById('inp_cuota_pura').value   = esPura;
+  document.getElementById('inp_mora_cobrada').value = esPura ? '0' : cuota_mora.toFixed(2);
+  document.getElementById('inp_efectivo').value     = esPura
+    ? cuota_capital.toFixed(2)
+    : (cuota_capital + cuota_mora).toFixed(2);
+  document.getElementById('inp_transfer').value = '0';
+  // Mostrar/ocultar la aclaración
+  const info = document.getElementById('modal_pura_info');
+  if (info) info.style.display = esPura ? 'block' : 'none';
+  actualizarTotal();
+}
 
 function toggleCollapse(colId, iconId) {
     const col = document.getElementById(colId);
@@ -780,18 +853,45 @@ function abrirPagoDesdeRow(c) {
 }
 
 function _rellenarModal(c, montoInicial) {
-  cuota_mora = c.mora_calc || 0;
-  document.getElementById('input_cuota_id').value = c.id;
-  document.getElementById('modal-info').innerHTML =
-    '<strong>' + c.apellidos + ', ' + c.nombres + '</strong><br>' +
-    'Cuota #' + c.numero_cuota + (c.cant_cuotas ? '/' + c.cant_cuotas : '') +
-    ' — Capital: ' + formatPesos(c.monto_cuota) +
-    (cuota_mora > 0 ? ' + Mora: ' + formatPesos(cuota_mora) : '') +
-    (c.articulo ? '<br><small style="color:var(--warning)">📦 ' + c.articulo + '</small>' : '') +
+  cuota_mora    = c.mora_calc    || 0;
+  cuota_capital = c.monto_cuota || 0;
+
+  const esCapPagada   = c.estado === 'CAP_PAGADA';
+  const tieneMora     = cuota_mora > 0 && !esCapPagada;
+
+  // Sincronizar con checkbox de tarjeta (si existe)
+  const cardCb = document.getElementById('pura-' + c.id);
+  const esPura = cardCb && cardCb.checked ? 1 : 0;
+
+  // Toggle cuota pura en modal
+  const wrap    = document.getElementById('modal-cuota-pura-wrap');
+  const modalCb = document.getElementById('modal_pura_cb');
+  const capSpan = document.getElementById('modal_pura_capital');
+  const puraInfo = document.getElementById('modal_pura_info');
+  if (wrap) wrap.style.display = tieneMora ? 'block' : 'none';
+  if (modalCb) { modalCb.checked = esPura === 1; }
+  if (capSpan) capSpan.textContent = formatPesos(cuota_capital);
+  if (puraInfo) puraInfo.style.display = esPura ? 'block' : 'none';
+
+  document.getElementById('input_cuota_id').value   = c.id;
+  document.getElementById('inp_cuota_pura').value   = esPura;
+  document.getElementById('inp_mora_cobrada').value = esPura ? '0' : cuota_mora.toFixed(2);
+
+  let infoHtml = '<strong>' + c.apellidos + ', ' + c.nombres + '</strong><br>' +
+    'Cuota #' + c.numero_cuota + (c.cant_cuotas ? '/' + c.cant_cuotas : '');
+  if (esCapPagada) {
+    infoHtml += ' — <span style="color:var(--warning)">Capital pagado</span>' +
+      '<br>Mora pendiente (congelada): <strong>' + formatPesos(cuota_mora) + '</strong>';
+  } else {
+    infoHtml += ' — Capital: ' + formatPesos(cuota_capital) +
+      (cuota_mora > 0 ? ' + Mora: ' + formatPesos(cuota_mora) : '');
+  }
+  infoHtml += (c.articulo ? '<br><small style="color:var(--warning)">📦 ' + c.articulo + '</small>' : '') +
     '<br><strong>Total sugerido: ' + formatPesos(c.total_a_cobrar) + '</strong>';
-  document.getElementById('inp_efectivo').value  = montoInicial.toFixed(2);
-  document.getElementById('inp_transfer').value  = '0';
-  document.getElementById('inp_mora_cobrada').value = cuota_mora.toFixed(2);
+
+  document.getElementById('modal-info').innerHTML = infoHtml;
+  document.getElementById('inp_efectivo').value   = montoInicial.toFixed(2);
+  document.getElementById('inp_transfer').value   = '0';
   actualizarTotal();
   openModal('modal-pago');
 }

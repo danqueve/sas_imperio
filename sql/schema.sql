@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS `ic_cuotas` (
   `monto_mora` DECIMAL(12,2) DEFAULT 0.00,
   `dias_atraso` INT DEFAULT 0,
   `saldo_pagado` DECIMAL(12,2) DEFAULT 0.00,
-  `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL') DEFAULT 'PENDIENTE',
+  `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA') DEFAULT 'PENDIENTE',
   `fecha_pago` DATE DEFAULT NULL,
   FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS `ic_pagos_temporales` (
   `monto_transferencia` DECIMAL(12,2) DEFAULT 0.00,
   `monto_total` DECIMAL(12,2) NOT NULL,
   `monto_mora_cobrada` DECIMAL(12,2) DEFAULT 0.00,
+  `es_cuota_pura` TINYINT(1) DEFAULT 0,
   `observaciones` TEXT,
   `estado` ENUM('PENDIENTE','APROBADO','RECHAZADO') DEFAULT 'PENDIENTE',
   `solicitud_baja` TINYINT(1) DEFAULT 0,
