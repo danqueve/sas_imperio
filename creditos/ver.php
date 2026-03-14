@@ -97,7 +97,10 @@ if (es_admin()) {
     $topbar_actions .= '<a href="editar?id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar</a> ';
 }
 if ((es_admin() || es_supervisor()) && in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
-    $topbar_actions .= '<a href="refinanciar?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-sync-alt"></i> Refinanciar</a>';
+    $topbar_actions .= '<a href="refinanciar?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-sync-alt"></i> Refinanciar</a> ';
+}
+if (es_admin()) {
+    $topbar_actions .= '<button onclick="openModal(\'modal-eliminar-credito\')" class="btn-ic btn-danger btn-sm"><i class="fa fa-trash"></i> Eliminar</button>';
 }
 
 require_once __DIR__ . '/../views/layout.php';
@@ -648,5 +651,34 @@ function abrirSolBaja(pc_id, num_cuota) {
 </script>
 JS;
 ?>
+
+<?php if (es_admin()): ?>
+<!-- MODAL ELIMINAR CRÉDITO -->
+<div class="modal-overlay" id="modal-eliminar-credito">
+    <div class="modal-box" style="max-width:460px">
+        <div class="modal-header">
+            <div class="modal-title" style="color:var(--danger)"><i class="fa fa-trash"></i> Eliminar Crédito</div>
+            <button class="modal-close" onclick="closeModal('modal-eliminar-credito')">✕</button>
+        </div>
+        <div style="background:rgba(220,53,69,.1);border:1px solid rgba(220,53,69,.3);border-radius:8px;padding:14px;margin-bottom:16px;font-size:.9rem">
+            <p style="margin:0 0 8px"><strong>¿Eliminar el crédito #<?= $id ?>?</strong></p>
+            <p style="margin:0 0 6px">Cliente: <strong><?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?></strong></p>
+            <p style="margin:0 0 6px">Artículo: <?= e($cr['articulo']) ?></p>
+            <p style="margin:0;color:var(--danger);font-weight:600"><i class="fa fa-exclamation-triangle"></i>
+                Esta acción es irreversible. Solo se puede eliminar si el crédito no tiene pagos confirmados.
+            </p>
+        </div>
+        <form method="POST" action="eliminar">
+            <input type="hidden" name="credito_id" value="<?= $id ?>">
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-danger w-100" style="justify-content:center">
+                    <i class="fa fa-trash"></i> Sí, eliminar crédito
+                </button>
+                <button type="button" onclick="closeModal('modal-eliminar-credito')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>
