@@ -7,8 +7,8 @@ define('BASE_URL', '/creditos/');
 
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'c2881399_credit');       // Nombre de la base de datos
-define('DB_USER', 'root');                  // Usuario MySQL
-define('DB_PASS', '');                      // Contraseña MySQL
+define('DB_USER', 'c2881399_credit');                  // Usuario MySQL
+define('DB_PASS', '69maninoNO');                      // Contraseña MySQL
 define('DB_CHARSET', 'utf8mb4');
 
 function obtener_conexion(): PDO
@@ -25,7 +25,7 @@ function obtener_conexion(): PDO
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $opciones);
         } catch (PDOException $e) {
             http_response_code(500);
-            die(json_encode(['error' => 'Error de conexión a la base de datos.']));
+            die(json_encode(['error' => $e->getMessage()]));
         }
     }
     return $pdo;
