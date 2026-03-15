@@ -22,6 +22,11 @@ sort($dias_sel);
 if (!$cobrador_id) die('Seleccioná un cobrador.');
 if (empty($dias_sel)) die('Seleccioná al menos un día.');
 
+// Redirigir a la versión PDF
+$query_string = $_SERVER['QUERY_STRING'];
+header("Location: agenda_pdf.php?" . $query_string);
+exit;
+
 // Datos del cobrador
 $cob_stmt = $pdo->prepare("SELECT nombre, apellido FROM ic_usuarios WHERE id = ?");
 $cob_stmt->execute([$cobrador_id]);
