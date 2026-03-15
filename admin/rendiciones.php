@@ -243,20 +243,20 @@ require_once __DIR__ . '/../views/layout.php';
                         <?= $tot['cant'] ?> pago<?= $tot['cant'] !== 1 ? 's' : '' ?> — <?= formato_pesos($tot['total']) ?>
                     </span>
                 </div>
-                <div style="display:flex;gap:6px" class="no-print">
+                <div style="display:flex;gap:8px;align-items:center" class="no-print">
                     <a href="rendicion_pdf.php?fecha=<?= urlencode($fecha_jornada) ?>&cobrador_id=<?= $cobrador_id ?>"
-                       class="btn-ic btn-ghost btn-sm" target="_blank" title="PDF de esta jornada">
-                        <i class="fa fa-file-pdf"></i>
+                       class="btn-ic btn-ghost" target="_blank" title="Exportar PDF detallado de esta jornada"
+                       style="display:inline-flex;align-items:center;gap:7px;padding:8px 14px;font-size:.88rem;border:1.5px solid rgba(239,68,68,.4);color:#ef4444">
+                        <i class="fa fa-file-pdf" style="font-size:1.1rem"></i>
+                        <span style="font-weight:600">Exportar PDF</span>
+                        <span style="font-size:.75rem;opacity:.75;border-left:1px solid rgba(239,68,68,.3);padding-left:7px">
+                            <?= $tot['cant'] ?> pago<?= $tot['cant'] !== 1 ? 's' : '' ?> · <?= formato_pesos($tot['total']) ?>
+                        </span>
                     </a>
-                    <form method="POST" style="display:inline">
-                        <input type="hidden" name="accion" value="aprobar_todo">
-                        <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
-                        <input type="hidden" name="fecha" value="<?= e($fecha_jornada) ?>">
-                        <button type="submit" class="btn-ic btn-success btn-sm"
-                            data-confirm="¿Aprobar los <?= $tot['cant'] ?> pagos del <?= e($dia_nombre) ?> <?= date('d/m', strtotime($fecha_jornada)) ?>?">
-                            <i class="fa fa-check"></i> Aprobar jornada
-                        </button>
-                    </form>
+                    <button type="button" class="btn-ic btn-success btn-sm"
+                        onclick="abrirAprobarJornada('<?= e($fecha_jornada) ?>', <?= $tot['cant'] ?>, '<?= e($dia_nombre) ?> <?= date('d/m/Y', strtotime($fecha_jornada)) ?>', '<?= formato_pesos($tot['total']) ?>')">
+                        <i class="fa fa-check"></i> Aprobar jornada
+                    </button>
                 </div>
             </div>
 
@@ -300,16 +300,12 @@ require_once __DIR__ . '/../views/layout.php';
                                         <i class="fa fa-pencil"></i>
                                     </button>
                                     <?php if (es_admin()): ?>
-                                        <form method="POST" style="display:inline">
-                                            <input type="hidden" name="accion" value="rechazar">
-                                            <input type="hidden" name="pago_id" value="<?= $p['id'] ?>">
-                                            <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
-                                            <button type="submit"
-                                                class="btn-ic btn-sm <?= $p['solicitud_baja'] ? 'btn-warning' : 'btn-danger' ?>"
-                                                data-confirm="¿Rechazar este pago?">
-                                                <i class="fa fa-times"></i>
-                                            </button>
-                                        </form>
+                                        <button type="button"
+                                            class="btn-ic btn-sm <?= $p['solicitud_baja'] ? 'btn-warning' : 'btn-danger' ?>"
+                                            title="Rechazar pago"
+                                            onclick="abrirRechazarPago(<?= $p['id'] ?>, '<?= e(addslashes($p['apellidos'] . ', ' . $p['nombres'])) ?>', '<?= formato_pesos($p['monto_total']) ?>')">
+                                            <i class="fa fa-times"></i>
+                                        </button>
                                     <?php elseif (es_supervisor()): ?>
                                         <?php if (!$p['solicitud_baja']): ?>
                                             <button onclick="abrirSolBajaTemp(<?= $p['id'] ?>)"
@@ -383,12 +379,12 @@ require_once __DIR__ . '/../views/layout.php';
 <?php if (es_supervisor() && !es_admin()): ?>
 <!-- MODAL SOLICITAR BAJA DE PAGO TEMPORAL (supervisores) -->
 <div class="modal-overlay" id="modal-sol-baja-temp">
-    <div class="modal-box" style="max-width:440px">
-        <div class="modal-header">
-            <div class="modal-title"><i class="fa fa-flag"></i> Solicitar Baja de Pago</div>
-            <button class="modal-close" onclick="closeModal('modal-sol-baja-temp')">✕</button>
+    <div class="modal-box" style="max-width:440px;background:#fff;color:#1e293b">
+        <div class="modal-header" style="background:#fffbeb;border-bottom:1px solid #fde68a">
+            <div class="modal-title" style="color:#d97706"><i class="fa fa-flag"></i> Solicitar Baja de Pago</div>
+            <button class="modal-close" style="color:#64748b" onclick="closeModal('modal-sol-baja-temp')">✕</button>
         </div>
-        <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:14px">
+        <p style="font-size:.875rem;color:#64748b;margin-bottom:14px;padding-top:4px">
             La solicitud será revisada por el administrador, quien decidirá si rechaza el pago.
         </p>
         <form method="POST" class="form-ic">
@@ -396,30 +392,107 @@ require_once __DIR__ . '/../views/layout.php';
             <input type="hidden" name="pago_id" id="sol_temp_id">
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
             <div class="form-group mb-4">
-                <label>Motivo de la solicitud *</label>
+                <label style="color:#374151">Motivo de la solicitud *</label>
                 <textarea name="motivo" rows="3" required
                     placeholder="Ej: Pago duplicado, error de importe, cliente equivocado..."
-                    style="resize:vertical"></textarea>
+                    style="resize:vertical;background:#f8fafc;color:#1e293b;border-color:#cbd5e1"></textarea>
             </div>
             <div class="d-flex gap-3">
                 <button type="submit" class="btn-ic btn-warning w-100" style="justify-content:center">
                     <i class="fa fa-paper-plane"></i> Enviar Solicitud
                 </button>
-                <button type="button" onclick="closeModal('modal-sol-baja-temp')" class="btn-ic btn-ghost">Cancelar</button>
+                <button type="button" onclick="closeModal('modal-sol-baja-temp')" class="btn-ic btn-ghost" style="color:#64748b;border-color:#cbd5e1">Cancelar</button>
             </div>
         </form>
     </div>
 </div>
 <?php endif; ?>
 
+<!-- MODAL APROBAR JORNADA — con countdown -->
+<div class="modal-overlay" id="modal-aprobar-jornada">
+    <div class="modal-box" style="max-width:430px;background:#fff;color:#1e293b">
+        <div class="modal-header" style="background:#f0fdf4;border-bottom:1px solid #bbf7d0">
+            <div class="modal-title" style="color:#16a34a"><i class="fa fa-check-circle"></i> Aprobar Jornada</div>
+            <button class="modal-close" style="color:#64748b" onclick="cancelarAprobarJornada()">✕</button>
+        </div>
+        <div style="text-align:center;padding:22px 16px 10px">
+            <div style="font-size:2.8rem;color:#16a34a;margin-bottom:12px">
+                <i class="fa fa-calendar-check"></i>
+            </div>
+            <p style="font-size:1rem;font-weight:700;color:#1e293b;margin-bottom:4px" id="aprobar-jornada-label"></p>
+            <p style="font-size:.88rem;color:#64748b;margin-bottom:4px" id="aprobar-jornada-cant"></p>
+            <p style="font-size:.88rem;color:#64748b;margin-bottom:18px" id="aprobar-jornada-total"></p>
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px;margin-bottom:20px">
+                <p style="font-size:.84rem;color:#374151;margin-bottom:8px">
+                    Se aprobarán <strong style="color:#16a34a">todos los pagos pendientes</strong> de esta jornada.<br>
+                    Esta acción no se puede deshacer.
+                </p>
+                <div id="aprobar-jornada-countdown-wrap" style="font-size:.82rem;color:#d97706;margin-top:6px;font-weight:600">
+                    <i class="fa fa-clock"></i> Podés confirmar en <span id="aprobar-jornada-countdown" style="font-weight:800;font-size:1rem">3</span> segundos...
+                </div>
+            </div>
+        </div>
+        <form method="POST" id="form-aprobar-jornada">
+            <input type="hidden" name="accion" value="aprobar_todo">
+            <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+            <input type="hidden" name="fecha" id="aprobar-jornada-fecha">
+            <div class="d-flex gap-3">
+                <button type="submit" id="aprobar-jornada-btn" class="btn-ic btn-success w-100"
+                    style="justify-content:center;opacity:.45;pointer-events:none" disabled>
+                    <i class="fa fa-check"></i> Confirmar Aprobación
+                </button>
+                <button type="button" onclick="cancelarAprobarJornada()" class="btn-ic btn-ghost" style="color:#64748b;border-color:#cbd5e1">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL RECHAZAR PAGO (admin) — con countdown -->
+<div class="modal-overlay" id="modal-rechazar-pago">
+    <div class="modal-box" style="max-width:420px;background:#fff;color:#1e293b">
+        <div class="modal-header" style="background:#fef2f2;border-bottom:1px solid #fecaca">
+            <div class="modal-title" style="color:#dc2626"><i class="fa fa-exclamation-triangle"></i> Rechazar Pago</div>
+            <button class="modal-close" style="color:#64748b" onclick="cancelarRechazarPago()">✕</button>
+        </div>
+        <div style="text-align:center;padding:20px 10px 10px">
+            <div style="font-size:3rem;color:#ef4444;margin-bottom:12px">
+                <i class="fa fa-ban"></i>
+            </div>
+            <p style="font-size:.95rem;font-weight:700;color:#1e293b;margin-bottom:6px" id="rechazar-cliente-label"></p>
+            <p style="font-size:.88rem;color:#64748b;margin-bottom:18px" id="rechazar-monto-label"></p>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;margin-bottom:20px">
+                <p style="font-size:.84rem;color:#374151;margin-bottom:8px">
+                    Esta acción marcará el pago como <strong style="color:#dc2626">RECHAZADO</strong>.<br>
+                    El cobrador deberá volver a registrarlo si corresponde.
+                </p>
+                <div id="rechazar-countdown-wrap" style="font-size:.82rem;color:#d97706;margin-top:6px;font-weight:600">
+                    <i class="fa fa-clock"></i> Podés confirmar en <span id="rechazar-countdown" style="font-weight:800;font-size:1rem">3</span> segundos...
+                </div>
+            </div>
+        </div>
+        <form method="POST" id="form-rechazar-pago">
+            <input type="hidden" name="accion" value="rechazar">
+            <input type="hidden" name="pago_id" id="rechazar-pago-id">
+            <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+            <div class="d-flex gap-3">
+                <button type="submit" id="rechazar-confirmar-btn" class="btn-ic btn-danger w-100"
+                    style="justify-content:center;opacity:.45;pointer-events:none" disabled>
+                    <i class="fa fa-times"></i> Rechazar Pago
+                </button>
+                <button type="button" onclick="cancelarRechazarPago()" class="btn-ic btn-ghost" style="color:#64748b;border-color:#cbd5e1">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- MODAL EDITAR PAGO (admin + supervisor) -->
 <div class="modal-overlay" id="modal-editar-pago">
-    <div class="modal-box" style="max-width:420px">
-        <div class="modal-header">
-            <div class="modal-title"><i class="fa fa-pencil"></i> Editar Pago</div>
-            <button class="modal-close" onclick="closeModal('modal-editar-pago')">✕</button>
+    <div class="modal-box" style="max-width:420px;background:#fff;color:#1e293b">
+        <div class="modal-header" style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+            <div class="modal-title" style="color:#4f46e5"><i class="fa fa-pencil"></i> Editar Pago</div>
+            <button class="modal-close" style="color:#64748b" onclick="closeModal('modal-editar-pago')">✕</button>
         </div>
-        <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:14px">
+        <p style="font-size:.875rem;color:#64748b;margin-bottom:14px;padding-top:4px">
             Corregí la distribución entre efectivo y transferencia. El total se recalcula automáticamente.
         </p>
         <form method="POST" class="form-ic">
@@ -428,25 +501,27 @@ require_once __DIR__ . '/../views/layout.php';
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Efectivo $</label>
+                    <label style="color:#374151">Efectivo $</label>
                     <input type="number" name="monto_efectivo" id="edit_efectivo"
-                        step="0.01" min="0" value="0" oninput="actualizarEditTotal()">
+                        step="0.01" min="0" value="0" oninput="actualizarEditTotal()"
+                        style="background:#f8fafc;color:#1e293b;border-color:#cbd5e1">
                 </div>
                 <div class="form-group">
-                    <label>Transferencia $</label>
+                    <label style="color:#374151">Transferencia $</label>
                     <input type="number" name="monto_transferencia" id="edit_transfer"
-                        step="0.01" min="0" value="0" oninput="actualizarEditTotal()">
+                        step="0.01" min="0" value="0" oninput="actualizarEditTotal()"
+                        style="background:#f8fafc;color:#1e293b;border-color:#cbd5e1">
                 </div>
             </div>
-            <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                <span class="text-muted">Total:</span>
-                <span id="edit_total_display" style="font-size:1.15rem;font-weight:800;color:var(--success)">$ 0,00</span>
+            <div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <span style="color:#64748b;font-size:.88rem">Total:</span>
+                <span id="edit_total_display" style="font-size:1.15rem;font-weight:800;color:#16a34a">$ 0,00</span>
             </div>
             <div class="d-flex gap-3">
                 <button type="submit" class="btn-ic btn-primary w-100" style="justify-content:center">
                     <i class="fa fa-save"></i> Guardar Cambios
                 </button>
-                <button type="button" onclick="closeModal('modal-editar-pago')" class="btn-ic btn-ghost">Cancelar</button>
+                <button type="button" onclick="closeModal('modal-editar-pago')" class="btn-ic btn-ghost" style="color:#64748b;border-color:#cbd5e1">Cancelar</button>
             </div>
         </form>
     </div>
@@ -454,6 +529,60 @@ require_once __DIR__ . '/../views/layout.php';
 
 <?php
 $page_scripts = '<script>
+var _rechazarTimer = null;
+var _aprobarTimer  = null;
+
+function _iniciarCountdown(cdId, wrapId, btnId, segundos, onListo) {
+    var btn  = document.getElementById(btnId);
+    var cd   = document.getElementById(cdId);
+    var wrap = document.getElementById(wrapId);
+    btn.disabled = true;
+    btn.style.opacity = ".45";
+    btn.style.pointerEvents = "none";
+    cd.textContent = segundos;
+    var secs = segundos;
+    return setInterval(function() {
+        secs--;
+        cd.textContent = secs;
+        if (secs <= 0) {
+            btn.disabled = false;
+            btn.style.opacity = "1";
+            btn.style.pointerEvents = "auto";
+            wrap.innerHTML = \'<i class="fa fa-check-circle" style="color:#16a34a"></i> <span style="color:#16a34a">Podés confirmar ahora</span>\';
+            if (onListo) onListo();
+        }
+    }, 1000);
+}
+
+function abrirAprobarJornada(fecha, cant, diaLabel, total) {
+    document.getElementById("aprobar-jornada-fecha").value = fecha;
+    document.getElementById("aprobar-jornada-label").textContent = diaLabel;
+    document.getElementById("aprobar-jornada-cant").textContent = cant + " pago" + (cant !== 1 ? "s" : "") + " pendiente" + (cant !== 1 ? "s" : "");
+    document.getElementById("aprobar-jornada-total").textContent = "Total: " + total;
+    document.getElementById("aprobar-jornada-countdown-wrap").innerHTML = \'<i class="fa fa-clock"></i> Podés confirmar en <span id="aprobar-jornada-countdown" style="font-weight:800;font-size:1rem">3</span> segundos...\';
+    openModal("modal-aprobar-jornada");
+    _aprobarTimer = _iniciarCountdown("aprobar-jornada-countdown", "aprobar-jornada-countdown-wrap", "aprobar-jornada-btn", 3, null);
+}
+
+function cancelarAprobarJornada() {
+    if (_aprobarTimer) { clearInterval(_aprobarTimer); _aprobarTimer = null; }
+    closeModal("modal-aprobar-jornada");
+}
+
+function abrirRechazarPago(pago_id, cliente, monto) {
+    document.getElementById("rechazar-pago-id").value = pago_id;
+    document.getElementById("rechazar-cliente-label").textContent = cliente;
+    document.getElementById("rechazar-monto-label").textContent = "Total: " + monto;
+    document.getElementById("rechazar-countdown-wrap").innerHTML = \'<i class="fa fa-clock"></i> Podés confirmar en <span id="rechazar-countdown" style="font-weight:800;font-size:1rem">3</span> segundos...\';
+    openModal("modal-rechazar-pago");
+    _rechazarTimer = _iniciarCountdown("rechazar-countdown", "rechazar-countdown-wrap", "rechazar-confirmar-btn", 3, null);
+}
+
+function cancelarRechazarPago() {
+    if (_rechazarTimer) { clearInterval(_rechazarTimer); _rechazarTimer = null; }
+    closeModal("modal-rechazar-pago");
+}
+
 function abrirEditarPago(pago_id, ef, tr) {
     document.getElementById("edit_pago_id").value = pago_id;
     document.getElementById("edit_efectivo").value = ef.toFixed(2);
