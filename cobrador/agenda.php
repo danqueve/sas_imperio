@@ -107,6 +107,22 @@ $kpi_ingresos_hoy = (float) $row_ingresos['total'];
 $kpi_ingresos_efectivo = (float) $row_ingresos['efectivo'];
 $kpi_ingresos_transferencia = (float) $row_ingresos['transferencia'];
 
+// KPI POR RENDIR: todos los PENDIENTE del cobrador (cualquier jornada)
+$stmt_por_rendir = $pdo->prepare("
+    SELECT COALESCE(SUM(monto_total), 0)        AS total,
+           COALESCE(SUM(monto_efectivo), 0)      AS efectivo,
+           COALESCE(SUM(monto_transferencia), 0) AS transferencia,
+           COUNT(DISTINCT fecha_jornada)          AS cant_jornadas
+    FROM ic_pagos_temporales
+    WHERE cobrador_id = ? AND estado = 'PENDIENTE'
+");
+$stmt_por_rendir->execute([$cobrador_filtro]);
+$row_por_rendir          = $stmt_por_rendir->fetch();
+$kpi_por_rendir_total    = (float) $row_por_rendir['total'];
+$kpi_por_rendir_efectivo = (float) $row_por_rendir['efectivo'];
+$kpi_por_rendir_transfer = (float) $row_por_rendir['transferencia'];
+$kpi_por_rendir_jornadas = (int)   $row_por_rendir['cant_jornadas'];
+
 // ── Lista de Cobrados (cubre todas las jornadas disponibles) ───
 $_ph_cobrados = implode(',', array_fill(0, count($jornadas_disp), '?'));
 $stmt_cobrados = $pdo->prepare("
@@ -416,6 +432,22 @@ $prog_pct      = $prog_total > 0 ? round(($prog_cobrados / $prog_total) * 100) :
             <?= $kpi_vencidas ?>
         </div>
         <div class="kpi-sub">cuotas sin cobrar acumuladas</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--primary-light)">
+        <i class="fa fa-clock-rotate-left kpi-icon"></i>
+        <div class="kpi-label">Por Rendir</div>
+        <div class="kpi-value" style="font-size:1.2rem;color:var(--primary-light)">
+            <?= formato_pesos($kpi_por_rendir_total) ?>
+        </div>
+        <div class="kpi-sub" style="font-size:0.75rem">
+            Efc: <?= formato_pesos($kpi_por_rendir_efectivo) ?><br>
+            Trf: <?= formato_pesos($kpi_por_rendir_transfer) ?>
+            <?php if ($kpi_por_rendir_jornadas > 1): ?>
+            <br><span style="color:var(--warning)">
+                <i class="fa fa-calendar-week"></i> <?= $kpi_por_rendir_jornadas ?> jornadas
+            </span>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 

@@ -1,6 +1,6 @@
 <?php
 // ============================================================
-// admin/rendiciones.php — Aprobación de rendiciones
+// admin/rendiciones.php — Aprobación de rendiciones (multi-jornada)
 // ============================================================
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
@@ -8,25 +8,38 @@ require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('aprobar_rendiciones');
 
-$pdo = obtener_conexion();
-$fecha_sel = $_GET['fecha'] ?? date('Y-m-d', strtotime('-1 day'));
+$pdo         = obtener_conexion();
 $cobrador_id = (int) ($_GET['cobrador_id'] ?? 0);
 
-// Aprobar todo o individual
+// ── POST handler ──────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $accion = $_POST['accion'] ?? '';
+    $accion      = $_POST['accion'] ?? '';
+    $cobrador_id = (int) ($_POST['cobrador_id'] ?? 0);
 
     if ($accion === 'aprobar_todo') {
-        $cob_id = (int) $_POST['cobrador_id'];
-        $fecha = $_POST['fecha'];
-        $res = aprobar_rendicion($cob_id, $fecha, $_SESSION['user_id'], $pdo);
+        $fecha = $_POST['fecha'] ?? '';
+        if (!$fecha) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Fecha no especificada.'];
+        } else {
+            $res = aprobar_rendicion($cobrador_id, $fecha, $_SESSION['user_id'], $pdo);
+            if ($res['aprobados'] > 0) {
+                registrar_log($pdo, $_SESSION['user_id'], 'RENDICION_APROBADA', 'cobrador', $cobrador_id,
+                    'Aprobados: ' . $res['aprobados'] . ' pagos | Fecha: ' . $fecha);
+            }
+            $_SESSION['flash'] = [
+                'type' => $res['errores'] === 0 ? 'success' : 'warning',
+                'msg'  => "Jornada {$fecha} — Aprobados: {$res['aprobados']} — Errores: {$res['errores']}"
+            ];
+        }
+    } elseif ($accion === 'aprobar_todas_jornadas') {
+        $res = aprobar_todas_jornadas($cobrador_id, $_SESSION['user_id'], $pdo);
         if ($res['aprobados'] > 0) {
-            registrar_log($pdo, $_SESSION['user_id'], 'RENDICION_APROBADA', 'cobrador', $cob_id,
-                'Aprobados: ' . $res['aprobados'] . ' pagos | Fecha: ' . $fecha);
+            registrar_log($pdo, $_SESSION['user_id'], 'RENDICION_APROBADA_TOTAL', 'cobrador', $cobrador_id,
+                'Aprobados: ' . $res['aprobados'] . ' pagos | Jornadas: ' . implode(', ', $res['fechas']));
         }
         $_SESSION['flash'] = [
             'type' => $res['errores'] === 0 ? 'success' : 'warning',
-            'msg' => "Aprobados: {$res['aprobados']} — Errores: {$res['errores']}"
+            'msg'  => "{$res['jornadas_procesadas']} jornada(s) procesadas — Aprobados: {$res['aprobados']} — Errores: {$res['errores']}"
         ];
     } elseif ($accion === 'rechazar' && !empty($_POST['pago_id'])) {
         if (!es_admin()) {
@@ -64,50 +77,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Ingresá el motivo de la solicitud.'];
         }
     }
-    header('Location: rendiciones?fecha=' . urlencode($fecha_sel) . '&cobrador_id=' . $cobrador_id);
+    header('Location: rendiciones?cobrador_id=' . $cobrador_id);
     exit;
 }
 
-// Cobradores con pagos pendientes en la fecha seleccionada
-$cobradores_con_pend = $pdo->prepare("
-    SELECT DISTINCT u.id, u.nombre, u.apellido,
-           COUNT(pt.id) AS cant_pagos,
-           SUM(pt.monto_total) AS total
+// ── Todos los cobradores con pagos PENDIENTES (cualquier fecha) ──
+$cobradores_con_pend = $pdo->query("
+    SELECT u.id, u.nombre, u.apellido,
+           COUNT(pt.id) AS cant_pagos_total,
+           SUM(pt.monto_total) AS total_general,
+           COUNT(DISTINCT pt.fecha_jornada) AS cant_jornadas,
+           GROUP_CONCAT(DISTINCT pt.fecha_jornada ORDER BY pt.fecha_jornada SEPARATOR ',') AS fechas_jornadas,
+           SUM(CASE WHEN pt.solicitud_baja = 1 THEN 1 ELSE 0 END) AS cant_baja
     FROM ic_pagos_temporales pt
     JOIN ic_usuarios u ON pt.cobrador_id = u.id
-    WHERE pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
-    GROUP BY u.id ORDER BY u.apellido
+    WHERE pt.estado = 'PENDIENTE'
+    GROUP BY u.id, u.nombre, u.apellido
+    ORDER BY u.apellido ASC
 ");
-$cobradores_con_pend->execute([$fecha_sel]);
 $cobradores_pend = $cobradores_con_pend->fetchAll();
 
-// Detalle del cobrador seleccionado
-$detalle_pagos = [];
+// ── Detalle del cobrador seleccionado (todas sus jornadas pendientes) ──
+$detalle_pagos    = [];
+$pagos_por_jornada = [];
+$totales_por_jornada = [];
+$total_efectivo_global      = 0.0;
+$total_transferencia_global = 0.0;
+$total_mora_global          = 0.0;
+$total_general_global       = 0.0;
+$nombre_cobrador = '';
+
 if ($cobrador_id) {
     $dstmt = $pdo->prepare("
-        SELECT pt.*, pt.solicitud_baja, pt.motivo_baja,
+        SELECT pt.*, pt.solicitud_baja, pt.motivo_baja, pt.fecha_jornada,
                cl.nombres, cl.apellidos,
                cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo
         FROM ic_pagos_temporales pt
-        JOIN ic_cuotas cu ON pt.cuota_id = cu.id
-        JOIN ic_creditos cr ON cu.credito_id = cr.id
-        JOIN ic_clientes cl ON cr.cliente_id = cl.id
+        JOIN ic_cuotas cu    ON pt.cuota_id   = cu.id
+        JOIN ic_creditos cr  ON cu.credito_id = cr.id
+        JOIN ic_clientes cl  ON cr.cliente_id = cl.id
         LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-        WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
-        ORDER BY pt.solicitud_baja DESC, pt.fecha_registro
+        WHERE pt.cobrador_id = ? AND pt.estado = 'PENDIENTE'
+        ORDER BY pt.fecha_jornada ASC, pt.solicitud_baja DESC, pt.fecha_registro ASC
     ");
-    $dstmt->execute([$cobrador_id, $fecha_sel]);
+    $dstmt->execute([$cobrador_id]);
     $detalle_pagos = $dstmt->fetchAll();
+
+    // Agrupar por fecha_jornada y calcular totales
+    foreach ($detalle_pagos as $p) {
+        $pagos_por_jornada[$p['fecha_jornada']][] = $p;
+    }
+    foreach ($pagos_por_jornada as $fecha => $pagos) {
+        $ef  = array_sum(array_column($pagos, 'monto_efectivo'));
+        $tr  = array_sum(array_column($pagos, 'monto_transferencia'));
+        $mo  = array_sum(array_column($pagos, 'monto_mora_cobrada'));
+        $tot = array_sum(array_column($pagos, 'monto_total'));
+        $totales_por_jornada[$fecha] = ['efectivo' => $ef, 'transferencia' => $tr, 'mora' => $mo, 'total' => $tot, 'cant' => count($pagos)];
+        $total_efectivo_global      += $ef;
+        $total_transferencia_global += $tr;
+        $total_mora_global          += $mo;
+        $total_general_global       += $tot;
+    }
+
+    // Nombre del cobrador
+    foreach ($cobradores_pend as $c) {
+        if ((int) $c['id'] === $cobrador_id) {
+            $nombre_cobrador = $c['nombre'] . ' ' . $c['apellido'];
+            break;
+        }
+    }
 }
 
-$page_title = 'Rendiciones';
-$page_current = 'rendiciones';
+$page_title     = 'Rendiciones';
+$page_current   = 'rendiciones';
 $topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-history"></i> Historial de Rendiciones</a>';
-
-// Detectar modo fin de semana (lunes antes de las 10 AM)
-$jornadas_disp_admin = jornadas_disponibles();
-$hay_jornadas_finde  = count($jornadas_disp_admin) > 1;
 
 require_once __DIR__ . '/../views/layout.php';
 ?>
@@ -119,60 +163,9 @@ require_once __DIR__ . '/../views/layout.php';
     <?php unset($_SESSION['flash']); ?>
 <?php endif; ?>
 
-<!-- Selector de jornada -->
-<?php
-    $jornada_hoy  = fecha_jornada();
-    $jornada_ayer = date('Y-m-d', strtotime('-1 day'));
-    $hora_actual  = (int) date('H');
-    $en_madrugada = $hora_actual < 10; // antes de las 10 AM
-?>
-<div class="card-ic mb-4">
-    <form method="GET" class="filter-bar">
-        <div>
-            <label style="font-size:.78rem;color:var(--text-muted);display:block;margin-bottom:4px">
-                <i class="fa fa-calendar-day"></i> Jornada de cobranza
-            </label>
-            <input type="date" name="fecha" value="<?= e($fecha_sel) ?>" style="min-width:180px">
-        </div>
-        <input type="hidden" name="cobrador_id" value="0">
-        <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Ver</button>
-        <?php if ($en_madrugada): ?>
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:.8rem;color:var(--warning)">
-            <i class="fa fa-clock"></i>
-            Son las <?= date('H:i') ?>hs — los pagos registrados ahora corresponden a la
-            <strong>jornada del <?= date('d/m/Y', strtotime($jornada_hoy)) ?></strong>
-            (día anterior al calendario).
-        </div>
-        <?php endif; ?>
-    </form>
-    <?php if ($fecha_sel === date('Y-m-d') && !$en_madrugada): ?>
-    <div style="margin-top:10px;padding:8px 14px;background:rgba(79,70,229,.1);border-radius:8px;font-size:.8rem;color:var(--text-muted)">
-        <i class="fa fa-info-circle"></i>
-        Mostrando pagos con <strong>jornada de hoy</strong>. Los cobros registrados antes de las 10:00&nbsp;AM se asignaron a la jornada de ayer.
-    </div>
-    <?php endif; ?>
-    <?php if ($hay_jornadas_finde): ?>
-    <div style="margin-top:10px;padding:10px 14px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:.82rem;color:var(--warning);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <i class="fa fa-calendar-week" style="font-size:1rem"></i>
-        <span>
-            <strong>Rendición de fin de semana:</strong> los cobradores pueden estar cargando pagos del
-            <strong><?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[0]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[0])) ?></strong>
-            y del
-            <strong><?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[1]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[1])) ?></strong>.
-            Revisá ambas jornadas usando el selector de fecha.
-        </span>
-        <div style="display:flex;gap:6px;margin-left:auto">
-            <a href="?fecha=<?= urlencode($jornadas_disp_admin[0]) ?>&cobrador_id=0"
-               class="btn-ic btn-sm <?= $fecha_sel === $jornadas_disp_admin[0] ? 'btn-warning' : 'btn-ghost' ?>">
-                <?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[0]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[0])) ?>
-            </a>
-            <a href="?fecha=<?= urlencode($jornadas_disp_admin[1]) ?>&cobrador_id=0"
-               class="btn-ic btn-sm <?= $fecha_sel === $jornadas_disp_admin[1] ? 'btn-warning' : 'btn-ghost' ?>">
-                <?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[1]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[1])) ?>
-            </a>
-        </div>
-    </div>
-    <?php endif; ?>
+<div style="margin-bottom:16px;color:var(--text-muted);font-size:.82rem">
+    <i class="fa fa-info-circle"></i>
+    Mostrando todos los pagos pendientes de aprobación. Seleccioná un cobrador para ver el detalle por jornada.
 </div>
 
 <div style="display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start">
@@ -181,172 +174,209 @@ require_once __DIR__ . '/../views/layout.php';
     <div class="card-ic">
         <div class="card-title mb-3"><i class="fa fa-users"></i> Cobradores con Pendientes</div>
         <?php if (empty($cobradores_pend)): ?>
-            <p class="text-muted text-center" style="padding:20px">Sin rendiciones pendientes para esta fecha.</p>
+            <p class="text-muted text-center" style="padding:20px">Sin rendiciones pendientes.</p>
         <?php else: ?>
-            <?php foreach ($cobradores_pend as $cob): ?>
-                <a href="?fecha=<?= urlencode($fecha_sel) ?>&cobrador_id=<?= $cob['id'] ?>"
-                    style="display:block;padding:12px;border-radius:8px;margin-bottom:6px;transition:.2s;
-              <?= $cobrador_id === $cob['id'] ? 'background:rgba(79,70,229,.2);border-left:3px solid var(--primary)' : 'background:rgba(0,0,0,.2)' ?>">
-                    <div class="fw-bold">
-                        <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
-                    </div>
-                    <div class="text-muted" style="font-size:.78rem">
-                        <?= $cob['cant_pagos'] ?> pago
-                        <?= $cob['cant_pagos'] !== 1 ? 's' : '' ?> —
-                        <strong>
-                            <?= formato_pesos($cob['total']) ?>
-                        </strong>
-                    </div>
-                </a>
+            <?php foreach ($cobradores_pend as $cob):
+                $fechas_arr = $cob['fechas_jornadas'] ? explode(',', $cob['fechas_jornadas']) : [];
+            ?>
+            <a href="?cobrador_id=<?= $cob['id'] ?>"
+               style="display:block;padding:12px;border-radius:8px;margin-bottom:6px;transition:.2s;text-decoration:none;
+               <?= $cobrador_id === (int) $cob['id'] ? 'background:rgba(79,70,229,.2);border-left:3px solid var(--primary)' : 'background:rgba(0,0,0,.2)' ?>">
+                <div class="fw-bold" style="display:flex;align-items:center;justify-content:space-between">
+                    <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
+                    <?php if ($cob['cant_baja'] > 0): ?>
+                        <span style="font-size:.7rem;background:rgba(245,158,11,.25);color:var(--warning);padding:2px 6px;border-radius:10px">
+                            <i class="fa fa-flag"></i> <?= (int) $cob['cant_baja'] ?>
+                        </span>
+                    <?php endif; ?>
+                </div>
+                <!-- Badges de jornada -->
+                <?php if (!empty($fechas_arr)): ?>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+                    <?php foreach ($fechas_arr as $f): ?>
+                        <span style="font-size:.7rem;background:rgba(79,70,229,.18);color:var(--primary-light);padding:2px 7px;border-radius:10px;white-space:nowrap">
+                            <?= nombre_dia((int) date('N', strtotime($f))) ?> <?= date('d/m', strtotime($f)) ?>
+                        </span>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+                <div class="text-muted" style="font-size:.78rem;margin-top:4px">
+                    <?= (int) $cob['cant_pagos_total'] ?> pago<?= (int) $cob['cant_pagos_total'] !== 1 ? 's' : '' ?> —
+                    <strong><?= formato_pesos($cob['total_general']) ?></strong>
+                </div>
+            </a>
             <?php endforeach; ?>
         <?php endif; ?>
     </div>
 
-    <!-- DETALLE -->
+    <!-- DETALLE MULTI-JORNADA -->
     <div>
-        <?php if ($cobrador_id && !empty($detalle_pagos)): ?>
-<?php
-    $total_efectivo      = array_sum(array_column($detalle_pagos, 'monto_efectivo'));
-    $total_transferencia = array_sum(array_column($detalle_pagos, 'monto_transferencia'));
-    $total_mora          = array_sum(array_column($detalle_pagos, 'monto_mora_cobrada'));
-    $total_general       = array_sum(array_column($detalle_pagos, 'monto_total'));
-    // Nombre del cobrador para el encabezado del PDF
-    $nombre_cobrador = '';
-    foreach ($cobradores_pend as $c) {
-        if ($c['id'] === $cobrador_id) {
-            $nombre_cobrador = $c['nombre'] . ' ' . $c['apellido'];
-            break;
-        }
-    }
-?>
-            <div class="card-ic">
-                <div class="card-ic-header">
-                    <div>
-                        <span class="card-title"><i class="fa fa-list"></i> Detalle de Pagos</span>
-                        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
-                            <i class="fa fa-calendar-day"></i>
-                            Jornada: <strong><?= date('d/m/Y', strtotime($fecha_sel)) ?></strong>
-                            &nbsp;·&nbsp; <?= e($nombre_cobrador) ?>
-                        </div>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:center">
-                        <span class="text-muted" style="font-size:.82rem">Total:
-                            <strong><?= formato_pesos($total_general) ?></strong>
-                        </span>
-                        <a href="rendicion_pdf.php?fecha=<?= urlencode($fecha_sel) ?>&cobrador_id=<?= $cobrador_id ?>"
-                           class="btn-ic btn-ghost btn-sm no-print" target="_blank">
-                            <i class="fa fa-file-pdf"></i> PDF de Rendición
-                        </a>
+    <?php if ($cobrador_id && !empty($pagos_por_jornada)): ?>
+
+        <div class="card-ic">
+            <div class="card-ic-header">
+                <div>
+                    <span class="card-title"><i class="fa fa-list"></i> Detalle de Pagos</span>
+                    <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
+                        <?= e($nombre_cobrador) ?> —
+                        <?= count($pagos_por_jornada) ?> jornada<?= count($pagos_por_jornada) !== 1 ? 's' : '' ?> pendiente<?= count($pagos_por_jornada) !== 1 ? 's' : '' ?>
                     </div>
                 </div>
-
-                <!-- Encabezado visible solo en impresión -->
-                <div class="print-header" style="display:none">
-                    <h2 style="margin:0 0 4px">💼 Imperio Comercial — Rendición</h2>
-                    <p style="margin:0;font-size:.9rem">
-                        Cobrador: <strong><?= e($nombre_cobrador) ?></strong>
-                        &nbsp;|&nbsp; Fecha: <strong><?= date('d/m/Y', strtotime($fecha_sel)) ?></strong>
-                    </p>
-                    <hr>
+                <div style="font-size:.82rem;color:var(--text-muted)">
+                    Total global: <strong style="color:var(--accent)"><?= formato_pesos($total_general_global) ?></strong>
                 </div>
+            </div>
 
-                <div style="overflow-x:auto">
-                    <table class="table-ic" id="tabla-rendicion">
-                        <thead>
-                            <tr>
-                                <th>Cliente</th>
-                                <th>Cuota</th>
-                                <th>Artículo</th>
-                                <th>Efectivo</th>
-                                <th>Transf.</th>
-                                <th>Mora</th>
-                                <th>Total</th>
-                                <th class="no-print"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($detalle_pagos as $p): ?>
-                                <tr <?= $p['solicitud_baja'] ? 'style="background:rgba(245,158,11,.08);border-left:3px solid var(--warning)"' : '' ?>>
-                                    <td class="fw-bold">
-                                        <?= e($p['apellidos'] . ', ' . $p['nombres']) ?>
-                                        <?php if ($p['solicitud_baja']): ?>
-                                            <div style="font-size:.72rem;color:var(--warning);margin-top:2px">
-                                                <i class="fa fa-flag"></i> Solicitud: <?= e($p['motivo_baja']) ?>
-                                            </div>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>#<?= $p['numero_cuota'] ?> — <?= date('d/m/Y', strtotime($p['fecha_vencimiento'])) ?></td>
-                                    <td><?= e($p['articulo']) ?></td>
-                                    <td class="nowrap"><?= formato_pesos($p['monto_efectivo']) ?></td>
-                                    <td class="nowrap"><?= formato_pesos($p['monto_transferencia']) ?></td>
-                                    <td class="nowrap <?= $p['monto_mora_cobrada'] > 0 ? 'text-warning' : '' ?>">
-                                        <?= formato_pesos($p['monto_mora_cobrada']) ?>
-                                    </td>
-                                    <td class="nowrap fw-bold"><?= formato_pesos($p['monto_total']) ?></td>
-                                    <td class="no-print" style="display:flex;gap:4px;align-items:center">
-                                        <button onclick="abrirEditarPago(<?= $p['id'] ?>, <?= (float)$p['monto_efectivo'] ?>, <?= (float)$p['monto_transferencia'] ?>)"
-                                            class="btn-ic btn-ghost btn-sm" title="Editar montos">
-                                            <i class="fa fa-pencil"></i>
-                                        </button>
-                                        <?php if (es_admin()): ?>
-                                            <form method="POST" style="display:inline">
-                                                <input type="hidden" name="accion" value="rechazar">
-                                                <input type="hidden" name="pago_id" value="<?= $p['id'] ?>">
-                                                <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
-                                                <button type="submit"
-                                                    class="btn-ic btn-sm <?= $p['solicitud_baja'] ? 'btn-warning' : 'btn-danger' ?>"
-                                                    data-confirm="¿Rechazar este pago?">
-                                                    <i class="fa fa-times"></i>
-                                                </button>
-                                            </form>
-                                        <?php elseif (es_supervisor()): ?>
-                                            <?php if (!$p['solicitud_baja']): ?>
-                                                <button onclick="abrirSolBajaTemp(<?= $p['id'] ?>)"
-                                                    class="btn-ic btn-warning btn-sm" title="Solicitar baja">
-                                                    <i class="fa fa-flag"></i>
-                                                </button>
-                                            <?php else: ?>
-                                                <span class="text-warning" style="font-size:.75rem" title="Solicitud enviada">
-                                                    <i class="fa fa-clock"></i>
-                                                </span>
-                                            <?php endif; ?>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                        <tfoot>
-                            <tr style="background:rgba(79,70,229,.15);font-weight:700">
-                                <td colspan="3" style="text-align:right;padding-right:12px;font-size:.82rem;letter-spacing:.05em">TOTALES</td>
-                                <td class="nowrap" style="color:var(--success)"><?= formato_pesos($total_efectivo) ?></td>
-                                <td class="nowrap" style="color:var(--primary-light)"><?= formato_pesos($total_transferencia) ?></td>
-                                <td class="nowrap" style="color:var(--warning)"><?= formato_pesos($total_mora) ?></td>
-                                <td class="nowrap" style="color:var(--accent);font-size:1.05rem"><?= formato_pesos($total_general) ?></td>
-                                <td class="no-print"></td>
-                            </tr>
-                        </tfoot>
-                    </table>
+            <?php foreach ($pagos_por_jornada as $fecha_jornada => $pagos_jornada):
+                $tot = $totales_por_jornada[$fecha_jornada];
+                $dia_nombre = nombre_dia((int) date('N', strtotime($fecha_jornada)));
+            ?>
+
+            <!-- Sub-header de jornada -->
+            <div style="padding:10px 16px;background:rgba(79,70,229,.08);border-left:3px solid var(--primary);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <div>
+                    <strong style="font-size:.92rem">
+                        <i class="fa fa-calendar-day"></i>
+                        <?= $dia_nombre ?> <?= date('d/m/Y', strtotime($fecha_jornada)) ?>
+                    </strong>
+                    <span class="text-muted" style="font-size:.78rem;margin-left:10px">
+                        <?= $tot['cant'] ?> pago<?= $tot['cant'] !== 1 ? 's' : '' ?> — <?= formato_pesos($tot['total']) ?>
+                    </span>
                 </div>
-                <hr class="divider no-print">
-                <form method="POST" class="no-print">
-                    <input type="hidden" name="accion" value="aprobar_todo">
+                <div style="display:flex;gap:6px" class="no-print">
+                    <a href="rendicion_pdf.php?fecha=<?= urlencode($fecha_jornada) ?>&cobrador_id=<?= $cobrador_id ?>"
+                       class="btn-ic btn-ghost btn-sm" target="_blank" title="PDF de esta jornada">
+                        <i class="fa fa-file-pdf"></i>
+                    </a>
+                    <form method="POST" style="display:inline">
+                        <input type="hidden" name="accion" value="aprobar_todo">
+                        <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+                        <input type="hidden" name="fecha" value="<?= e($fecha_jornada) ?>">
+                        <button type="submit" class="btn-ic btn-success btn-sm"
+                            data-confirm="¿Aprobar los <?= $tot['cant'] ?> pagos del <?= e($dia_nombre) ?> <?= date('d/m', strtotime($fecha_jornada)) ?>?">
+                            <i class="fa fa-check"></i> Aprobar jornada
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Tabla de pagos de esta jornada -->
+            <div style="overflow-x:auto">
+                <table class="table-ic" style="margin-bottom:0">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Cuota</th>
+                            <th>Artículo</th>
+                            <th>Efectivo</th>
+                            <th>Transf.</th>
+                            <th>Mora</th>
+                            <th>Total</th>
+                            <th class="no-print"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pagos_jornada as $p): ?>
+                            <tr <?= $p['solicitud_baja'] ? 'style="background:rgba(245,158,11,.08);border-left:3px solid var(--warning)"' : '' ?>>
+                                <td class="fw-bold">
+                                    <?= e($p['apellidos'] . ', ' . $p['nombres']) ?>
+                                    <?php if ($p['solicitud_baja']): ?>
+                                        <div style="font-size:.72rem;color:var(--warning);margin-top:2px">
+                                            <i class="fa fa-flag"></i> Solicitud: <?= e($p['motivo_baja']) ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>#<?= $p['numero_cuota'] ?> — <?= date('d/m/Y', strtotime($p['fecha_vencimiento'])) ?></td>
+                                <td><?= e($p['articulo']) ?></td>
+                                <td class="nowrap"><?= formato_pesos($p['monto_efectivo']) ?></td>
+                                <td class="nowrap"><?= formato_pesos($p['monto_transferencia']) ?></td>
+                                <td class="nowrap <?= $p['monto_mora_cobrada'] > 0 ? 'text-warning' : '' ?>">
+                                    <?= formato_pesos($p['monto_mora_cobrada']) ?>
+                                </td>
+                                <td class="nowrap fw-bold"><?= formato_pesos($p['monto_total']) ?></td>
+                                <td class="no-print" style="display:flex;gap:4px;align-items:center">
+                                    <button onclick="abrirEditarPago(<?= $p['id'] ?>, <?= (float)$p['monto_efectivo'] ?>, <?= (float)$p['monto_transferencia'] ?>)"
+                                        class="btn-ic btn-ghost btn-sm" title="Editar montos">
+                                        <i class="fa fa-pencil"></i>
+                                    </button>
+                                    <?php if (es_admin()): ?>
+                                        <form method="POST" style="display:inline">
+                                            <input type="hidden" name="accion" value="rechazar">
+                                            <input type="hidden" name="pago_id" value="<?= $p['id'] ?>">
+                                            <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+                                            <button type="submit"
+                                                class="btn-ic btn-sm <?= $p['solicitud_baja'] ? 'btn-warning' : 'btn-danger' ?>"
+                                                data-confirm="¿Rechazar este pago?">
+                                                <i class="fa fa-times"></i>
+                                            </button>
+                                        </form>
+                                    <?php elseif (es_supervisor()): ?>
+                                        <?php if (!$p['solicitud_baja']): ?>
+                                            <button onclick="abrirSolBajaTemp(<?= $p['id'] ?>)"
+                                                class="btn-ic btn-warning btn-sm" title="Solicitar baja">
+                                                <i class="fa fa-flag"></i>
+                                            </button>
+                                        <?php else: ?>
+                                            <span class="text-warning" style="font-size:.75rem" title="Solicitud enviada">
+                                                <i class="fa fa-clock"></i>
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                    <tfoot>
+                        <tr style="background:rgba(79,70,229,.10);font-weight:700">
+                            <td colspan="3" style="text-align:right;padding-right:12px;font-size:.82rem">SUBTOTAL</td>
+                            <td class="nowrap" style="color:var(--success)"><?= formato_pesos($tot['efectivo']) ?></td>
+                            <td class="nowrap" style="color:var(--primary-light)"><?= formato_pesos($tot['transferencia']) ?></td>
+                            <td class="nowrap" style="color:var(--warning)"><?= formato_pesos($tot['mora']) ?></td>
+                            <td class="nowrap" style="color:var(--accent)"><?= formato_pesos($tot['total']) ?></td>
+                            <td class="no-print"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div style="height:1px;background:rgba(255,255,255,.06);margin:0 16px"></div>
+
+            <?php endforeach; // end foreach jornada ?>
+
+            <!-- Total global + Aprobar Todas -->
+            <hr class="divider no-print">
+            <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px" class="no-print">
+                <div style="font-size:.88rem;color:var(--text-muted)">
+                    Total global:
+                    <strong style="color:var(--accent);font-size:1.05rem"><?= formato_pesos($total_general_global) ?></strong>
+                    <span style="font-size:.78rem;margin-left:8px">
+                        (Ef: <?= formato_pesos($total_efectivo_global) ?> | Tr: <?= formato_pesos($total_transferencia_global) ?> | Mora: <?= formato_pesos($total_mora_global) ?>)
+                    </span>
+                </div>
+                <?php if (count($pagos_por_jornada) > 1): ?>
+                <form method="POST">
+                    <input type="hidden" name="accion" value="aprobar_todas_jornadas">
                     <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
-                    <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
                     <button type="submit" class="btn-ic btn-success"
-                        data-confirm="¿Aprobar TODOS los <?= count($detalle_pagos) ?> pagos de este cobrador?">
-                        <i class="fa fa-check-double"></i> Aprobar Todo (<?= count($detalle_pagos) ?> pagos)
+                        data-confirm="¿Aprobar TODOS los <?= count($detalle_pagos) ?> pagos de <?= count($pagos_por_jornada) ?> jornadas?">
+                        <i class="fa fa-check-double"></i>
+                        Aprobar Todas (<?= count($pagos_por_jornada) ?> jornadas — <?= count($detalle_pagos) ?> pagos)
                     </button>
                 </form>
+                <?php endif; ?>
             </div>
-        <?php elseif ($cobrador_id): ?>
-            <div class="card-ic">
-                <p class="text-muted text-center" style="padding:30px">Sin pagos pendientes para este cobrador.</p>
-            </div>
-        <?php else: ?>
-            <div class="card-ic">
-                <p class="text-muted text-center" style="padding:30px">← Seleccioná un cobrador para ver el detalle.</p>
-            </div>
-        <?php endif; ?>
+        </div>
+
+    <?php elseif ($cobrador_id): ?>
+        <div class="card-ic">
+            <p class="text-muted text-center" style="padding:30px">Sin pagos pendientes para este cobrador.</p>
+        </div>
+    <?php else: ?>
+        <div class="card-ic">
+            <p class="text-muted text-center" style="padding:30px">
+                <i class="fa fa-arrow-left"></i> Seleccioná un cobrador para ver el detalle.
+            </p>
+        </div>
+    <?php endif; ?>
     </div>
 </div>
 
@@ -364,7 +394,6 @@ require_once __DIR__ . '/../views/layout.php';
         <form method="POST" class="form-ic">
             <input type="hidden" name="accion" value="solicitar_baja_temporal">
             <input type="hidden" name="pago_id" id="sol_temp_id">
-            <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
             <div class="form-group mb-4">
                 <label>Motivo de la solicitud *</label>
@@ -396,7 +425,6 @@ require_once __DIR__ . '/../views/layout.php';
         <form method="POST" class="form-ic">
             <input type="hidden" name="accion" value="editar_pago">
             <input type="hidden" name="pago_id" id="edit_pago_id">
-            <input type="hidden" name="fecha" value="<?= e($fecha_sel) ?>">
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
             <div class="form-grid">
                 <div class="form-group">

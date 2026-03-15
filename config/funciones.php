@@ -278,6 +278,33 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
     return $resultado;
 }
 
+/**
+ * Aprueba TODOS los pagos pendientes de un cobrador en todas sus jornadas pendientes.
+ * Llama a aprobar_rendicion() una vez por cada fecha_jornada distinta.
+ *
+ * @return array{aprobados:int, errores:int, jornadas_procesadas:int, fechas:string[]}
+ */
+function aprobar_todas_jornadas(int $cobrador_id, int $aprobador_id, PDO $pdo): array
+{
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT fecha_jornada
+        FROM ic_pagos_temporales
+        WHERE cobrador_id = ? AND estado = 'PENDIENTE'
+        ORDER BY fecha_jornada ASC
+    ");
+    $stmt->execute([$cobrador_id]);
+    $fechas = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+
+    $resultado = ['aprobados' => 0, 'errores' => 0, 'jornadas_procesadas' => 0, 'fechas' => $fechas];
+    foreach ($fechas as $fecha) {
+        $res = aprobar_rendicion($cobrador_id, $fecha, $aprobador_id, $pdo);
+        $resultado['aprobados']           += $res['aprobados'];
+        $resultado['errores']             += $res['errores'];
+        $resultado['jornadas_procesadas'] += 1;
+    }
+    return $resultado;
+}
+
 // ── Helpers UI ───────────────────────────────────────────────
 
 function whatsapp_url(string $telefono, string $mensaje = ''): string
