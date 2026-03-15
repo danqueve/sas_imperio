@@ -107,9 +107,9 @@ try {
         $pdo->prepare("
             INSERT INTO ic_pagos_temporales
               (cuota_id, cobrador_id, monto_efectivo, monto_transferencia,
-               monto_total, monto_mora_cobrada, estado)
-            VALUES (?, ?, ?, ?, ?, ?, 'APROBADO')
-        ")->execute([$cuota['id'], $cobrador_id, $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta]);
+               monto_total, monto_mora_cobrada, estado, fecha_jornada)
+            VALUES (?, ?, ?, ?, ?, ?, 'APROBADO', ?)
+        ")->execute([$cuota['id'], $cobrador_id, $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, fecha_jornada()]);
         $pago_temp_id = (int) $pdo->lastInsertId();
 
         // 2. Insertar pago confirmado

@@ -28,7 +28,7 @@ $condCobrador = 'AND cr.cobrador_id = ?';
 
 $sql = "
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
-           cr.cant_cuotas,
+           cr.cant_cuotas, cr.dia_cobro,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
@@ -64,15 +64,19 @@ foreach ($todas as $c) {
         ? $mora
         : $c['monto_cuota'] + $mora;
 
-    // Filtro búsqueda
-    if ($q_busca !== '' && !str_contains(strtolower($c['apellidos'] . ' ' . $c['nombres']), strtolower($q_busca)))
-        continue;
-
     if ($dias_atraso === 0 && $c['fecha_vencimiento'] === $hoy) {
         $del_dia[] = $c;
     } elseif ($dias_atraso > 0) {
         $vencidas[] = $c;
     } elseif ($c['fecha_vencimiento'] === $hoy) {
+        $del_dia[] = $c;
+    } elseif (
+        $c['frecuencia'] === 'semanal'
+        && (int) $c['dia_cobro'] === $dia_semana
+        && $c['fecha_vencimiento'] > $hoy
+    ) {
+        // Cliente adelantado: su próxima cuota aún no vence pero hoy es su día de cobro
+        $c['adelantado'] = true;
         $del_dia[] = $c;
     }
 }
@@ -89,9 +93,9 @@ $stmt_ingresos = $pdo->prepare("
            SUM(monto_efectivo) AS efectivo,
            SUM(monto_transferencia) AS transferencia
     FROM ic_pagos_temporales 
-    WHERE cobrador_id = ? AND DATE(fecha_registro) = ? AND estado = 'PENDIENTE'
+    WHERE cobrador_id = ? AND fecha_jornada = ? AND estado = 'PENDIENTE'
 ");
-$stmt_ingresos->execute([$cobrador_filtro, $hoy]);
+$stmt_ingresos->execute([$cobrador_filtro, fecha_jornada()]);
 $row_ingresos = $stmt_ingresos->fetch();
 $kpi_ingresos_hoy = (float) $row_ingresos['total'];
 $kpi_ingresos_efectivo = (float) $row_ingresos['efectivo'];
@@ -109,10 +113,10 @@ $stmt_cobrados = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
-    WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
+    WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
     ORDER BY pt.fecha_registro DESC
 ");
-$stmt_cobrados->execute([$cobrador_filtro, $hoy]);
+$stmt_cobrados->execute([$cobrador_filtro, fecha_jornada()]);
 $cobrados_hoy_raw = $stmt_cobrados->fetchAll();
 
 $cobrados_hoy = [];
@@ -140,8 +144,12 @@ $del_dia_dedup = [];
 foreach ($del_dia as $c) {
     $cid = $c['cliente_id'];
     if (!isset($del_dia_dedup[$cid])) {
-        $c['cuotas_atrasadas'] = count($venc_por_cliente[$cid] ?? []);
-        $del_dia_dedup[$cid]   = $c;
+        $cuotas_venc = $venc_por_cliente[$cid] ?? [];
+        $c['cuotas_atrasadas'] = count($cuotas_venc);
+        // Total real: suma de todas las vencidas + la cuota de hoy
+        $total_venc = array_sum(array_map(fn($v) => $v['total_a_cobrar'], $cuotas_venc));
+        $c['total_acumulado'] = $total_venc + $c['total_a_cobrar'];
+        $del_dia_dedup[$cid]  = $c;
     }
 }
 $del_dia = array_values($del_dia_dedup);
@@ -152,6 +160,8 @@ foreach ($venc_por_cliente as $cid => $cuotas) {
     if (isset($del_dia_dedup[$cid])) continue; // ya aparece arriba con badge
     $row = $cuotas[0]; // más antigua primero (ORDER BY fecha_vencimiento ASC)
     $row['cuotas_atrasadas'] = count($cuotas);
+    // Total real acumulado de todas las cuotas vencidas
+    $row['total_acumulado'] = array_sum(array_map(fn($v) => $v['total_a_cobrar'], $cuotas));
     $vencidas[] = $row;
 }
 
@@ -238,8 +248,6 @@ $mensual_rows_raw = $mensual_stmt->fetchAll();
 
 $mensual_rows = [];
 foreach ($mensual_rows_raw as $r) {
-    if ($q_busca !== '' && !str_contains(strtolower($r['apellidos'] . ' ' . $r['nombres']), strtolower($q_busca)))
-        continue;
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
     $mora        = ($r['estado'] === 'CAP_PAGADA')
         ? (float) $r['monto_mora']
@@ -267,7 +275,10 @@ require_once __DIR__ . '/../views/layout.php';
 <!-- FILTROS -->
 <div class="card-ic mb-4">
     <form method="GET" class="filter-bar">
-        <input type="text" name="q" value="<?= e($q_busca) ?>" placeholder="🔍 Buscar cliente...">
+        <input type="text" id="buscador-agenda" name="q" value="<?= e($q_busca) ?>"
+               placeholder="🔍 Buscar cliente..." autocomplete="off"
+               oninput="filtrarAgenda(this.value)"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();}">
         <?php if (!$is_cobrador): ?>
             <select name="cobrador_id">
                 <?php foreach ($cobradores as $cob): ?>
@@ -339,6 +350,28 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 <?php endif; ?>
 
+<!-- BARRA DE PROGRESO DEL DÍA -->
+<?php
+$prog_total    = count($del_dia) + count($cobrados_hoy);
+$prog_cobrados = count($cobrados_hoy);
+$prog_pct      = $prog_total > 0 ? round(($prog_cobrados / $prog_total) * 100) : 0;
+?>
+<div class="card-ic mb-4" style="padding:14px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:.85rem;color:var(--text-muted)">
+            <i class="fa fa-route"></i> Progreso del día
+        </span>
+        <span style="font-size:.9rem;font-weight:700">
+            <span style="color:var(--success)"><?= $prog_cobrados ?></span>
+            <span style="color:var(--text-muted)"> / <?= $prog_total ?> cobrados</span>
+            <span style="margin-left:8px;color:var(--text-muted);font-size:.8rem">(<?= $prog_pct ?>%)</span>
+        </span>
+    </div>
+    <div style="background:rgba(255,255,255,.08);border-radius:99px;height:8px;overflow:hidden">
+        <div style="width:<?= $prog_pct ?>%;height:100%;background:var(--success);border-radius:99px;transition:width .4s ease"></div>
+    </div>
+</div>
+
 <!-- SUMARIO DEL DÍA -->
 <div class="kpi-grid mb-4">
     <div class="kpi-card" style="--kpi-color:var(--success)">
@@ -379,18 +412,26 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
-// Helper: fecha relativa
+// Helper: fecha relativa con contexto de estado
 function fecha_relativa(string $fecha_str): string {
     $hoy  = new DateTime('today');
     $venc = new DateTime($fecha_str);
     $diff = (int) $hoy->diff($venc)->days;
     $fut  = $venc >= $hoy;
-    if ($diff === 0) return '<span style="color:var(--warning)">hoy</span>';
-    if (!$fut)      return '<span style="color:var(--danger)">hace ' . $diff . ' día' . ($diff > 1 ? 's' : '') . '</span>';
-    if ($diff === 1) return '<span style="color:var(--success)">mañana</span>';
-    if ($diff < 7)  return '<span style="color:var(--success)">en ' . $diff . ' días</span>';
+    if ($diff === 0)  return '<span style="color:var(--warning);font-weight:700">vence hoy</span>';
+    if (!$fut)        return '<span style="color:var(--danger)">hace ' . $diff . ' día' . ($diff > 1 ? 's' : '') . '</span>';
+    if ($diff === 1)  return '<span style="color:var(--success)">mañana</span>';
+    if ($diff < 7)    return '<span style="color:var(--success)">en ' . $diff . ' días</span>';
     $sem = (int) ceil($diff / 7);
     return '<span style="color:var(--text-muted)">en ' . $sem . ' semana' . ($sem > 1 ? 's' : '') . '</span>';
+}
+
+// Helper: label de fecha según contexto (pasada/hoy/futura)
+function label_fecha(string $fecha_str): string {
+    $hoy  = date('Y-m-d');
+    if ($fecha_str < $hoy) return '<span style="color:var(--danger);font-size:.8rem">Venció:</span>';
+    if ($fecha_str === $hoy) return '<span style="color:var(--warning);font-size:.8rem">Vence:</span>';
+    return '<span style="color:var(--text-muted);font-size:.8rem">Próxima cuota:</span>';
 }
 
 // Función helper para renderizar lista de cuotas
@@ -407,10 +448,12 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 ?>
     <?php
         $cardClass = '';
-        if ($c['estado'] === 'CAP_PAGADA') $cardClass = 'agenda-card--cap-pagada';
-        elseif ($mora_pos)                 $cardClass = 'agenda-card--vencida';
+        if ($c['estado'] === 'CAP_PAGADA')             $cardClass = 'agenda-card--cap-pagada';
+        elseif (!empty($c['adelantado']))               $cardClass = 'agenda-card--adelantado';
+        elseif (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0) $cardClass = 'agenda-card--con-vencidas';
+        elseif ($mora_pos)                              $cardClass = 'agenda-card--vencida';
     ?>
-    <div class="list-group-item agenda-card <?= $cardClass ?>" id="row-<?= $c['id'] ?>">
+    <div class="list-group-item agenda-card <?= $cardClass ?>" id="row-<?= $c['id'] ?>" data-nombre="<?= strtolower(e($c['apellidos'] . ' ' . $c['nombres'])) ?>">
         
         <div class="agenda-card-header">
             <div class="agenda-card-client">
@@ -424,6 +467,11 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         <?= $c['cuotas_atrasadas'] ?> u. atrasadas
                     </span>
                 <?php endif; ?>
+                <?php if (!empty($c['adelantado'])): ?>
+                    <span class="badge-ic badge-success" style="margin-left:4px;font-size:.75rem">
+                        <i class="fa fa-forward"></i> Adelantado
+                    </span>
+                <?php endif; ?>
                 <div class="agenda-articulo" id="art-<?= $c['id'] ?>" style="display:none">
                     <i class="fa fa-box-open"></i> <?= e($c['articulo']) ?>
                 </div>
@@ -434,6 +482,12 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     <span class="agenda-monto" style="color:var(--warning)"><?= formato_pesos($c['mora_calc']) ?></span>
                     <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
                     <span class="agenda-mora" style="color:var(--warning)">Capital pagado — Mora pendiente</span>
+                <?php elseif (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0 && isset($c['total_acumulado'])): ?>
+                    <span class="agenda-monto" style="color:var(--danger)"><?= formato_pesos($c['total_acumulado']) ?></span>
+                    <span class="agenda-cuota-num" style="color:var(--danger)">Total acumulado</span>
+                    <span style="font-size:.75rem;color:var(--text-muted);display:block">
+                        Esta cuota: <?= formato_pesos($c['monto_cuota']) ?> · <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?>
+                    </span>
                 <?php else: ?>
                     <span class="agenda-monto"><?= formato_pesos($c['monto_cuota']) ?></span>
                     <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
@@ -451,7 +505,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     <label class="agenda-cuota-pura-toggle" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:.82rem;color:var(--text-muted)">
                         <input type="checkbox" id="pura-<?= $c['id'] ?>"
                             style="width:16px;height:16px;cursor:pointer;accent-color:var(--warning)"
-                            onchange="toggleCuotaPura(<?= $c['id'] ?>, <?= number_format($c['monto_cuota'], 2, '.', '') ?>, <?= number_format($c['mora_calc'], 2, '.', '') ?>)">
+                            onchange="toggleCuotaPura(this, <?= number_format($c['monto_cuota'], 2, '.', '') ?>, <?= number_format($c['mora_calc'], 2, '.', '') ?>)">
                         Cuota pura — solo capital (<?= formato_pesos($c['monto_cuota']) ?>)
                     </label>
                     <?php endif; ?>
@@ -459,7 +513,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         <input type="number" class="agenda-cobro-input" style="flex: 1;" id="inp-<?= $c['id'] ?>"
                             value="<?= number_format($c['total_a_cobrar'], 2, '.', '') ?>"
                             step="0.01" min="0" placeholder="0.00">
-                        <button class="agenda-cobro-btn" onclick="abrirPagoDesdeRow(<?= $data ?>)"
+                        <button class="agenda-cobro-btn" onclick="abrirPagoDesdeRow(<?= $data ?>, this)"
                             title="Registrar pago">
                             <i class="fa fa-check"></i> <span style="margin-left:4px;">Cobrar</span>
                         </button>
@@ -474,7 +528,8 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 
         <div class="agenda-card-footer" style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 16px;">
             <div class="agenda-vencimiento" style="line-height: 1.4;">
-                <span style="color: var(--text-muted); font-size: .8rem;">Venció:</span> <strong style="color: var(--text)"><?= date('d/m/Y', strtotime($c['fecha_vencimiento'])) ?></strong><br>
+                <?= label_fecha($c['fecha_vencimiento']) ?>
+                <strong style="color: var(--text);margin-left:4px"><?= date('d/m/Y', strtotime($c['fecha_vencimiento'])) ?></strong><br>
                 <?= fecha_relativa($c['fecha_vencimiento']) ?>
             </div>
             <div class="agenda-acciones" style="display: flex; gap: 8px;">
@@ -499,7 +554,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 ?>
 
 <!-- CUOTAS DEL DÍA -->
-<div class="card-ic mb-4">
+<div class="card-ic mb-4" id="sec-hoy">
     <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-hoy', 'icon-hoy')">
         <span class="card-title">
             <i class="fa fa-chevron-down" id="icon-hoy" style="transition: transform 0.2s; margin-right: 6px;"></i>
@@ -517,7 +572,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 
 <!-- CUOTAS VENCIDAS -->
 <?php if (!empty($vencidas)): ?>
-    <div class="card-ic mb-4">
+    <div class="card-ic mb-4" id="sec-vencidas">
         <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-vencidas', 'icon-vencidas')">
             <span class="card-title">
                 <i class="fa fa-chevron-down" id="icon-vencidas" style="transition: transform 0.2s; margin-right: 6px;"></i>
@@ -536,7 +591,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 
 <!-- COBRADOS HOY -->
 <?php if (!empty($cobrados_hoy)): ?>
-    <div class="card-ic mb-4">
+    <div class="card-ic mb-4" id="sec-cobrados">
         <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-cobrados', 'icon-cobrados')">
             <span class="card-title">
                 <i class="fa fa-chevron-right" id="icon-cobrados" style="transition: transform 0.2s; margin-right: 6px;"></i>
@@ -554,14 +609,19 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 <?php endif; ?>
 
 <!-- ── VISTA SEMANAL ──────────────────────────────────────────── -->
-<div class="card-ic mb-4">
-    <div class="card-ic-header">
-        <span class="card-title"><i class="fa fa-calendar-week"></i> Vista Semanal</span>
+<div class="card-ic mb-4" id="sec-semanal">
+    <div class="card-ic-header" style="cursor:pointer" onclick="toggleCollapse('col-semanal','icon-semanal')">
+        <span class="card-title">
+            <i class="fa fa-chevron-down" id="icon-semanal" style="transition:transform 0.2s;margin-right:6px"></i>
+            <i class="fa fa-calendar-week"></i> Vista Semanal
+            <span class="badge-ic badge-primary" style="margin-left:8px"><?= count($semana_rows) ?></span>
+        </span>
         <span class="text-muted" style="font-size:.82rem">
             <?= count($semana_rows) ?> cuota(s) pendientes esta semana
         </span>
     </div>
 
+    <div id="col-semanal" style="display:block">
     <!-- Tabs de días -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:12px 16px 0;border-bottom:1px solid rgba(255,255,255,.08)">
         <?php foreach ($nombres_dia as $n => $nombre): ?>
@@ -607,11 +667,12 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <?php endif; ?>
         </div>
     <?php endforeach; ?>
+    </div><!-- /col-semanal -->
 </div>
 
 <!-- ── CRÉDITOS QUINCENALES Y MENSUALES ──────────────────────── -->
 <?php if (!empty($mensual_rows)): ?>
-<div class="card-ic mb-4">
+<div class="card-ic mb-4" id="sec-mensual">
     <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-mensual', 'icon-mensual')">
         <span class="card-title">
             <i class="fa fa-chevron-down" id="icon-mensual" style="transition: transform 0.2s; margin-right: 6px;"></i>
@@ -624,7 +685,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <?= count(array_filter($mensual_rows, fn($r) => $r['dias_atraso_calc'] > 0)) ?> vencida(s)
         </span>
     </div>
-    <div id="col-mensual">
+    <div id="col-mensual" style="display:block">
         <!-- Tabs quincenal / mensual -->
         <?php
         $tab_quincenal = array_values(array_filter($mensual_rows, fn($r) => $r['frecuencia'] === 'quincenal'));
@@ -752,8 +813,10 @@ $page_scripts = <<<'JS'
     transition: background .2s;
 }
 .list-group-item.agenda-card:last-child { border-bottom: none; }
-.list-group-item.agenda-card--vencida { border-left: 4px solid var(--danger); background: rgba(220,53,69,.04) !important; }
-.list-group-item.agenda-card--cap-pagada { border-left: 4px solid var(--warning); background: rgba(245,158,11,.04) !important; }
+.list-group-item.agenda-card--vencida     { border-left: 4px solid var(--danger);  background: rgba(220,53,69,.04) !important; }
+.list-group-item.agenda-card--con-vencidas{ border-left: 4px solid var(--danger);  background: rgba(220,53,69,.02) !important; }
+.list-group-item.agenda-card--cap-pagada  { border-left: 4px solid var(--warning); background: rgba(245,158,11,.04) !important; }
+.list-group-item.agenda-card--adelantado  { border-left: 4px solid #0ea5e9;        background: rgba(14,165,233,.04) !important; }
 .list-group-item.agenda-card:hover { background: rgba(255,255,255,.04); }
 
 .agenda-card-header {
@@ -807,11 +870,40 @@ $page_scripts = <<<'JS'
 let cuota_mora    = 0;
 let cuota_capital = 0;
 
+// ── Búsqueda en tiempo real ──────────────────────────────────
+function filtrarAgenda(q) {
+    const term = q.trim().toLowerCase();
+    const cards = document.querySelectorAll('.agenda-card');
+
+    cards.forEach(card => {
+        const nombre = card.dataset.nombre || '';
+        card.style.display = (term === '' || nombre.includes(term)) ? '' : 'none';
+    });
+
+    // Mostrar/ocultar secciones según resultado de búsqueda
+    const secciones = ['sec-hoy', 'sec-vencidas', 'sec-cobrados', 'sec-semanal', 'sec-mensual'];
+    if (term === '') {
+        // Sin búsqueda → restaurar todas las secciones tal como las renderizó PHP
+        secciones.forEach(secId => {
+            const sec = document.getElementById(secId);
+            if (sec) sec.style.display = '';
+        });
+    } else {
+        // Con búsqueda → ocultar secciones que no tengan ninguna tarjeta visible
+        secciones.forEach(secId => {
+            const sec = document.getElementById(secId);
+            if (!sec) return;
+            const visible = sec.querySelectorAll('.agenda-card:not([style*="display: none"])').length;
+            sec.style.display = visible === 0 ? 'none' : '';
+        });
+    }
+}
+
 // Checkbox en tarjeta → ajusta el input inline de la tarjeta
-function toggleCuotaPura(id, capital, mora) {
-  const cb  = document.getElementById('pura-' + id);
-  const inp = document.getElementById('inp-' + id);
-  if (!cb || !inp) return;
+function toggleCuotaPura(cb, capital, mora) {
+  const wrap = cb.closest('.agenda-card-cobro');
+  const inp  = wrap ? wrap.querySelector('.agenda-cobro-input') : null;
+  if (!inp) return;
   inp.value = cb.checked ? capital.toFixed(2) : (capital + mora).toFixed(2);
 }
 
@@ -855,22 +947,22 @@ function abrirPago(c) {
 }
 
 // Abre modal desde la vista semanal o inline — lee el input del row
-function abrirPagoDesdeRow(c) {
-  const inp = document.getElementById('inp-' + c.id);
-  const monto = inp ? parseFloat(inp.value) || c.total_a_cobrar : c.total_a_cobrar;
-  _rellenarModal(c, monto);
+function abrirPagoDesdeRow(c, btn) {
+  const wrap   = btn ? btn.closest('.agenda-card-cobro') : null;
+  const inp    = wrap ? wrap.querySelector('.agenda-cobro-input') : null;
+  const cb     = wrap ? wrap.querySelector('input[type="checkbox"]') : null;
+  const monto  = inp ? parseFloat(inp.value) || c.total_a_cobrar : c.total_a_cobrar;
+  const esPura = cb ? cb.checked : false;
+  _rellenarModal(c, monto, esPura);
 }
 
-function _rellenarModal(c, montoInicial) {
+function _rellenarModal(c, montoInicial, cardCbChecked = false) {
   cuota_mora    = c.mora_calc    || 0;
   cuota_capital = c.monto_cuota || 0;
 
   const esCapPagada   = c.estado === 'CAP_PAGADA';
   const tieneMora     = cuota_mora > 0 && !esCapPagada;
-
-  // Sincronizar con checkbox de tarjeta (si existe)
-  const cardCb = document.getElementById('pura-' + c.id);
-  const esPura = cardCb && cardCb.checked ? 1 : 0;
+  const esPura        = cardCbChecked ? 1 : 0;
 
   // Toggle cuota pura en modal
   const wrap    = document.getElementById('modal-cuota-pura-wrap');
@@ -941,6 +1033,12 @@ function switchDia(n) {
   if (selPanel) selPanel.style.display = 'block';
   if (selTab)   { selTab.classList.remove('btn-ghost'); selTab.classList.add('btn-primary'); }
 }
+
+// Si la página cargó con un ?q= pre-cargado, aplicar el filtro inmediatamente
+document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('buscador-agenda');
+    if (inp && inp.value.trim() !== '') filtrarAgenda(inp.value);
+});
 </script>
 JS;
 require_once __DIR__ . '/../views/layout_footer.php';

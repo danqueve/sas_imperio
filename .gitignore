@@ -1,7 +1,7 @@
 # Sistema Imperio Comercial — .gitignore
 
 # Configuración local (DB and API credentials)
-config/conexion.php
+
 config/whatsapp.php
 
 # Archivos subidos por usuarios

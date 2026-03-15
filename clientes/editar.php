@@ -60,6 +60,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $id,
                 ]);
 
+        // Sincronizar cobrador en créditos activos si hubo cambio
+        $nuevo_cobrador_id = $v['cobrador_id'] ?: null;
+        if ($nuevo_cobrador_id != $c['cobrador_id']) {
+            $pdo->prepare("UPDATE ic_creditos SET cobrador_id=? WHERE cliente_id=? AND estado IN ('EN_CURSO', 'MOROSO')")
+                ->execute([$nuevo_cobrador_id, $id]);
+        }
+
         // Garante
         if (!empty($v['tiene_garante']) && !empty($v['g_nombres'])) {
             if ($g) {

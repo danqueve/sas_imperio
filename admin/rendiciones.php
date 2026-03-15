@@ -75,7 +75,7 @@ $cobradores_con_pend = $pdo->prepare("
            SUM(pt.monto_total) AS total
     FROM ic_pagos_temporales pt
     JOIN ic_usuarios u ON pt.cobrador_id = u.id
-    WHERE DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
+    WHERE pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
     GROUP BY u.id ORDER BY u.apellido
 ");
 $cobradores_con_pend->execute([$fecha_sel]);
@@ -94,7 +94,7 @@ if ($cobrador_id) {
         JOIN ic_creditos cr ON cu.credito_id = cr.id
         JOIN ic_clientes cl ON cr.cliente_id = cl.id
         LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-        WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
+        WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
         ORDER BY pt.solicitud_baja DESC, pt.fecha_registro
     ");
     $dstmt->execute([$cobrador_id, $fecha_sel]);
@@ -114,17 +114,38 @@ require_once __DIR__ . '/../views/layout.php';
     <?php unset($_SESSION['flash']); ?>
 <?php endif; ?>
 
-<!-- Selector de fecha -->
+<!-- Selector de jornada -->
+<?php
+    $jornada_hoy  = fecha_jornada();
+    $jornada_ayer = date('Y-m-d', strtotime('-1 day'));
+    $hora_actual  = (int) date('H');
+    $en_madrugada = $hora_actual < 10; // antes de las 10 AM
+?>
 <div class="card-ic mb-4">
     <form method="GET" class="filter-bar">
         <div>
-            <label style="font-size:.78rem;color:var(--text-muted);display:block;margin-bottom:4px">Fecha de
-                cobranza</label>
+            <label style="font-size:.78rem;color:var(--text-muted);display:block;margin-bottom:4px">
+                <i class="fa fa-calendar-day"></i> Jornada de cobranza
+            </label>
             <input type="date" name="fecha" value="<?= e($fecha_sel) ?>" style="min-width:180px">
         </div>
         <input type="hidden" name="cobrador_id" value="0">
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Ver</button>
+        <?php if ($en_madrugada): ?>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:.8rem;color:var(--warning)">
+            <i class="fa fa-clock"></i>
+            Son las <?= date('H:i') ?>hs — los pagos registrados ahora corresponden a la
+            <strong>jornada del <?= date('d/m/Y', strtotime($jornada_hoy)) ?></strong>
+            (día anterior al calendario).
+        </div>
+        <?php endif; ?>
     </form>
+    <?php if ($fecha_sel === date('Y-m-d') && !$en_madrugada): ?>
+    <div style="margin-top:10px;padding:8px 14px;background:rgba(79,70,229,.1);border-radius:8px;font-size:.8rem;color:var(--text-muted)">
+        <i class="fa fa-info-circle"></i>
+        Mostrando pagos con <strong>jornada de hoy</strong>. Los cobros registrados antes de las 10:00&nbsp;AM se asignaron a la jornada de ayer.
+    </div>
+    <?php endif; ?>
 </div>
 
 <div style="display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start">
@@ -173,7 +194,14 @@ require_once __DIR__ . '/../views/layout.php';
 ?>
             <div class="card-ic">
                 <div class="card-ic-header">
-                    <span class="card-title"><i class="fa fa-list"></i> Detalle de Pagos</span>
+                    <div>
+                        <span class="card-title"><i class="fa fa-list"></i> Detalle de Pagos</span>
+                        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
+                            <i class="fa fa-calendar-day"></i>
+                            Jornada: <strong><?= date('d/m/Y', strtotime($fecha_sel)) ?></strong>
+                            &nbsp;·&nbsp; <?= e($nombre_cobrador) ?>
+                        </div>
+                    </div>
                     <div style="display:flex;gap:10px;align-items:center">
                         <span class="text-muted" style="font-size:.82rem">Total:
                             <strong><?= formato_pesos($total_general) ?></strong>

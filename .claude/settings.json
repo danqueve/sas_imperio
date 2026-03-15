@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" -e \"SHOW DATABASES;\")",
-      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" c2881399_creditos -e \"SHOW TABLES;\")"
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql -u root --password=\"\" c2881399_creditos -e \"SHOW TABLES;\")",
+      "Bash(php -r \":*)",
+      "Read(//c/Users/danqu/.agents/skills/ui-ux-pro-max/**)",
+      "Bash(python \"C:\\\\Users\\\\danqu\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"collections dashboard mobile field agent dark mode data-dense\" --design-system -f markdown)",
+      "Read(//c/Users/danqu/.claude/skills/ui-ux-pro-max/scripts 2>/dev/**)",
+      "Bash(mysql -u root -e \"DESCRIBE creditos.ic_pagos_temporales;\")"
     ]
   }
 }

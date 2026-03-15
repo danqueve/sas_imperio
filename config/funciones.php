@@ -62,6 +62,20 @@ function determinar_estado_cuota(float $monto_base, float $mora, float $saldo_pa
     return ($saldo_pagado >= $monto_base + $mora - 0.005) ? 'PAGADA' : 'PARCIAL';
 }
 
+/**
+ * Devuelve la fecha de jornada para un pago.
+ * Corte: antes de las 10:00 AM → el pago pertenece a la jornada del día anterior.
+ * Esto permite que los cobradores registren cobros de madrugada sin cortar la jornada.
+ */
+function fecha_jornada(?string $datetime = null): string
+{
+    $hora = (int) date('H', $datetime ? strtotime($datetime) : time());
+    if ($hora < 10) {
+        return date('Y-m-d', strtotime('-1 day'));
+    }
+    return date('Y-m-d');
+}
+
 
 /**
  * Genera las cuotas de un crédito en la base de datos.
@@ -108,7 +122,7 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
         JOIN ic_cuotas cu  ON pt.cuota_id    = cu.id
         JOIN ic_creditos cr ON cu.credito_id  = cr.id
         JOIN ic_clientes cl ON cr.cliente_id  = cl.id
-        WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
+        WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
     ");
     $stmt->execute([$cobrador_id, $fecha]);
     $pagos = $stmt->fetchAll();

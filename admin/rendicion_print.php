@@ -36,7 +36,7 @@ $dstmt = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-    WHERE pt.cobrador_id = ? AND DATE(pt.fecha_registro) = ? AND pt.estado = 'PENDIENTE'
+    WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
     ORDER BY pt.solicitud_baja DESC, pt.fecha_registro
 ");
 $dstmt->execute([$cobrador_id, $fecha_sel]);
