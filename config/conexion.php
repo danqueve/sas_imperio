@@ -5,6 +5,7 @@
 
 define('BASE_URL', '/creditos/');
 
+
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'c2881399_credit');       // Nombre de la base de datos
 define('DB_USER', 'c2881399_credit');                  // Usuario MySQL

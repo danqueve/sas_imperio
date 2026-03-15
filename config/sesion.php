@@ -51,6 +51,7 @@ $permisos = [
     'aprobar_rendiciones' => ['admin', 'supervisor'],
     'gestionar_usuarios' => ['admin'],
     'ver_reportes' => ['admin', 'supervisor'],
+    'ver_estadisticas' => ['admin', 'supervisor'],
     'registrar_ventas' => ['admin', 'supervisor', 'vendedor'],
     'ver_ventas'       => ['admin', 'supervisor', 'vendedor'],
 ];

@@ -18,6 +18,11 @@ $is_cobrador = es_cobrador();
 // Si es domingo (7) no hay agenda
 $dia_laboral = $dia_semana !== 7;
 
+// Jornadas disponibles para registrar pagos ahora
+$jornadas_disp     = jornadas_disponibles();
+$es_modo_finde     = count($jornadas_disp) > 1; // Lunes antes de 10 AM
+$jornada_principal = $jornadas_disp[0];
+
 // Filtro de cobrador (admin/supervisor pueden ver a otros)
 $cobrador_filtro = $is_cobrador ? $user_id : (int) ($_GET['cobrador_id'] ?? $user_id);
 $q_busca = trim($_GET['q'] ?? '');
@@ -87,36 +92,39 @@ $kpi_vencidas  = count($vencidas);
 $kpi_total_hoy = array_sum(array_map(fn($c) => $c['total_a_cobrar'], $del_dia));
 $kpi_mora_venc = array_sum(array_map(fn($c) => $c['mora_calc'], $vencidas));
 
-// KPI INGRESOS HOY (solo pendientes de rendición)
+// KPI INGRESOS (cubre todas las jornadas disponibles: fin de semana o solo hoy)
+$_ph_ingresos = implode(',', array_fill(0, count($jornadas_disp), '?'));
 $stmt_ingresos = $pdo->prepare("
     SELECT SUM(monto_total) AS total,
            SUM(monto_efectivo) AS efectivo,
            SUM(monto_transferencia) AS transferencia
-    FROM ic_pagos_temporales 
-    WHERE cobrador_id = ? AND fecha_jornada = ? AND estado = 'PENDIENTE'
+    FROM ic_pagos_temporales
+    WHERE cobrador_id = ? AND fecha_jornada IN ($_ph_ingresos) AND estado = 'PENDIENTE'
 ");
-$stmt_ingresos->execute([$cobrador_filtro, fecha_jornada()]);
+$stmt_ingresos->execute(array_merge([$cobrador_filtro], $jornadas_disp));
 $row_ingresos = $stmt_ingresos->fetch();
 $kpi_ingresos_hoy = (float) $row_ingresos['total'];
 $kpi_ingresos_efectivo = (float) $row_ingresos['efectivo'];
 $kpi_ingresos_transferencia = (float) $row_ingresos['transferencia'];
 
-// ── Lista de Cobrados Hoy ──────────────────────────────────────
+// ── Lista de Cobrados (cubre todas las jornadas disponibles) ───
+$_ph_cobrados = implode(',', array_fill(0, count($jornadas_disp), '?'));
 $stmt_cobrados = $pdo->prepare("
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
            cr.cant_cuotas,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
+           pt.fecha_jornada AS jornada_pago,
            1 AS pago_pen
     FROM ic_pagos_temporales pt
     JOIN ic_cuotas cu ON pt.cuota_id = cu.id
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
-    WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
-    ORDER BY pt.fecha_registro DESC
+    WHERE pt.cobrador_id = ? AND pt.fecha_jornada IN ($_ph_cobrados) AND pt.estado = 'PENDIENTE'
+    ORDER BY pt.fecha_jornada ASC, pt.fecha_registro DESC
 ");
-$stmt_cobrados->execute([$cobrador_filtro, fecha_jornada()]);
+$stmt_cobrados->execute(array_merge([$cobrador_filtro], $jornadas_disp));
 $cobrados_hoy_raw = $stmt_cobrados->fetchAll();
 
 $cobrados_hoy = [];
@@ -771,6 +779,31 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 
         <form method="POST" action="registrar_pago" class="form-ic" id="form-pago">
             <input type="hidden" name="cuota_id" id="input_cuota_id">
+
+            <?php if ($es_modo_finde): ?>
+            <!-- Selector de jornada: visible solo el lunes antes de las 10 AM -->
+            <div style="margin-bottom:14px;padding:10px 14px;background:rgba(79,70,229,.12);border-radius:8px;border:1px solid rgba(79,70,229,.3)">
+                <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:8px">
+                    <i class="fa fa-calendar-week"></i> ¿A qué jornada pertenece este pago?
+                </div>
+                <div style="display:flex;gap:20px">
+                    <?php foreach ($jornadas_disp as $i => $jornada): ?>
+                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.9rem;font-weight:600">
+                        <input type="radio" name="fecha_jornada_sel" value="<?= $jornada ?>"
+                            <?= $i === 0 ? 'checked' : '' ?>
+                            style="accent-color:var(--primary);width:16px;height:16px">
+                        <?= nombre_dia((int) date('N', strtotime($jornada))) ?>
+                        <span style="font-weight:400;color:var(--text-muted);font-size:.8rem">
+                            <?= date('d/m', strtotime($jornada)) ?>
+                        </span>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php else: ?>
+            <input type="hidden" name="fecha_jornada_sel" value="<?= $jornadas_disp[0] ?>">
+            <?php endif; ?>
+
             <div class="form-grid">
                 <div class="form-group">
                     <label>Monto Efectivo $</label>

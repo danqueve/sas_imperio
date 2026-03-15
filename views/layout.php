@@ -196,6 +196,12 @@ if ($rol === 'admin') {
                         <i class="fa fa-money-bill-wave"></i>
                         <span class="nav-text">Liquidaciones</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'estadisticas' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/estadisticas_cobranza"
+                       data-tooltip="Estadísticas de Cobranza">
+                        <i class="fa fa-chart-bar"></i>
+                        <span class="nav-text">Estadísticas</span>
+                    </a>
                 <?php endif; ?>
 
                 <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>

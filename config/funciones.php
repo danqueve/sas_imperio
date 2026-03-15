@@ -76,6 +76,28 @@ function fecha_jornada(?string $datetime = null): string
     return date('Y-m-d');
 }
 
+/**
+ * Devuelve las fechas de jornada disponibles para registrar pagos en este momento.
+ * Lunes antes de las 10 AM → [sábado, domingo] (rendición del fin de semana).
+ * Cualquier otro día antes de las 10 AM → [ayer].
+ * Resto → [hoy].
+ */
+function jornadas_disponibles(): array
+{
+    $dow  = (int) date('N'); // 1=Lun … 7=Dom
+    $hora = (int) date('H');
+    if ($dow === 1 && $hora < 10) {
+        return [
+            date('Y-m-d', strtotime('-2 days')), // Sábado
+            date('Y-m-d', strtotime('-1 day')),  // Domingo
+        ];
+    }
+    if ($hora < 10) {
+        return [date('Y-m-d', strtotime('-1 day'))];
+    }
+    return [date('Y-m-d')];
+}
+
 
 /**
  * Genera las cuotas de un crédito en la base de datos.

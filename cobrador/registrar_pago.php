@@ -18,6 +18,13 @@ $tr            = (float) ($_POST['monto_transferencia'] ?? 0);
 $total         = $ef + $tr;
 $es_cuota_pura = (int) ($_POST['es_cuota_pura'] ?? 0);
 
+// Validar fecha de jornada: debe ser una de las fechas permitidas para este momento
+$jornadas_ok       = jornadas_disponibles();
+$fecha_jornada_sel = $_POST['fecha_jornada_sel'] ?? $jornadas_ok[0];
+if (!in_array($fecha_jornada_sel, $jornadas_ok, true)) {
+    $fecha_jornada_sel = $jornadas_ok[0];
+}
+
 if (!$cuota_id || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
     header('Location: agenda');
@@ -106,7 +113,7 @@ foreach ($cuotas_pendientes as $cuota) {
         INSERT INTO ic_pagos_temporales
           (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, es_cuota_pura, fecha_jornada)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $es_cuota_pura, fecha_jornada()]);
+    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $es_cuota_pura, $fecha_jornada_sel]);
 
     registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota['id'],
         'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));

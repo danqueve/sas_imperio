@@ -104,6 +104,11 @@ if ($cobrador_id) {
 $page_title = 'Rendiciones';
 $page_current = 'rendiciones';
 $topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-history"></i> Historial de Rendiciones</a>';
+
+// Detectar modo fin de semana (lunes antes de las 10 AM)
+$jornadas_disp_admin = jornadas_disponibles();
+$hay_jornadas_finde  = count($jornadas_disp_admin) > 1;
+
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -144,6 +149,28 @@ require_once __DIR__ . '/../views/layout.php';
     <div style="margin-top:10px;padding:8px 14px;background:rgba(79,70,229,.1);border-radius:8px;font-size:.8rem;color:var(--text-muted)">
         <i class="fa fa-info-circle"></i>
         Mostrando pagos con <strong>jornada de hoy</strong>. Los cobros registrados antes de las 10:00&nbsp;AM se asignaron a la jornada de ayer.
+    </div>
+    <?php endif; ?>
+    <?php if ($hay_jornadas_finde): ?>
+    <div style="margin-top:10px;padding:10px 14px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:.82rem;color:var(--warning);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <i class="fa fa-calendar-week" style="font-size:1rem"></i>
+        <span>
+            <strong>Rendición de fin de semana:</strong> los cobradores pueden estar cargando pagos del
+            <strong><?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[0]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[0])) ?></strong>
+            y del
+            <strong><?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[1]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[1])) ?></strong>.
+            Revisá ambas jornadas usando el selector de fecha.
+        </span>
+        <div style="display:flex;gap:6px;margin-left:auto">
+            <a href="?fecha=<?= urlencode($jornadas_disp_admin[0]) ?>&cobrador_id=0"
+               class="btn-ic btn-sm <?= $fecha_sel === $jornadas_disp_admin[0] ? 'btn-warning' : 'btn-ghost' ?>">
+                <?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[0]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[0])) ?>
+            </a>
+            <a href="?fecha=<?= urlencode($jornadas_disp_admin[1]) ?>&cobrador_id=0"
+               class="btn-ic btn-sm <?= $fecha_sel === $jornadas_disp_admin[1] ? 'btn-warning' : 'btn-ghost' ?>">
+                <?= nombre_dia((int) date('N', strtotime($jornadas_disp_admin[1]))) ?> <?= date('d/m', strtotime($jornadas_disp_admin[1])) ?>
+            </a>
+        </div>
     </div>
     <?php endif; ?>
 </div>
@@ -206,9 +233,9 @@ require_once __DIR__ . '/../views/layout.php';
                         <span class="text-muted" style="font-size:.82rem">Total:
                             <strong><?= formato_pesos($total_general) ?></strong>
                         </span>
-                        <a href="rendicion_print.php?fecha=<?= urlencode($fecha_sel) ?>&cobrador_id=<?= $cobrador_id ?>"
+                        <a href="rendicion_pdf.php?fecha=<?= urlencode($fecha_sel) ?>&cobrador_id=<?= $cobrador_id ?>"
                            class="btn-ic btn-ghost btn-sm no-print" target="_blank">
-                            <i class="fa fa-print"></i> Imprimir Reporte
+                            <i class="fa fa-file-pdf"></i> PDF de Rendición
                         </a>
                     </div>
                 </div>

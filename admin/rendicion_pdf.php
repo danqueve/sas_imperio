@@ -174,5 +174,19 @@ foreach ($resumen as $i => [$label, $valor]) {
     $pdf->Cell($bw2, 7, lat($valor), 1, 1, 'R', false);
 }
 
-$nombre = 'rendicion_' . str_replace('-', '', $fecha_sel) . '_' . $cobrador_id . '.pdf';
+// ── Área de Firmas ─────────────────────────────────────────────
+$pdf->Ln(25);
+$pdf->SetFont('Helvetica', '', 9);
+$pdf->SetTextColor(80, 80, 80);
+
+$y_firma = $pdf->GetY();
+$pdf->Line(20, $y_firma, 80, $y_firma);
+$pdf->SetXY(20, $y_firma + 2);
+$pdf->Cell(60, 5, lat('Firma Administrador / Caja'), 0, 0, 'C');
+
+$pdf->Line(130, $y_firma, 190, $y_firma);
+$pdf->SetXY(130, $y_firma + 2);
+$pdf->Cell(60, 5, lat('Firma Cobrador (' . $cobrador['nombre'] . ')'), 0, 0, 'C');
+
+$nombre = 'rendicion_jornada_' . str_replace('-', '', $fecha_sel) . '_' . $cobrador_id . '.pdf';
 $pdf->Output('I', $nombre);
