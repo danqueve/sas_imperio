@@ -158,17 +158,18 @@ foreach ($cobrados_hoy_raw as $c) {
 // ── Deduplicar: un registro por cliente ────────────────────────
 // Si un cliente tiene varias cuotas atrasadas, aparece una sola vez
 // con un badge que indica cuántas cuotas acumula.
-$venc_por_cliente = [];
+// Clave = credito_id para que clientes con varios créditos aparezcan como tarjetas separadas.
+$venc_por_credito = [];
 foreach ($vencidas as $v) {
-    $venc_por_cliente[$v['cliente_id']][] = $v;
+    $venc_por_credito[$v['credito_id']][] = $v;
 }
 
 // del_dia: conservar la cuota de hoy, agregar count de atrasadas extras
 $del_dia_dedup = [];
 foreach ($del_dia as $c) {
-    $cid = $c['cliente_id'];
+    $cid = $c['credito_id'];
     if (!isset($del_dia_dedup[$cid])) {
-        $cuotas_venc = $venc_por_cliente[$cid] ?? [];
+        $cuotas_venc = $venc_por_credito[$cid] ?? [];
         $c['cuotas_atrasadas'] = count($cuotas_venc);
         // Total real: suma de todas las vencidas + la cuota de hoy
         $total_venc = array_sum(array_map(fn($v) => $v['total_a_cobrar'], $cuotas_venc));
@@ -178,9 +179,9 @@ foreach ($del_dia as $c) {
 }
 $del_dia = array_values($del_dia_dedup);
 
-// vencidas: excluir clientes ya mostrados en del_dia, deduplicar el resto
+// vencidas: excluir créditos ya mostrados en del_dia, deduplicar el resto
 $vencidas = [];
-foreach ($venc_por_cliente as $cid => $cuotas) {
+foreach ($venc_por_credito as $cid => $cuotas) {
     if (isset($del_dia_dedup[$cid])) continue; // ya aparece arriba con badge
     $row = $cuotas[0]; // más antigua primero (ORDER BY fecha_vencimiento ASC)
     $row['cuotas_atrasadas'] = count($cuotas);
@@ -195,7 +196,7 @@ $semana_stmt = $pdo->prepare("
            cl.id AS cliente_id,
            cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.dia_cobro,
            cl.coordenadas,
-           cr.interes_moratorio_pct, cr.cant_cuotas,
+           cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado, cu.monto_mora,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
@@ -213,7 +214,7 @@ $semana_rows_raw = $semana_stmt->fetchAll();
 
 // Calcular mora para cada fila semanal
 $semana_rows = [];
-$semana_por_cliente = [];
+$semana_por_credito = [];
 
 foreach ($semana_rows_raw as $r) {
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
@@ -224,22 +225,21 @@ foreach ($semana_rows_raw as $r) {
     $r['mora_calc']        = $mora;
     $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : $r['monto_cuota'] + $mora;
     $r['pago_pen']         = $r['pago_pen'] ?? 0;
-    
-    // Agrupar por cliente para deduplicar
-    $semana_por_cliente[$r['cliente_id']][] = $r;
+
+    // Agrupar por crédito para deduplicar (un cliente puede tener varios créditos semanales)
+    $semana_por_credito[$r['credito_id']][] = $r;
 }
 
-// Extraer solo 1 cuota por cliente para la vista semanal y calcular el total de cuotas atrasadas de ese crédito
-foreach ($semana_por_cliente as $cid => $cuotas_cl) {
+// Extraer solo 1 cuota por crédito para la vista semanal
+foreach ($semana_por_credito as $cid => $cuotas_cl) {
     $row = $cuotas_cl[0]; // La primera es la más antigua según el ORDER BY
     $row['cuotas_atrasadas'] = count($cuotas_cl);
-    
-    // Si la cuota ya está vencida en la semana actual y también figuraba en $venc_por_cliente, el número de cuotas total
-    // atrasadas será el de la totalidad de su historial. Nos aseguramos de cruzar ese dato.
-    if (isset($venc_por_cliente[$cid]) && count($venc_por_cliente[$cid]) > count($cuotas_cl)) {
-       $row['cuotas_atrasadas'] = count($venc_por_cliente[$cid]);
+
+    // Cruzar con venc_por_credito para tener el total real de atrasadas del historial
+    if (isset($venc_por_credito[$cid]) && count($venc_por_credito[$cid]) > count($cuotas_cl)) {
+        $row['cuotas_atrasadas'] = count($venc_por_credito[$cid]);
     }
-    
+
     $semana_rows[] = $row;
 }
 
@@ -270,7 +270,9 @@ $mensual_stmt = $pdo->prepare("
 $mensual_stmt->execute([$cobrador_filtro]);
 $mensual_rows_raw = $mensual_stmt->fetchAll();
 
-$mensual_rows = [];
+// Dedup por crédito: una tarjeta por crédito (la cuota más urgente).
+// cuotas_atrasadas = total de cuotas pendientes/vencidas de ese crédito.
+$mensual_dedup = []; // key = credito_id
 foreach ($mensual_rows_raw as $r) {
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
     $mora        = ($r['estado'] === 'CAP_PAGADA')
@@ -280,9 +282,15 @@ foreach ($mensual_rows_raw as $r) {
     $r['mora_calc']        = $mora;
     $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : $r['monto_cuota'] + $mora;
     $r['pago_pen']         = (int)($r['pago_pen'] ?? 0);
-    $r['cuotas_atrasadas'] = 0;
-    $mensual_rows[] = $r;
+    $rid = $r['credito_id'];
+    if (!isset($mensual_dedup[$rid])) {
+        $r['cuotas_atrasadas'] = 1;
+        $mensual_dedup[$rid]   = $r;
+    } else {
+        $mensual_dedup[$rid]['cuotas_atrasadas']++;
+    }
 }
+$mensual_rows = array_values($mensual_dedup);
 
 $page_title = 'Agenda del ' . $hoy_dt->format('d/m/Y');
 $page_current = 'agenda';
