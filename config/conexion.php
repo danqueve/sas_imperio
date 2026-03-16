@@ -4,6 +4,7 @@
 // ============================================================
 
 define('BASE_URL', '/creditos/');
+define('APP_URL',  'https://imperiocomercial.com.ar/creditos/');
 
 
 define('DB_HOST', 'localhost');

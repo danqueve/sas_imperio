@@ -125,23 +125,40 @@ require_once __DIR__ . '/../views/layout.php';
 
         </div>
 
-        <?php if ($c['token_acceso']): ?>
-        <?php $portal_url = BASE_URL . 'clientes/portal.php?token=' . e($c['token_acceso']); ?>
         <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--dark-border);font-size:.75rem">
-            <div class="text-muted" style="margin-bottom:4px">🔗 Portal del cliente</div>
-            <div style="display:flex;align-items:center;gap:6px">
-                <code id="portal-token"
-                      style="flex:1;background:rgba(0,0,0,.3);border-radius:6px;padding:5px 8px;
-                             font-size:.78rem;letter-spacing:.08em;word-break:break-all">
-                    <?= $portal_url ?>
-                </code>
-                <button onclick="navigator.clipboard.writeText('<?= $portal_url ?>').then(()=>{this.innerHTML='<i class=\'fa fa-check\'></i>';setTimeout(()=>this.innerHTML='<i class=\'fa fa-copy\'></i>',1500)})"
-                        class="btn-ic btn-ghost btn-sm btn-icon" title="Copiar link" style="flex-shrink:0">
-                    <i class="fa fa-copy"></i>
-                </button>
-            </div>
+            <div class="text-muted" style="margin-bottom:6px">🔗 Portal del cliente</div>
+            <?php if ($c['token_acceso']): ?>
+                <?php
+                $portal_url = APP_URL . 'p/' . $c['token_acceso'];
+                $wa_tel     = preg_replace('/\D/', '', $c['telefono'] ?? '');
+                $wa_msg     = urlencode("Hola {$c['nombres']}, podés ver el estado de tu crédito en: {$portal_url}");
+                $wa_link    = "https://wa.me/{$wa_tel}?text={$wa_msg}";
+                ?>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                    <code style="flex:1;background:rgba(0,0,0,.3);border-radius:6px;padding:5px 8px;
+                                 font-size:.74rem;word-break:break-all">
+                        <?= e($portal_url) ?>
+                    </code>
+                    <button onclick="navigator.clipboard.writeText('<?= e($portal_url) ?>').then(()=>{this.innerHTML='<i class=\'fa fa-check\'></i>';setTimeout(()=>this.innerHTML='<i class=\'fa fa-copy\'></i>',1500)})"
+                            class="btn-ic btn-ghost btn-sm btn-icon" title="Copiar link" style="flex-shrink:0">
+                        <i class="fa fa-copy"></i>
+                    </button>
+                    <?php if ($wa_tel): ?>
+                    <a href="<?= e($wa_link) ?>" target="_blank"
+                       class="btn-ic btn-success btn-sm btn-icon" title="Enviar por WhatsApp" style="flex-shrink:0">
+                        <i class="fa-brands fa-whatsapp"></i>
+                    </a>
+                    <?php endif; ?>
+                </div>
+            <?php else: ?>
+                <form method="POST" action="generar_token_portal">
+                    <input type="hidden" name="cliente_id" value="<?= $c['id'] ?>">
+                    <button type="submit" class="btn-ic btn-accent btn-sm">
+                        <i class="fa fa-link"></i> Generar link de acceso
+                    </button>
+                </form>
+            <?php endif; ?>
         </div>
-        <?php endif; ?>
 
         <!-- Garante (si existe) -->
         <?php if ($g): ?>

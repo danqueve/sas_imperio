@@ -6,6 +6,9 @@ RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
 
+# Portal cliente URL corta: /creditos/p/TOKEN
+RewriteRule ^p/([A-Z0-9]+)/?$ clientes/portal.php?token=$1 [L,QSA]
+
 # Add .php extension if the request has no extension and the .php file exists
 RewriteCond %{REQUEST_FILENAME}.php -f
 RewriteRule ^(.+?)/?$ $1.php [L]
