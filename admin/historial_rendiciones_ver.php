@@ -12,6 +12,7 @@ $pdo = obtener_conexion();
 
 $fecha_rendicion = $_GET['fecha'] ?? '';
 $cobrador_id = (int) ($_GET['cobrador_id'] ?? 0);
+$origen = $_GET['origen'] ?? '';
 
 if (!$fecha_rendicion || !$cobrador_id) {
     header('Location: historial_rendiciones');
@@ -28,22 +29,27 @@ if (!$cobrador) {
 }
 
 // Obtener el detalle individual de pagos de esa fecha y cobrador
+$origen_filter = ($origen === 'manual' || $origen === 'cobrador') ? " AND tmp.origen = ?" : "";
 $dstmt = $pdo->prepare("
-    SELECT pt.*,
+    SELECT pc.*,
            cl.nombres, cl.apellidos,
            cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
-           u.nombre AS apr_nombre, u.apellido AS apr_apellido
-    FROM ic_pagos_confirmados pt
-    JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+           u.nombre AS apr_nombre, u.apellido AS apr_apellido,
+           tmp.origen
+    FROM ic_pagos_confirmados pc
+    JOIN ic_pagos_temporales tmp ON pc.pago_temp_id = tmp.id
+    JOIN ic_cuotas cu ON pc.cuota_id = cu.id
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-    LEFT JOIN ic_usuarios u ON pt.aprobador_id = u.id
-    WHERE pt.cobrador_id = ? AND DATE(pt.fecha_aprobacion) = ?
-    ORDER BY pt.fecha_pago ASC
+    LEFT JOIN ic_usuarios u ON pc.aprobador_id = u.id
+    WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?$origen_filter
+    ORDER BY pc.fecha_pago ASC
 ");
-$dstmt->execute([$cobrador_id, $fecha_rendicion]);
+$exec_params = [$cobrador_id, $fecha_rendicion];
+if ($origen_filter) $exec_params[] = $origen;
+$dstmt->execute($exec_params);
 $detalle_pagos = $dstmt->fetchAll();
 
 $total_efectivo = 0;
@@ -77,6 +83,15 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-user-shield kpi-icon"></i>
         <div class="kpi-label">Aprobado Por</div>
         <div class="kpi-value text-muted"><?= $aprobador_nombre ? e($aprobador_nombre . ' ' . $aprobador_apellido) : '—' ?></div>
+        <?php if ($origen): ?>
+            <div class="kpi-sub" style="margin-top:4px">
+                <?php if ($origen === 'manual'): ?>
+                    <span class="badge" style="background:var(--warning);color:#000">Carga Manual</span>
+                <?php else: ?>
+                    <span class="badge" style="background:var(--info,#0ea5e9);color:#fff">Carga Cobrador</span>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
     <div class="kpi-card" style="var(--kpi-color:var(--success))">
         <i class="fa fa-hand-holding-dollar kpi-icon text-success"></i>

@@ -39,10 +39,11 @@ if ($fecha_hasta) {
 $whereStr = implode(' AND ', $where);
 
 // Contar el total de grupos (rendiciones) para la paginación
-// Una rendición se define como un conjunto de pagos aprobados en un mismo día para un cobrador
+// Una rendición se define como un conjunto de pagos de mismo día + cobrador + origen
 $countSql = "
-    SELECT COUNT(DISTINCT CONCAT(DATE(p.fecha_aprobacion), '_', p.cobrador_id))
+    SELECT COUNT(DISTINCT CONCAT(DATE(p.fecha_aprobacion), '_', p.cobrador_id, '_', pt.origen))
     FROM ic_pagos_confirmados p
+    JOIN ic_pagos_temporales pt ON p.pago_temp_id = pt.id
     WHERE $whereStr
 ";
 $stmtCount = $pdo->prepare($countSql);
@@ -52,11 +53,12 @@ $totalPags = max(1, (int) ceil($total / $limit));
 
 // Consultar los datos agrupados
 $sql = "
-    SELECT 
+    SELECT
         DATE(p.fecha_aprobacion) AS fecha_rendicion,
         p.cobrador_id,
+        pt.origen,
         u.nombre AS cob_nombre, u.apellido AS cob_apellido,
-        MAX(a.nombre)  AS apr_nombre, 
+        MAX(a.nombre)  AS apr_nombre,
         MAX(a.apellido) AS apr_apellido,
         COUNT(p.id) AS cantidad_cuotas,
         SUM(p.monto_efectivo) AS total_efectivo,
@@ -65,8 +67,9 @@ $sql = "
     FROM ic_pagos_confirmados p
     JOIN ic_usuarios u ON p.cobrador_id = u.id
     LEFT JOIN ic_usuarios a ON p.aprobador_id = a.id
+    JOIN ic_pagos_temporales pt ON p.pago_temp_id = pt.id
     WHERE $whereStr
-    GROUP BY DATE(p.fecha_aprobacion), p.cobrador_id, u.nombre, u.apellido
+    GROUP BY DATE(p.fecha_aprobacion), p.cobrador_id, pt.origen, u.nombre, u.apellido
     ORDER BY fecha_rendicion DESC, u.apellido ASC
     LIMIT $limit OFFSET $offset
 ";
@@ -115,6 +118,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <th class="text-center">Fecha Aprobación</th>
                     <th>Cobrador</th>
+                    <th class="text-center">Tipo</th>
                     <th class="text-center">Cuotas Rendidas</th>
                     <th class="text-right">Efectivo</th>
                     <th class="text-right">Transferencia</th>
@@ -126,7 +130,7 @@ require_once __DIR__ . '/../views/layout.php';
             <tbody>
                 <?php if (empty($historial)): ?>
                     <tr>
-                        <td colspan="8" class="text-center text-muted" style="padding:40px">
+                        <td colspan="9" class="text-center text-muted" style="padding:40px">
                             No se encontraron rendiciones en el historial.
                         </td>
                     </tr>
@@ -138,6 +142,17 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td>
                                 <?= e($r['cob_apellido'] . ', ' . $r['cob_nombre']) ?>
+                            </td>
+                            <td class="text-center">
+                                <?php if ($r['origen'] === 'manual'): ?>
+                                    <span class="badge" style="background:var(--warning);color:#000;font-size:.75rem">
+                                        <i class="fa fa-user-shield"></i> Manual
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge" style="background:var(--info,#0ea5e9);color:#fff;font-size:.75rem">
+                                        <i class="fa fa-mobile-screen-button"></i> Cobrador
+                                    </span>
+                                <?php endif; ?>
                             </td>
                             <td class="text-center">
                                 <span class="badge bg-secondary"><?= $r['cantidad_cuotas'] ?></span>
@@ -155,11 +170,11 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= $r['apr_nombre'] ? e($r['apr_nombre'] . ' ' . $r['apr_apellido']) : '—' ?>
                             </td>
                             <td class="nowrap">
-                                <a href="historial_rendiciones_ver?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>" 
+                                <a href="historial_rendiciones_ver?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= $r['origen'] ?>"
                                    class="btn-ic btn-ghost btn-sm btn-icon" title="Ver Detalle de Rendición">
                                     <i class="fa fa-eye"></i>
                                 </a>
-                                <a href="historial_rendiciones_pdf?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>" 
+                                <a href="historial_rendiciones_pdf?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= $r['origen'] ?>"
                                    target="_blank" class="btn-ic btn-danger btn-sm btn-icon" title="Exportar PDF">
                                     <i class="fa fa-file-pdf"></i>
                                 </a>
