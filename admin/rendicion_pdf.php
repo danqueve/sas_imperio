@@ -22,8 +22,8 @@ if (!$cobrador) die('Cobrador no encontrado.');
 
 $dstmt = $pdo->prepare("
     SELECT pt.*,
-           cl.nombres, cl.apellidos,
-           cu.numero_cuota, cu.fecha_vencimiento,
+            cl.nombres, cl.apellidos,
+           cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_pagos_temporales pt
     JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
@@ -51,10 +51,10 @@ function fmt(float $v): string {
 require_once __DIR__ . '/../fpdf/fpdf.php';
 
 // Anchos columnas: suma = 190mm (margen 10mm c/lado)
-// #(8) + Cliente(45) + Articulo(37) + Cuota(13) + Vencim.(22) + Efectivo(22) + Transfer.(22) + Total(21)
-$COLS   = [8, 45, 37, 13, 22, 22, 22, 21];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Efectivo', 'Transfer.', 'Total'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'C', 'R', 'R', 'R'];
+// #(8) + Cliente(52) + Articulo(40) + Cuota(10) + Vlr.Cuota(20) + Mora(20) + Efectivo(20) + Transfer(20)
+$COLS   = [8, 52, 40, 10, 20, 20, 20, 20]; 
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vlr. Cuota', 'Mora', 'Efectivo', 'Transfer.'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R'];
 
 class RendicionPDF extends FPDF
 {
@@ -125,28 +125,27 @@ $pdf->SetFillColor(255, 255, 255);
 
 $index = 1;
 foreach ($pagos as $p) {
-    $cliente  = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 31, '..');
-    $articulo = mb_strimwidth($p['articulo'], 0, 26, '..');
+    $cliente  = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 35, '..');
+    $articulo = mb_strimwidth($p['articulo'], 0, 30, '..');
 
     $pdf->Cell($COLS[0], 6, $index,                      1, 0, 'C', false);
     $pdf->Cell($COLS[1], 6, lat($cliente),               1, 0, 'L', false);
     $pdf->Cell($COLS[2], 6, lat($articulo),              1, 0, 'L', false);
     $pdf->Cell($COLS[3], 6, '#' . $p['numero_cuota'],    1, 0, 'C', false);
-    $pdf->Cell($COLS[4], 6, date('d/m/Y', strtotime($p['fecha_vencimiento'])), 1, 0, 'C', false);
-    $pdf->Cell($COLS[5], 6, fmt($p['monto_efectivo']),       1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 6, fmt($p['monto_transferencia']),  1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 6, fmt($p['monto_total']),          1, 0, 'R', false);
+    $pdf->Cell($COLS[4], 6, fmt($p['monto_cuota']),         1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 6, fmt($p['monto_mora_cobrada']),  1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 6, fmt($p['monto_efectivo']),       1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 6, fmt($p['monto_transferencia']),  1, 0, 'R', false);
     $pdf->Ln();
     $index++;
 }
 
 // ── Fila TOTALES — negrita, sin relleno ────────────────────────
 $pdf->SetFont('Helvetica', 'B', 8);
-$ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+$ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4] + $COLS[5];
 $pdf->Cell($ancho_label, 7, lat('TOTALES'), 1, 0, 'R', false);
-$pdf->Cell($COLS[5], 7, fmt($total_efectivo),      1, 0, 'R', false);
-$pdf->Cell($COLS[6], 7, fmt($total_transferencia), 1, 0, 'R', false);
-$pdf->Cell($COLS[7], 7, fmt($total_general),       1, 0, 'R', false);
+$pdf->Cell($COLS[6], 7, fmt($total_efectivo),      1, 0, 'R', false);
+$pdf->Cell($COLS[7], 7, fmt($total_transferencia), 1, 0, 'R', false);
 $pdf->Ln();
 
 // ── Resumen al pie — sin rellenos ─────────────────────────────
@@ -161,7 +160,7 @@ $bw2 = 38;
 $resumen = [
     ['Efectivo cobrado',  fmt($total_efectivo)],
     ['Transferencias',    fmt($total_transferencia)],
-    ['Mora cobrada',      fmt($total_mora)],
+    ['Mora no cobradas',  fmt($total_mora)],
     ['TOTAL GENERAL',     fmt($total_general)],
 ];
 
