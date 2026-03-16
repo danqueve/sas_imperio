@@ -43,7 +43,7 @@ $params = array_merge([$cobrador_id], $dias_sel);
 
 $stmt = $pdo->prepare("
     SELECT cl.id AS cliente_id,
-           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.dia_cobro,
+           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cr.dia_cobro,
            cr.id AS credito_id, cr.interes_moratorio_pct,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado AS cuota_estado, cu.monto_mora,
@@ -53,8 +53,8 @@ $stmt = $pdo->prepare("
                         AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas  cu   ON cu.credito_id  = cr.id  AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
     LEFT JOIN ic_articulos a  ON a.id            = cr.articulo_id
-    WHERE cl.dia_cobro IN ($placeholders)
-    ORDER BY cl.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
+    WHERE cr.dia_cobro IN ($placeholders)
+    ORDER BY cr.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
 $stmt->execute($params);
 $rows = $stmt->fetchAll();

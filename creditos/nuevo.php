@@ -147,6 +147,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ->execute([$articulo_id]);
                     }
 
+                    // Sincronizar cobrador y dia_cobro del cliente con el crédito activo
+                    $pdo->prepare("
+                        UPDATE ic_clientes
+                        SET cobrador_id = ?,
+                            dia_cobro   = CASE WHEN ? IS NOT NULL THEN ? ELSE dia_cobro END
+                        WHERE id = ?
+                    ")->execute([
+                        $v['cobrador_id'],
+                        ($v['dia_cobro'] ?: null),
+                        ($v['dia_cobro'] ?: null),
+                        $v['cliente_id'],
+                    ]);
+
                     $pdo->commit();
                     registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_CREADO', 'credito', (int)$credito_id,
                         'Cuotas: ' . $v['cant_cuotas'] . ' | Total: ' . formato_pesos($monto_tot));

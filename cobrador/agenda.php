@@ -194,9 +194,9 @@ foreach ($venc_por_credito as $cid => $cuotas) {
 $semana_stmt = $pdo->prepare("
     SELECT cu.id,
            cl.id AS cliente_id,
-           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.dia_cobro,
+           cl.nombres, cl.apellidos, cl.telefono, cl.zona,
            cl.coordenadas,
-           cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas,
+           cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas, cr.dia_cobro,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado, cu.monto_mora,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
@@ -206,8 +206,8 @@ $semana_stmt = $pdo->prepare("
                        AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
     LEFT JOIN ic_articulos a ON a.id           = cr.articulo_id
-    WHERE cl.dia_cobro BETWEEN 1 AND 6
-    ORDER BY cl.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
+    WHERE cr.dia_cobro BETWEEN 1 AND 6
+    ORDER BY cr.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
 $semana_stmt->execute([$cobrador_filtro]);
 $semana_rows_raw = $semana_stmt->fetchAll();
