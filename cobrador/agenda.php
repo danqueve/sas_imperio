@@ -41,7 +41,7 @@ $sql = "
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
-    WHERE cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
+    WHERE cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
       AND cr.estado = 'EN_CURSO'
       $condCobrador
     ORDER BY cu.fecha_vencimiento ASC, cl.apellidos ASC
@@ -64,10 +64,11 @@ foreach ($todas as $c) {
         : calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
     $c['dias_atraso_calc'] = $dias_atraso;
     $c['mora_calc'] = $mora;
-    // CAP_PAGADA: el cobrador solo debe la mora (capital ya pagado)
+    // CAP_PAGADA: solo mora congelada | PARCIAL: descontar saldo ya pagado
+    $saldo_prev = (float)($c['saldo_pagado'] ?? 0);
     $c['total_a_cobrar'] = ($c['estado'] === 'CAP_PAGADA')
         ? $mora
-        : $c['monto_cuota'] + $mora;
+        : max(0, $c['monto_cuota'] + $mora - $saldo_prev);
 
     if ($dias_atraso === 0 && $c['fecha_vencimiento'] === $hoy) {
         $del_dia[] = $c;
@@ -198,13 +199,13 @@ $semana_stmt = $pdo->prepare("
            cl.coordenadas,
            cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas, cr.dia_cobro,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
-           cu.estado, cu.monto_mora,
+           cu.estado, cu.monto_mora, cu.saldo_pagado,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
     FROM ic_clientes cl
     JOIN ic_creditos cr ON cr.cliente_id  = cl.id AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
                        AND cr.frecuencia = 'semanal'
-    JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
+    JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
     LEFT JOIN ic_articulos a ON a.id           = cr.articulo_id
     WHERE cr.dia_cobro BETWEEN 1 AND 6
     ORDER BY cr.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
@@ -223,7 +224,8 @@ foreach ($semana_rows_raw as $r) {
         : calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
     $r['dias_atraso_calc'] = $dias_atraso;
     $r['mora_calc']        = $mora;
-    $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : $r['monto_cuota'] + $mora;
+    $saldo_prev_s = (float)($r['saldo_pagado'] ?? 0);
+    $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : max(0, $r['monto_cuota'] + $mora - $saldo_prev_s);
     $r['pago_pen']         = $r['pago_pen'] ?? 0;
 
     // Agrupar por crédito para deduplicar (un cliente puede tener varios créditos semanales)
@@ -261,7 +263,7 @@ $mensual_stmt = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
-    WHERE cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA')
+    WHERE cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
       AND cr.estado = 'EN_CURSO'
       AND cr.frecuencia IN ('quincenal', 'mensual')
       AND cr.cobrador_id = ?
@@ -280,7 +282,8 @@ foreach ($mensual_rows_raw as $r) {
         : calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
     $r['dias_atraso_calc'] = $dias_atraso;
     $r['mora_calc']        = $mora;
-    $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : $r['monto_cuota'] + $mora;
+    $saldo_prev_m = (float)($r['saldo_pagado'] ?? 0);
+    $r['total_a_cobrar']   = ($r['estado'] === 'CAP_PAGADA') ? $mora : max(0, $r['monto_cuota'] + $mora - $saldo_prev_m);
     $r['pago_pen']         = (int)($r['pago_pen'] ?? 0);
     $rid = $r['credito_id'];
     if (!isset($mensual_dedup[$rid])) {

@@ -46,12 +46,12 @@ $stmt = $pdo->prepare("
            cl.nombres, cl.apellidos, cl.telefono, cl.zona, cr.dia_cobro,
            cr.id AS credito_id, cr.interes_moratorio_pct,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
-           cu.estado AS cuota_estado, cu.monto_mora,
+           cu.estado AS cuota_estado, cu.monto_mora, cu.saldo_pagado,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_clientes cl
     JOIN ic_creditos cr  ON cr.cliente_id  = cl.id  AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
                         AND cr.frecuencia = 'semanal'
-    JOIN ic_cuotas  cu   ON cu.credito_id  = cr.id  AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA')
+    JOIN ic_cuotas  cu   ON cu.credito_id  = cr.id  AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
     LEFT JOIN ic_articulos a  ON a.id            = cr.articulo_id
     WHERE cr.dia_cobro IN ($placeholders)
     ORDER BY cr.dia_cobro ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
@@ -156,7 +156,8 @@ foreach ($dias_sel as $dia) {
         $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
             ? (float)$r['monto_mora']
             : calcular_mora((float)$r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float)$r['interes_moratorio_pct']);
-        $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : (float)$r['monto_cuota'] + $mora;
+        $saldo_p = (float)($r['saldo_pagado'] ?? 0);
+        $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float)$r['monto_cuota'] + $mora - $saldo_p);
         $total_dia += $total_cobrar;
     }
     $cant      = count($clientes_dia);
@@ -194,7 +195,8 @@ foreach ($dias_sel as $dia) {
         $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
             ? (float)$r['monto_mora']
             : calcular_mora((float)$r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float)$r['interes_moratorio_pct']);
-        $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : (float)$r['monto_cuota'] + $mora;
+        $saldo_p = (float)($r['saldo_pagado'] ?? 0);
+        $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float)$r['monto_cuota'] + $mora - $saldo_p);
         $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
 
         $monto_str = fmt($total_cobrar);
@@ -224,7 +226,7 @@ $stmt_qm = $pdo->prepare("
     SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.zona,
            cr.frecuencia,
            cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota, cu.estado AS cuota_estado,
-           cu.monto_mora,
+           cu.monto_mora, cu.saldo_pagado,
            cr.interes_moratorio_pct,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_cuotas cu
@@ -234,7 +236,7 @@ $stmt_qm = $pdo->prepare("
     WHERE cr.cobrador_id = ?
       AND cr.estado = 'EN_CURSO'
       AND cr.frecuencia IN ('quincenal', 'mensual')
-      AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA')
+      AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
     ORDER BY cr.frecuencia ASC, cu.fecha_vencimiento ASC, cl.apellidos ASC
 ");
 $stmt_qm->execute([$cobrador_id]);
@@ -247,8 +249,9 @@ if (!empty($rows_qm)) {
         $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
             ? (float) $r['monto_mora']
             : calcular_mora((float) $r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float) $r['interes_moratorio_pct']);
-        $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : (float) $r['monto_cuota'] + $mora;
-        
+        $saldo_p = (float)($r['saldo_pagado'] ?? 0);
+        $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float) $r['monto_cuota'] + $mora - $saldo_p);
+
         $key = $r['cliente_id'];
         if (!isset($qm_aux[$r['frecuencia']][$key])) {
             $r['total_final'] = $total_cobrar;
