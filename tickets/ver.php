@@ -74,34 +74,45 @@ $topbar_actions = '<a href="index" class="btn-ic btn-sm" style="background:rgba(
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
+<?php
+$is_light = ($rol === 'cobrador');
+$card_bg  = $is_light ? '#ffffff' : 'rgba(15,23,42,.4)';
+$card_bor = $is_light ? '#d1d5db' : 'rgba(255,255,255,.05)';
+$text_main = $is_light ? '#1f2937' : '#f1f5f9';
+$text_muted = $is_light ? '#64748b' : '#94a3b8';
+$bubble_other_bg = $is_light ? '#f3f4f6' : 'rgba(30,41,59,.8)';
+$header_bg = $is_light ? '#f9fafb' : 'rgba(30,41,59,.6)';
+$sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
+?>
+
 <style>
 /* Reutilizamos y refinamos los estilos de badges */
 .badge-status {
     padding: 4px 10px; border-radius: 6px; font-size: .72rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: .3px; display: inline-flex; align-items: center;
 }
-.badge-status.open     { background: rgba(239,68,68,.15); color: #fca5a5; border: 1px solid rgba(239,68,68,.2); }
-.badge-status.progress { background: rgba(245,158,11,.15); color: #fcd34d; border: 1px solid rgba(245,158,11,.2); }
-.badge-status.resolved { background: rgba(34,197,94,.15); color: #86efac; border: 1px solid rgba(34,197,94,.2); }
+.badge-status.open     { background: rgba(239,68,68,<?= $is_light?'.1':'.15' ?>); color: <?= $is_light?'#dc2626':'#fca5a5' ?>; border: 1px solid rgba(239,68,68,.2); }
+.badge-status.progress { background: rgba(245,158,11,<?= $is_light?'.1':'.15' ?>); color: <?= $is_light?'#d97706':'#fcd34d' ?>; border: 1px solid rgba(245,158,11,.2); }
+.badge-status.resolved { background: rgba(34,197,94,<?= $is_light?'.1':'.15' ?>); color: <?= $is_light?'#16a34a':'#86efac' ?>; border: 1px solid rgba(34,197,94,.2); }
 
 .badge-prio { font-size: .75rem; font-weight: 500; display: inline-flex; align-items: center; }
-.badge-prio.high   { color: #fca5a5; }
-.badge-prio.medium { color: #a5b4fc; }
-.badge-prio.low    { color: #9ca3af; }
+.badge-prio.high   { color: <?= $is_light?'#dc2626':'#fca5a5' ?>; }
+.badge-prio.medium { color: <?= $is_light?'#4f46e5':'#a5b4fc' ?>; }
+.badge-prio.low    { color: <?= $is_light?'#6b7280':'#9ca3af' ?>; }
 
 .chat-container {
-    background: rgba(15,23,42,.4); border-radius: 16px; border: 1px solid rgba(255,255,255,.05);
+    background: <?= $card_bg ?>; border-radius: 16px; border: 1px solid <?= $card_bor ?>;
     display: flex; flex-direction: column; overflow: hidden;
 }
 
 .chat-header {
-    background: rgba(30,41,59,.6); padding: 16px 20px;
-    border-bottom: 1px solid rgba(255,255,255,.05);
+    background: <?= $header_bg ?>; padding: 16px 20px;
+    border-bottom: 1px solid <?= $card_bor ?>;
 }
 
 .chat-body {
     padding: 24px; max-height: 500px; overflow-y: auto;
-    background: radial-gradient(circle at top right, rgba(99,102,241,0.03), transparent);
+    background: <?= $is_light ? '#ffffff' : 'radial-gradient(circle at top right, rgba(99,102,241,0.03), transparent)' ?>;
 }
 
 .bubble-wrap { display:flex; margin-bottom:20px; gap:12px; max-width: 85%; }
@@ -118,28 +129,37 @@ require_once __DIR__ . '/../views/layout.php';
     padding:12px 16px; border-radius:14px;
     font-size:.9rem; line-height:1.55; white-space:pre-wrap; word-break:break-word;
     position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,<?= $is_light ? '.05' : '.1' ?>);
 }
 .bubble.mine {
     background: linear-gradient(135deg, #3c50e0 0%, #2c3ec0 100%); color: #fff;
     border-bottom-right-radius: 2px;
 }
 .bubble.other {
-    background: rgba(30,41,59,.8); color: #e5e7eb; border: 1px solid rgba(255,255,255,.03);
+    background: <?= $bubble_other_bg ?>; color: <?= $is_light ? '#1f2937' : '#e5e7eb' ?>; border: 1px solid <?= $card_bor ?>;
     border-top-left-radius: 2px;
 }
 
-.bubble-meta { font-size:.68rem; color:#64748b; margin-top:6px; display: flex; gap: 8px; }
+.bubble-meta { font-size:.68rem; color:<?= $text_muted ?>; margin-top:6px; display: flex; gap: 8px; }
 .bubble-wrap.mine .bubble-meta { justify-content: flex-end; }
 
 .desc-box {
-    background: rgba(30,41,59,.4); border: 1px solid rgba(255,255,255,.05);
+    background: <?= $sidebar_bg ?>; border: 1px solid <?= $card_bor ?>;
     border-radius: 12px; padding: 20px;
 }
 
 .sidebar-card {
-    background: rgba(30,41,59,.4); border: 1px solid rgba(255,255,255,.05);
+    background: <?= $sidebar_bg ?>; border: 1px solid <?= $card_bor ?>;
     border-radius: 12px; padding: 20px;
 }
+
+<?php if ($is_light): ?>
+.chat-container textarea { background: #ffffff !important; border-color: #d1d5db !important; color: #1f2937 !important; }
+.chat-container .bg-dark { background: #f9fafb !important; }
+.desc-box h4 { color: #1f2937 !important; }
+.sidebar-card .text-light { color: #1f2937 !important; }
+.avatar[style*="rgba(255,255,255,.05)"] { background: #f3f4f6 !important; }
+<?php endif; ?>
 </style>
 
 <?php if ($flash): ?>

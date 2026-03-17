@@ -90,36 +90,54 @@ function badge_prioridad(string $p): string {
 }
 ?>
 
+<?php
+$is_light = ($rol === 'cobrador');
+$card_bg  = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
+$card_bor = $is_light ? '#d1d5db' : 'rgba(255,255,255,.05)';
+$text_main = $is_light ? '#1f2937' : '#e5e7eb';
+$text_muted = $is_light ? '#6b7280' : '#94a3b8';
+$filter_bg = $is_light ? '#f9fafb' : 'rgba(30,41,59,.4)';
+?>
+
 <style>
 .badge-status {
     padding: 4px 10px; border-radius: 6px; font-size: .72rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: .3px; display: inline-flex; align-items: center;
 }
-.badge-status.open     { background: rgba(239,68,68,.15); color: #fca5a5; border: 1px solid rgba(239,68,68,.2); }
-.badge-status.progress { background: rgba(245,158,11,.15); color: #fcd34d; border: 1px solid rgba(245,158,11,.2); }
-.badge-status.resolved { background: rgba(34,197,94,.15); color: #86efac; border: 1px solid rgba(34,197,94,.2); }
+.badge-status.open     { background: rgba(239,68,68,<?= $is_light ? '.1' : '.15' ?>); color: <?= $is_light ? '#dc2626' : '#fca5a5' ?>; border: 1px solid rgba(239,68,68,.2); }
+.badge-status.progress { background: rgba(245,158,11,<?= $is_light ? '.1' : '.15' ?>); color: <?= $is_light ? '#d97706' : '#fcd34d' ?>; border: 1px solid rgba(245,158,11,.2); }
+.badge-status.resolved { background: rgba(34,197,94,<?= $is_light ? '.1' : '.15' ?>); color: <?= $is_light ? '#16a34a' : '#86efac' ?>; border: 1px solid rgba(34,197,94,.2); }
 
 .badge-prio { font-size: .75rem; font-weight: 500; display: inline-flex; align-items: center; }
-.badge-prio.high   { color: #fca5a5; }
-.badge-prio.medium { color: #a5b4fc; }
-.badge-prio.low    { color: #9ca3af; }
+.badge-prio.high   { color: <?= $is_light ? '#dc2626' : '#fca5a5' ?>; }
+.badge-prio.medium { color: <?= $is_light ? '#4f46e5' : '#a5b4fc' ?>; }
+.badge-prio.low    { color: <?= $is_light ? '#6b7280' : '#9ca3af' ?>; }
 
-.ticket-row { transition: all .2s ease; border-bottom: 1px solid rgba(255,255,255,.03) !important; }
-.ticket-row:hover { background: rgba(99,102,241,.06) !important; transform: translateX(4px); }
-.ticket-id { font-family: monospace; font-size: .8rem; opacity: .5; }
-.ticket-title { font-size: .92rem; color: #e5e7eb; transition: color .2s; }
-.ticket-row:hover .ticket-title { color: #a5b4fc; }
+.ticket-row { transition: all .2s ease; border-bottom: 1px solid <?= $is_light ? '#e5e7eb' : 'rgba(255,255,255,.03)' ?> !important; }
+.ticket-row:hover { background: rgba(99,102,241,<?= $is_light ? '.04' : '.06' ?>) !important; transform: translateX(4px); }
+.ticket-id { font-family: monospace; font-size: .8rem; opacity: <?= $is_light ? '.7' : '.5' ?>; color: <?= $text_muted ?>; }
+.ticket-title { font-size: .92rem; color: <?= $text_main ?>; transition: color .2s; }
+.ticket-row:hover .ticket-title { color: #3c50e0; }
 
 .filter-card {
-    background: rgba(30,41,59,.4); border: 1px solid rgba(255,255,255,.05);
+    background: <?= $filter_bg ?>; border: 1px solid <?= $card_bor ?>;
     border-radius: 12px; padding: 20px; margin-bottom: 24px;
 }
+
+/* Ajustes para inputs en tema claro */
+<?php if ($is_light): ?>
+.filter-card .input-group-text { background: #f3f4f6 !important; border-color: #d1d5db !important; color: #6b7280 !important; }
+.filter-card input, .filter-card select { background: #ffffff !important; border-color: #d1d5db !important; color: #1f2937 !important; }
+.table-dark { background: #ffffff !important; color: #1f2937 !important; }
+.table-dark thead tr { background: #f9fafb !important; color: #6b7280 !important; border-bottom: 2px solid #e5e7eb !important; }
+.ticket-row .text-light { color: #1f2937 !important; }
+<?php endif; ?>
 </style>
 
 <div class="filter-card">
     <form method="GET" class="row g-3 align-items-end">
         <div class="col-12 col-md-4">
-            <label class="form-label text-muted small fw-bold mb-1">BUSCAR POR TEXTO</label>
+            <label class="form-label <?= $is_light ? 'text-dark' : 'text-muted' ?> small fw-bold mb-1">BUSCAR POR TEXTO</label>
             <div class="input-group input-group-sm">
                 <span class="input-group-text bg-dark border-secondary text-muted"><i class="fa fa-search"></i></span>
                 <input type="text" name="q" class="form-control bg-dark border-secondary text-light"
@@ -127,7 +145,7 @@ function badge_prioridad(string $p): string {
             </div>
         </div>
         <div class="col-6 col-md-2">
-            <label class="form-label text-muted small fw-bold mb-1">ESTADO</label>
+            <label class="form-label <?= $is_light ? 'text-dark' : 'text-muted' ?> small fw-bold mb-1">ESTADO</label>
             <select name="estado" class="form-select form-select-sm bg-dark border-secondary text-light">
                 <option value="">Cualquiera</option>
                 <option value="abierto"     <?= $f_estado==='abierto'     ? 'selected':'' ?>>Abierto</option>
@@ -136,7 +154,7 @@ function badge_prioridad(string $p): string {
             </select>
         </div>
         <div class="col-6 col-md-3">
-            <label class="form-label text-muted small fw-bold mb-1">PERTENENCIA</label>
+            <label class="form-label <?= $is_light ? 'text-dark' : 'text-muted' ?> small fw-bold mb-1">PERTENENCIA</label>
             <select name="tipo" class="form-select form-select-sm bg-dark border-secondary text-light">
                 <option value="todos"   <?= $f_tipo==='todos'   ? 'selected':'' ?>>Todos los tickets</option>
                 <option value="mios"    <?= $f_tipo==='mios'    ? 'selected':'' ?>>Creados por mí</option>
@@ -158,20 +176,20 @@ function badge_prioridad(string $p): string {
     <div class="d-flex gap-4 mt-3 pt-3 border-top border-secondary border-opacity-10" style="font-size:.78rem">
         <div class="d-flex align-items-center gap-2">
             <span class="rounded-circle" style="width:8px;height:8px;background:#ef4444"></span>
-            <span class="text-muted"><?= (int)$totales['ab'] ?> abiertos</span>
+            <span class="<?= $is_light ? 'text-dark' : 'text-muted' ?>"><?= (int)$totales['ab'] ?> abiertos</span>
         </div>
         <div class="d-flex align-items-center gap-2">
             <span class="rounded-circle" style="width:8px;height:8px;background:#f59e0b"></span>
-            <span class="text-muted"><?= (int)$totales['ep'] ?> en progreso</span>
+            <span class="<?= $is_light ? 'text-dark' : 'text-muted' ?>"><?= (int)$totales['ep'] ?> en progreso</span>
         </div>
         <div class="d-flex align-items-center gap-2">
             <span class="rounded-circle" style="width:8px;height:8px;background:#10b981"></span>
-            <span class="text-muted"><?= (int)$totales['res'] ?> resueltos</span>
+            <span class="<?= $is_light ? 'text-dark' : 'text-muted' ?>"><?= (int)$totales['res'] ?> resueltos</span>
         </div>
     </div>
 </div>
 
-<div class="card-ic p-0 overflow-hidden">
+<div class="card-ic p-0 overflow-hidden" style="background:<?= $card_bg ?>; border:1px solid <?= $card_bor ?>">
     <?php if (empty($tickets)): ?>
         <div class="text-center py-5 text-muted">
             <i class="fa fa-ticket-alt fa-3x mb-3 d-block opacity-20"></i>
@@ -179,9 +197,9 @@ function badge_prioridad(string $p): string {
         </div>
     <?php else: ?>
         <div class="table-responsive">
-            <table class="table table-dark mb-0 align-middle" style="font-size:.88rem">
+            <table class="table <?= $is_light ? '' : 'table-dark' ?> mb-0 align-middle" style="font-size:.88rem">
                 <thead>
-                    <tr style="background: rgba(255,255,255,.02); color:#9ca3af; font-size:.72rem; text-transform:uppercase; letter-spacing:1px">
+                    <tr style="<?= $is_light ? '' : 'background: rgba(255,255,255,.02);' ?> color:#9ca3af; font-size:.72rem; text-transform:uppercase; letter-spacing:1px">
                         <th class="ps-4" style="width:80px">ID</th>
                         <th>Asunto del Ticket</th>
                         <th style="width:130px">Estado</th>
@@ -206,9 +224,9 @@ function badge_prioridad(string $p): string {
                             <td>
                                 <div class="d-flex flex-column gap-1" style="font-size:.75rem">
                                     <?php if ($t['delegado_nombre']): ?>
-                                        <span class="text-light"><i class="fa fa-user me-1 opacity-50"></i><?= e($t['delegado_nombre']) ?></span>
+                                        <span class="<?= $is_light ? 'text-dark' : 'text-light' ?>"><i class="fa fa-user me-1 opacity-50"></i><?= e($t['delegado_nombre']) ?></span>
                                     <?php elseif ($t['delegado_a_rol']): ?>
-                                        <span style="color:#a5b4fc"><i class="fa fa-users me-1 opacity-50"></i><?= ucfirst(e($t['delegado_a_rol'])) ?></span>
+                                        <span style="color:#4f46e5"><i class="fa fa-users me-1 opacity-50"></i><?= ucfirst(e($t['delegado_a_rol'])) ?></span>
                                     <?php else: ?>
                                         <span class="text-muted italic opacity-40">Sin asignar</span>
                                     <?php endif; ?>

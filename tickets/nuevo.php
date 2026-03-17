@@ -20,41 +20,51 @@ $topbar_actions = '<a href="index" class="btn-ic btn-sm" style="background:rgba(
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
+<?php
+$is_light = ($rol === 'cobrador');
+$card_bg  = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
+$card_bor = $is_light ? '#d1d5db' : 'rgba(255,255,255,.05)';
+$text_main = $is_light ? '#1f2937' : '#f1f5f9';
+$text_muted = $is_light ? '#64748b' : '#94a3b8';
+$input_bg = $is_light ? '#ffffff' : 'rgba(15,23,42,.6)';
+$del_opt_bg = $is_light ? '#f9fafb' : 'rgba(15,23,42,.4)';
+?>
+
 <style>
 .form-card {
-    background: rgba(30,41,59,.4); border: 1px solid rgba(255,255,255,.05);
+    background: <?= $card_bg ?>; border: 1px solid <?= $card_bor ?>;
     border-radius: 16px; padding: 30px; margin: 0 auto;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,<?= $is_light ? '.05' : '.2' ?>);
 }
 .form-label-premium {
-    font-size: .72rem; font-weight: 700; color: #94a3b8;
+    font-size: .72rem; font-weight: 700; color: <?= $text_muted ?>;
     text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; display: block;
 }
 .input-premium {
-    background: rgba(15,23,42,.6) !important; border: 1px solid rgba(255,255,255,.1) !important;
-    color: #f1f5f9 !important; padding: 12px 16px !important; border-radius: 10px !important;
+    background: <?= $input_bg ?> !important; border: 1px solid <?= $card_bor ?> !important;
+    color: <?= $text_main ?> !important; padding: 12px 16px !important; border-radius: 10px !important;
     font-size: .92rem !important; transition: all .2s !important;
 }
 .input-premium:focus {
     border-color: #3c50e0 !important; box-shadow: 0 0 0 4px rgba(60,80,224,0.15) !important;
-    background: rgba(15,23,42,.8) !important;
 }
 
 .delegation-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
 .del-option {
-    background: rgba(15,23,42,.4); border: 1px solid rgba(255,255,255,.05);
+    background: <?= $del_opt_bg ?>; border: 1px solid <?= $card_bor ?>;
     border-radius: 12px; padding: 15px; cursor: pointer; text-align: center;
     transition: all .2s; position: relative;
 }
-.del-option:hover { background: rgba(255,255,255,.03); border-color: rgba(255,255,255,.15); }
-.del-option i { font-size: 1.2rem; display: block; margin-bottom: 8px; color: #64748b; }
-.del-option span { font-size: .75rem; font-weight: 600; color: #94a3b8; }
+.del-option:hover { background: rgba(60,80,224,0.05); border-color: rgba(60,80,224,0.3); }
+.del-option i { font-size: 1.2rem; display: block; margin-bottom: 8px; color: <?= $text_muted ?>; }
+.del-option span { font-size: .75rem; font-weight: 600; color: <?= $text_muted ?>; }
 
 .del-radio { position: absolute; opacity: 0; }
 .del-radio:checked + .del-option {
-    background: rgba(60,80,224,0.1); border-color: #3c50e0;
+    background: rgba(60,80,224,<?= $is_light ? '.08' : '.1' ?>); border-color: #3c50e0;
 }
 .del-radio:checked + .del-option i { color: #3c50e0; }
-.del-radio:checked + .del-option span { color: #f1f5f9; }
+.del-radio:checked + .del-option span { color: <?= $is_light ? '#1e1b4b' : '#f1f5f9' ?>; }
 </style>
 
 <div class="row justify-content-center">
