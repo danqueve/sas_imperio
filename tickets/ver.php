@@ -166,18 +166,54 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
 .form-label-premium { color: #000000 !important; opacity: 0.8; }
 <?php endif; ?>
 
-/* Agrandar botón de envío y mejorar input group */
+/* Agrandar botón de envío y mejorar input group con estilo Modal */
 .chat-input-wrapper {
-    background: <?= $header_bg ?>; padding: 20px;
+    background: <?= $is_light ? '#ffffff' : 'rgba(30,41,59,.8)' ?>; 
+    padding: 25px;
     border-top: 1px solid <?= $card_bor ?>;
+    transition: all .3s ease;
+    position: relative;
+    z-index: 10;
 }
+
+/* Efecto "Modal" en el contenedor al enfocar */
+.chat-input-wrapper.is-focused {
+    background: <?= $is_light ? '#ffffff' : 'rgba(15,23,42,.95)' ?>;
+    box-shadow: 0 -15px 30px -10px rgba(0,0,0,<?= $is_light ? '.1' : '.4' ?>);
+    transform: translateY(-5px);
+    border-top-color: #3c50e0;
+}
+
+.input-premium-modal {
+    background: <?= $input_bg ?> !important; 
+    border: 1px solid <?= $card_bor ?> !important;
+    color: <?= $is_light ? '#000000' : '#f1f5f9' ?> !important; 
+    padding: 18px 20px !important; 
+    border-radius: 16px !important;
+    font-size: .95rem !important; 
+    transition: all .3s !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.05) !important;
+    line-height: 1.6 !important;
+    font-weight: 500 !important;
+}
+
+.input-premium-modal:focus {
+    border-color: #3c50e0 !important;
+    background: <?= $is_light ? '#fff' : 'rgba(15,23,42,1)' ?> !important;
+    box-shadow: 0 0 0 4px rgba(60,80,224,0.15), inset 0 2px 4px rgba(0,0,0,0.02) !important;
+}
+
 .btn-send-ticket {
-    width: 60px; height: 60px; border-radius: 14px !important;
+    width: 65px; height: 65px; border-radius: 18px !important;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.4rem !important; transition: all .2s;
-    box-shadow: 0 4px 12px rgba(60,80,224,0.3);
+    font-size: 1.5rem !important; transition: all .3s;
+    box-shadow: 0 8px 16px rgba(60,80,224,0.3);
+    border: none !important;
 }
-.btn-send-ticket:hover { transform: scale(1.05); box-shadow: 0 6px 15px rgba(60,80,224,0.4); }
+.btn-send-ticket:hover { 
+    transform: scale(1.08) rotate(-5deg); 
+    box-shadow: 0 12px 20px rgba(60,80,224,0.4); 
+}
 </style>
 
 <?php if ($flash): ?>
@@ -252,29 +288,29 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
             <!-- Formulario de respuesta integrado en el chat -->
             <!-- Formulario de respuesta con botón más grande -->
             <?php if ($tk['estado'] !== 'resuelto'): ?>
-                <div class="chat-input-wrapper">
+                <div class="chat-input-wrapper" id="chat-input-container">
                     <form method="POST" action="procesar_respuesta">
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
-                        <div class="d-flex gap-3 align-items-center">
+                        <div class="d-flex gap-4 align-items-center">
                             <div class="flex-grow-1">
-                                <textarea name="mensaje" class="form-control input-premium"
-                                          rows="2" placeholder="Escribí un mensaje aquí..." required
-                                          style="resize: none; min-height: 60px; padding-top: 15px;"></textarea>
+                                <textarea name="mensaje" class="form-control input-premium-modal" id="chat-textarea"
+                                          rows="2" placeholder="Escribí tu respuesta aquí..." required
+                                          style="resize: none; min-height: 80px;"></textarea>
                             </div>
                             <button type="submit" class="btn btn-primary btn-send-ticket" title="Enviar mensaje">
                                 <i class="fa fa-paper-plane"></i>
                             </button>
                         </div>
-                        <div class="d-flex gap-2 mt-3 flex-wrap justify-content-center">
+                        <div class="d-flex gap-3 mt-4 flex-wrap justify-content-center">
                             <?php if ($puede_cerrar): ?>
-                                <button type="submit" name="solo_estado" value="resuelto" class="btn-ic btn-sm"
-                                        style="background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.2); font-weight: 700;">
-                                    <i class="fa fa-check-double me-1"></i> Resolver Ticket
+                                <button type="submit" name="solo_estado" value="resuelto" class="btn-ic btn-sm py-2 px-3"
+                                        style="background:rgba(34,197,94,<?= $is_light?'.1':'.15' ?>);color:<?= $is_light?'#16a34a':'#86efac' ?>;border:1px solid rgba(34,197,94,.2); font-weight: 700; border-radius: 10px;">
+                                    <i class="fa fa-check-double me-1"></i> Resolver y Finalizar
                                 </button>
                             <?php endif; ?>
                             <?php if ($tk['estado'] === 'abierto'): ?>
-                                <button type="submit" name="solo_estado" value="en_progreso" class="btn-ic btn-sm"
-                                        style="background:rgba(245,158,11,.1);color:#d97706;border:1px solid rgba(245,158,11,.2); font-weight: 700;">
+                                <button type="submit" name="solo_estado" value="en_progreso" class="btn-ic btn-sm py-2 px-3"
+                                        style="background:rgba(245,158,11,<?= $is_light?'.1':'.15' ?>);color:<?= $is_light?'#d97706':'#fcd34d' ?>;border:1px solid rgba(245,158,11,.2); font-weight: 700; border-radius: 10px;">
                                     <i class="fa fa-spinner fa-spin-fast me-1"></i> Asignar "En Progreso"
                                 </button>
                             <?php endif; ?>
@@ -361,10 +397,24 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
 </div>
 
 <script>
-// Auto-scroll al final del hilo
+// Manejo del estado "Modal" del input de chat
 (function(){
     const hilo = document.getElementById('hilo-respuestas');
+    const textarea = document.getElementById('chat-textarea');
+    const container = document.getElementById('chat-input-container');
+
+    // Auto-scroll al final
     if (hilo) hilo.scrollTop = hilo.scrollHeight;
+
+    // Efecto visual modal al enfocar
+    if (textarea && container) {
+        textarea.addEventListener('focus', () => {
+            container.classList.add('is-focused');
+        });
+        textarea.addEventListener('blur', () => {
+            container.classList.remove('is-focused');
+        });
+    }
 })();
 </script>
 
