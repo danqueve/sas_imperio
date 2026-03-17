@@ -202,6 +202,12 @@ if ($rol === 'admin') {
                         <i class="fa fa-chart-bar"></i>
                         <span class="nav-text">Estadísticas</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'atrasados' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/atrasados"
+                       data-tooltip="Cuotas Atrasadas">
+                        <i class="fa fa-triangle-exclamation"></i>
+                        <span class="nav-text">Atrasados</span>
+                    </a>
                 <?php endif; ?>
 
                 <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>
