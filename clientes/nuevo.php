@@ -161,9 +161,12 @@ require_once __DIR__ . '/../views/layout.php';
                     <input type="text" name="direccion_laboral" value="<?= e($v['direccion_laboral'] ?? '') ?>">
                 </div>
                 <div class="form-group">
-                    <label>Coordenadas GPS <span class="text-muted">(lat,lng)</span></label>
+                    <label>Coordenadas GPS</label>
                     <input type="text" name="coordenadas" id="coordenadas" value="<?= e($v['coordenadas'] ?? '') ?>"
                         placeholder="-34.6037,-58.3816">
+                    <small id="coordenadas_fb" style="display:block;margin-top:3px;font-size:.75rem;color:var(--text-muted,#888)">
+                        <i class="fa fa-map-location-dot" style="font-size:.7rem"></i> Podés pegar un link de Google Maps
+                    </small>
                 </div>
                 <div class="form-group" style="display:flex;align-items:flex-end">
                     <button type="button" onclick="obtenerUbicacion()" class="btn-ic btn-ghost w-100">
@@ -244,7 +247,11 @@ require_once __DIR__ . '/../views/layout.php';
                     </div>
                     <div class="form-group">
                         <label>Coordenadas GPS Garante</label>
-                        <input type="text" name="g_coordenadas" value="<?= e($v['g_coordenadas'] ?? '') ?>">
+                        <input type="text" name="g_coordenadas" id="g_coordenadas" value="<?= e($v['g_coordenadas'] ?? '') ?>"
+                            placeholder="-34.6037,-58.3816">
+                        <small id="g_coordenadas_fb" style="display:block;margin-top:3px;font-size:.75rem;color:var(--text-muted,#888)">
+                            <i class="fa fa-map-location-dot" style="font-size:.7rem"></i> Podés pegar un link de Google Maps
+                        </small>
                     </div>
                 </div>
             </div>
@@ -287,9 +294,84 @@ function obtenerUbicacion() {
   navigator.geolocation.getCurrentPosition(function(pos) {
     document.getElementById('coordenadas').value =
       pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6);
+    setMapsFeedback('coordenadas', '✓ Ubicación capturada', 'var(--success,#22c55e)');
     showToast('Ubicación capturada', 'success');
   }, function() { showToast('No se pudo obtener la ubicación', 'error'); });
 }
+
+// ── Google Maps URL parser ────────────────────────────────────────────────────
+function setMapsFeedback(id, msg, color) {
+  var fb = document.getElementById(id + '_fb');
+  if (fb) { fb.textContent = msg; fb.style.color = color; }
+}
+
+function extractCoordsFromUrl(url) {
+  var m;
+  // /@lat,lng,zoom
+  m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return m[1] + ',' + m[2];
+  // ?q=lat,lng
+  m = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return m[1] + ',' + m[2];
+  // !3dlat!4dlng
+  m = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (m) return m[1] + ',' + m[2];
+  return null;
+}
+
+function setupMapsInput(id) {
+  var inp = document.getElementById(id);
+  if (!inp) return;
+
+  function process(val) {
+    val = val.trim();
+    if (!val.includes('http')) return;
+
+    var coords = extractCoordsFromUrl(val);
+    if (coords) {
+      inp.value = coords;
+      setMapsFeedback(id, '✓ Coordenadas extraídas correctamente', 'var(--success,#22c55e)');
+      return;
+    }
+
+    // URL corta: resolver server-side
+    if (val.includes('maps.app.goo.gl') || val.includes('goo.gl/maps')) {
+      setMapsFeedback(id, '⏳ Resolviendo URL…', '#999');
+      fetch('resolver_maps?url=' + encodeURIComponent(val))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.lat && d.lng) {
+            inp.value = d.lat + ',' + d.lng;
+            setMapsFeedback(id, '✓ Coordenadas extraídas correctamente', 'var(--success,#22c55e)');
+          } else {
+            setMapsFeedback(id, '✗ No se pudieron extraer las coordenadas', 'var(--danger,#ef4444)');
+          }
+        })
+        .catch(function() { setMapsFeedback(id, '✗ Error de conexión', 'var(--danger,#ef4444)'); });
+      return;
+    }
+
+    setMapsFeedback(id, '✗ Formato de link no reconocido', 'var(--danger,#ef4444)');
+  }
+
+  inp.addEventListener('paste', function() {
+    setTimeout(function() { process(inp.value); }, 30);
+  });
+  inp.addEventListener('input', function() {
+    var val = inp.value.trim();
+    if (val.includes('http')) {
+      process(val);
+    } else if (/^-?\d+\.\d+,-?\d+\.\d+$/.test(val)) {
+      setMapsFeedback(id, '✓ Formato correcto', 'var(--success,#22c55e)');
+    } else {
+      var fb = document.getElementById(id + '_fb');
+      if (fb) { fb.textContent = '\u{1F4CD} Podés pegar un link de Google Maps'; fb.style.color = 'var(--text-muted,#888)'; }
+    }
+  });
+}
+
+setupMapsInput('coordenadas');
+setupMapsInput('g_coordenadas');
 </script>
 JS;
 require_once __DIR__ . '/../views/layout_footer.php';
