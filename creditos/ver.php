@@ -45,8 +45,17 @@ if (es_admin() || es_supervisor()) {
     if ($cuota_ids) {
         $placeholders = implode(',', array_fill(0, count($cuota_ids), '?'));
         $conf_rows = $pdo->prepare("
-            SELECT id AS pc_id, cuota_id, solicitud_baja, motivo_baja
-            FROM ic_pagos_confirmados WHERE cuota_id IN ($placeholders) ORDER BY id DESC
+            SELECT pc.id AS pc_id, pc.cuota_id, pc.solicitud_baja, pc.motivo_baja,
+                   pt.fecha_registro AS fecha_carga,
+                   IFNULL(pt.origen, 'cobrador') AS origen,
+                   CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre,
+                   CONCAT(ua.nombre, ' ', ua.apellido) AS aprobador_nombre,
+                   ua.rol AS aprobador_rol
+            FROM ic_pagos_confirmados pc
+            JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
+            JOIN ic_usuarios u ON u.id = pt.cobrador_id
+            JOIN ic_usuarios ua ON ua.id = pc.aprobador_id
+            WHERE pc.cuota_id IN ($placeholders) ORDER BY pc.id DESC
         ");
         $conf_rows->execute($cuota_ids);
         foreach ($conf_rows->fetchAll() as $pc) {
@@ -376,12 +385,48 @@ require_once __DIR__ . '/../views/layout.php';
                                     <?php if ($q['fecha_pago']): ?>
                                         <br><span class="text-muted" style="font-size:.75rem"><?= date('d/m/Y', strtotime($q['fecha_pago'])) ?></span>
                                     <?php endif; ?>
+                                    <?php if (!empty($pc_info['fecha_carga'])): ?>
+                                        <br><span class="text-muted" style="font-size:.7rem" title="Fecha y hora en que se cargó el pago al sistema">
+                                            <i class="fa fa-clock"></i> <?= date('d/m/Y H:i', strtotime($pc_info['fecha_carga'])) ?>
+                                        </span>
+                                        <?php $es_manual = ($pc_info['origen'] ?? 'cobrador') === 'manual'; ?>
+                                        <br><span class="text-muted" style="font-size:.7rem">
+                                            <i class="fa fa-user"></i> <?= e($es_manual ? $pc_info['aprobador_nombre'] : $pc_info['cobrador_nombre']) ?>
+                                            <?php if ($es_manual): ?>
+                                                <span style="background:rgba(99,102,241,.2);color:#a5b4fc;font-size:.65rem;padding:1px 5px;border-radius:4px;margin-left:3px">Manual</span>
+                                            <?php endif; ?>
+                                        </span>
+                                    <?php endif; ?>
                                 <?php elseif ($q['estado'] === 'CAP_PAGADA' && !empty($q['saldo_pagado'])): ?>
                                     <span class="text-success fw-bold"><?= formato_pesos($q['saldo_pagado']) ?></span>
                                     <br><span class="text-warning" style="font-size:.75rem">capital pagado</span>
+                                    <?php if (!empty($pc_info['fecha_carga'])): ?>
+                                        <br><span class="text-muted" style="font-size:.7rem" title="Fecha y hora en que se cargó el pago al sistema">
+                                            <i class="fa fa-clock"></i> <?= date('d/m/Y H:i', strtotime($pc_info['fecha_carga'])) ?>
+                                        </span>
+                                        <?php $es_manual = ($pc_info['origen'] ?? 'cobrador') === 'manual'; ?>
+                                        <br><span class="text-muted" style="font-size:.7rem">
+                                            <i class="fa fa-user"></i> <?= e($es_manual ? $pc_info['aprobador_nombre'] : $pc_info['cobrador_nombre']) ?>
+                                            <?php if ($es_manual): ?>
+                                                <span style="background:rgba(99,102,241,.2);color:#a5b4fc;font-size:.65rem;padding:1px 5px;border-radius:4px;margin-left:3px">Manual</span>
+                                            <?php endif; ?>
+                                        </span>
+                                    <?php endif; ?>
                                 <?php elseif ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
                                     <span class="text-warning fw-bold"><?= formato_pesos($q['saldo_pagado']) ?></span>
                                     <br><span class="text-muted" style="font-size:.75rem">a cuenta</span>
+                                    <?php if (!empty($pc_info['fecha_carga'])): ?>
+                                        <br><span class="text-muted" style="font-size:.7rem" title="Fecha y hora en que se cargó el pago al sistema">
+                                            <i class="fa fa-clock"></i> <?= date('d/m/Y H:i', strtotime($pc_info['fecha_carga'])) ?>
+                                        </span>
+                                        <?php $es_manual = ($pc_info['origen'] ?? 'cobrador') === 'manual'; ?>
+                                        <br><span class="text-muted" style="font-size:.7rem">
+                                            <i class="fa fa-user"></i> <?= e($es_manual ? $pc_info['aprobador_nombre'] : $pc_info['cobrador_nombre']) ?>
+                                            <?php if ($es_manual): ?>
+                                                <span style="background:rgba(99,102,241,.2);color:#a5b4fc;font-size:.65rem;padding:1px 5px;border-radius:4px;margin-left:3px">Manual</span>
+                                            <?php endif; ?>
+                                        </span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
                                 <?php endif; ?>
