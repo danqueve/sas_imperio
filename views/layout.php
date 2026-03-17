@@ -257,6 +257,16 @@ if ($rol === 'admin') {
                         <span class="nav-text">Actividad</span>
                     </a>
                 <?php endif; ?>
+
+                <!-- Soporte — visible para todos los roles -->
+                <div class="nav-label">Soporte</div>
+                <a class="nav-item <?= ($page_current ?? '') === 'tickets' ? 'active' : '' ?>"
+                   href="<?= BASE_URL ?>tickets/index"
+                   data-tooltip="Tickets">
+                    <i class="fa fa-ticket"></i>
+                    <span class="nav-text">Tickets</span>
+                </a>
+
             </nav>
 
             <div class="sidebar-footer">

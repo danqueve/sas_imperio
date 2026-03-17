@@ -16,7 +16,7 @@ if (!$id) {
 }
 
 $stmt = $pdo->prepare("
-    SELECT cr.*, cl.nombres, cl.apellidos, cl.telefono, cl.id AS cid,
+    SELECT cr.*, cl.nombres, cl.apellidos, cl.telefono, cl.dni, cl.id AS cid,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            u.nombre AS cobrador_n, u.apellido AS cobrador_a,
            v.nombre AS vendedor_n, v.apellido AS vendedor_a
@@ -185,6 +185,12 @@ require_once __DIR__ . '/../views/layout.php';
                             <?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?>
                         </a></td>
                 </tr>
+                <?php if (!empty($cr['dni'])): ?>
+                <tr>
+                    <td class="text-muted" style="padding:5px 0">DNI</td>
+                    <td><?= e($cr['dni']) ?></td>
+                </tr>
+                <?php endif; ?>
                 <tr>
                     <td class="text-muted" style="padding:5px 0">Artículo</td>
                     <td>
