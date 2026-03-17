@@ -508,14 +508,13 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         
         <div class="agenda-card-header">
             <div class="agenda-card-client">
-                <button class="agenda-cliente-btn" onclick="toggleArticulo(<?= $c['id'] ?>)" title="Ver artículo">
-                    <span class="agenda-nombre"><?= e(strtoupper($c['apellidos'] . ' ' . $c['nombres'])) ?></span>
+                <button class="agenda-cliente-btn" onclick='verEstadoCuenta(<?= $c['credito_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' title="Ver estado de cuenta">
+                    <span class="agenda-nombre"><?= e(strtoupper($c['apellidos'] . ' ' . $c['nombres'])) ?> <i class="fa fa-chart-line" style="font-size:.75rem;opacity:.5"></i></span>
                     <span class="agenda-zona">Zona: <?= e($c['zona'] ?: '—') ?></span>
                 </button>
                 <?php if (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0): ?>
-                    <span class="agenda-badge-danger">
-                        <i class="fa fa-triangle-exclamation"></i>
-                        <?= $c['cuotas_atrasadas'] ?> u. atrasadas
+                    <span class="agenda-badge-prev">
+                        <?= $c['cuotas_atrasadas'] ?> ant.
                     </span>
                 <?php endif; ?>
                 <?php if (!empty($c['adelantado'])): ?>
@@ -796,6 +795,19 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 </div>
 <?php endif; ?>
 
+<!-- MODAL ESTADO DE CUENTA -->
+<div class="modal-overlay" id="modal-estado-cuenta">
+    <div class="modal-box" style="max-width:560px;width:95vw">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-list-check"></i> <span id="esc-titulo">Estado de Cuenta</span></div>
+            <button class="modal-close" onclick="closeModal('modal-estado-cuenta')">✕</button>
+        </div>
+        <div id="esc-subtitulo" style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px;padding:8px 12px;background:rgba(255,255,255,.04);border-radius:6px"></div>
+        <div id="esc-body" style="max-height:60vh;overflow-y:auto"></div>
+        <div id="esc-resumen" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem"></div>
+    </div>
+</div>
+
 <!-- MODAL REGISTRAR PAGO -->
 <div class="modal-overlay" id="modal-pago">
     <div class="modal-box">
@@ -909,10 +921,11 @@ $page_scripts = <<<'JS'
     text-underline-offset: 2px;
 }
 .agenda-zona { font-size: 0.8rem; color: var(--text-muted); }
-.agenda-badge-danger {
-    display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px;
-    background: rgba(220,53,69,.15); color: var(--danger); font-size: .75rem;
-    border-radius: 4px; font-weight: 700; margin-top: 6px;
+.agenda-badge-prev {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px;
+    background: rgba(245,158,11,.12); color: #d97706; font-size: .72rem;
+    border-radius: 4px; font-weight: 600; margin-top: 6px;
+    border: 1px solid rgba(245,158,11,.2);
 }
 .agenda-articulo {
     margin-top: 8px; font-size: .85rem; color: var(--warning); display: flex; align-items: center; gap: 6px;
@@ -1033,8 +1046,8 @@ function abrirPagoDesdeRow(c, btn) {
 }
 
 function _rellenarModal(c, montoInicial, cardCbChecked = false) {
-  cuota_mora    = c.mora_calc    || 0;
-  cuota_capital = c.monto_cuota || 0;
+  cuota_mora    = parseFloat(c.mora_calc)   || 0;
+  cuota_capital = parseFloat(c.monto_cuota) || 0;
 
   const esCapPagada   = c.estado === 'CAP_PAGADA';
   const tieneMora     = cuota_mora > 0 && !esCapPagada;
@@ -1115,6 +1128,71 @@ document.addEventListener('DOMContentLoaded', () => {
     const inp = document.getElementById('buscador-agenda');
     if (inp && inp.value.trim() !== '') filtrarAgenda(inp.value);
 });
+
+// ── Estado de Cuenta del cliente ─────────────────────────────
+function verEstadoCuenta(creditoId, nombre) {
+    document.getElementById('esc-titulo').textContent = nombre.toUpperCase();
+    document.getElementById('esc-subtitulo').textContent = 'Cargando cronograma...';
+    document.getElementById('esc-body').innerHTML = '<div class="text-center py-4"><i class="fa fa-spinner fa-spin fa-2x" style="color:var(--primary)"></i></div>';
+    document.getElementById('esc-resumen').innerHTML = '';
+    openModal('modal-estado-cuenta');
+
+    fetch('estado_cuenta?credito_id=' + creditoId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('esc-body').innerHTML = '<p style="color:var(--danger);text-align:center">' + data.error + '</p>';
+                return;
+            }
+            const cr = data.credito;
+            document.getElementById('esc-subtitulo').innerHTML =
+                '<i class="fa fa-box-open" style="color:var(--warning)"></i> ' + cr.articulo +
+                ' &nbsp;·&nbsp; ' + cr.cant_cuotas + ' cuotas ' + cr.frecuencia + 's' +
+                ' &nbsp;·&nbsp; $' + cr.monto_cuota + ' c/u';
+            document.getElementById('esc-body').innerHTML = renderCronograma(data.cuotas);
+            const r = data.resumen;
+            document.getElementById('esc-resumen').innerHTML =
+                '<span style="color:var(--success)">✅ ' + r.pagadas + ' pagada' + (r.pagadas !== 1 ? 's' : '') + '</span>' +
+                (r.vencidas  > 0 ? '<span style="color:var(--danger)">🔴 ' + r.vencidas  + ' atrasada' + (r.vencidas !== 1 ? 's' : '') + '</span>' : '') +
+                (r.pendientes > 0 ? '<span style="color:#fbbf24">🟡 ' + r.pendientes + ' pendiente' + (r.pendientes !== 1 ? 's' : '') + '</span>' : '') +
+                (r.parciales  > 0 ? '<span style="color:#f97316">🟠 ' + r.parciales  + ' parcial' + (r.parciales !== 1 ? 'es' : '') + '</span>' : '');
+        })
+        .catch(() => {
+            document.getElementById('esc-body').innerHTML = '<p style="color:var(--danger);text-align:center">Error al cargar.</p>';
+        });
+}
+
+function renderCronograma(cuotas) {
+    if (!cuotas.length) return '<p style="text-align:center;color:var(--text-muted);padding:20px">Sin cuotas.</p>';
+
+    const iconos = { PAGADA:'✅', PENDIENTE:'🟡', VENCIDA:'🔴', PARCIAL:'🟠', CAP_PAGADA:'🔵' };
+    const colores = { PAGADA:'var(--success)', PENDIENTE:'#fbbf24', VENCIDA:'var(--danger)', PARCIAL:'#f97316', CAP_PAGADA:'#38bdf8' };
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:.85rem">';
+    html += '<thead><tr style="color:var(--text-muted);font-size:.72rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.1)">' +
+        '<th style="padding:6px 4px;width:34px">#</th>' +
+        '<th style="padding:6px 4px">Vencimiento</th>' +
+        '<th style="padding:6px 4px;text-align:right">Monto</th>' +
+        '<th style="padding:6px 4px;text-align:center">Estado</th>' +
+        '<th style="padding:6px 4px;font-size:.68rem">Fecha Pago</th>' +
+        '</tr></thead><tbody>';
+
+    cuotas.forEach(c => {
+        const icono  = iconos[c.estado]  || '⚪';
+        const color  = colores[c.estado] || 'var(--text-muted)';
+        const opac   = c.estado === 'PAGADA' ? 'opacity:.55' : '';
+        const mora   = c.mora_fmt ? ' <span style="color:var(--danger);font-size:.7rem">+$' + c.mora_fmt + ' mora</span>' : '';
+        html += `<tr style="${opac};border-bottom:1px solid rgba(255,255,255,.05)">
+            <td style="padding:8px 4px;font-weight:700;color:var(--text-muted)">${c.numero_cuota}</td>
+            <td style="padding:8px 4px">${c.fecha_vencimiento_fmt}</td>
+            <td style="padding:8px 4px;text-align:right;font-weight:700">$${c.monto_fmt}${mora}</td>
+            <td style="padding:8px 4px;text-align:center;color:${color};font-weight:700">${icono} ${c.estado_label}</td>
+            <td style="padding:8px 4px;font-size:.75rem;color:var(--success)">${c.fecha_pago_fmt ? '✓ ' + c.fecha_pago_fmt : ''}</td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    return html;
+}
 </script>
 JS;
 require_once __DIR__ . '/../views/layout_footer.php';
