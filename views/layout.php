@@ -263,7 +263,7 @@ if ($rol === 'admin') {
                 <a class="nav-item <?= ($page_current ?? '') === 'tickets' ? 'active' : '' ?>"
                    href="<?= BASE_URL ?>tickets/index"
                    data-tooltip="Tickets">
-                    <i class="fa fa-ticket"></i>
+                    <i class="fa fa-ticket-simple"></i>
                     <span class="nav-text">Tickets</span>
                 </a>
 
