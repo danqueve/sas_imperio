@@ -60,13 +60,12 @@ $pdf->AddPage();
 $pdf->SetAutoPageBreak(true, 15);
 
 // Header
-$pdf->SetFillColor(31, 41, 55); // Dark gray matching brand
-$pdf->SetTextColor(255, 255, 255);
-$pdf->SetFont('Arial', 'B', 16);
-$pdf->Cell(0, 12, 'IMPERIO COMERCIAL', 0, 1, 'C', true);
-$pdf->SetFont('Arial', '', 10);
-$pdf->Cell(0, 7, lat('Cronograma de Pagos - Crédito #') . $id, 0, 1, 'C', true);
-$pdf->SetTextColor(0, 0, 0);
+$pdf->SetTextColor(0, 0, 0); // Texto negro
+$pdf->SetFont('Arial', 'B', 18);
+$pdf->Cell(0, 12, 'IMPERIO COMERCIAL', 0, 1, 'C', false);
+$pdf->SetFont('Arial', '', 11);
+// Agregamos un borde inferior ('B') para separar elegantemente el título del contenido, ya que no hay fondo oscuro
+$pdf->Cell(0, 8, lat('Cronograma de Pagos - Crédito #') . $id, 'B', 1, 'C', false);
 $pdf->Ln(6);
 
 // Datos del crédito
