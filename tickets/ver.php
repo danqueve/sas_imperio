@@ -154,12 +154,30 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
 }
 
 <?php if ($is_light): ?>
-.chat-container textarea { background: #ffffff !important; border-color: #d1d5db !important; color: #1f2937 !important; }
+.chat-container textarea {
+    background: #ffffff !important; border-color: #d1d5db !important;
+    color: #000000 !important; font-weight: 500 !important;
+}
 .chat-container .bg-dark { background: #f9fafb !important; }
-.desc-box h4 { color: #1f2937 !important; }
-.sidebar-card .text-light { color: #1f2937 !important; }
+.desc-box h4 { color: #000000 !important; }
+.sidebar-card .text-light { color: #000000 !important; }
 .avatar[style*="rgba(255,255,255,.05)"] { background: #f3f4f6 !important; }
+.bubble.other { color: #000000 !important; font-weight: 450 !important; }
+.form-label-premium { color: #000000 !important; opacity: 0.8; }
 <?php endif; ?>
+
+/* Agrandar botón de envío y mejorar input group */
+.chat-input-wrapper {
+    background: <?= $header_bg ?>; padding: 20px;
+    border-top: 1px solid <?= $card_bor ?>;
+}
+.btn-send-ticket {
+    width: 60px; height: 60px; border-radius: 14px !important;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem !important; transition: all .2s;
+    box-shadow: 0 4px 12px rgba(60,80,224,0.3);
+}
+.btn-send-ticket:hover { transform: scale(1.05); box-shadow: 0 6px 15px rgba(60,80,224,0.4); }
 </style>
 
 <?php if ($flash): ?>
@@ -232,50 +250,53 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
             </div>
 
             <!-- Formulario de respuesta integrado en el chat -->
-            <div class="p-3 bg-dark bg-opacity-50 border-top border-secondary border-opacity-10">
-                <?php if ($tk['estado'] !== 'resuelto'): ?>
+            <!-- Formulario de respuesta con botón más grande -->
+            <?php if ($tk['estado'] !== 'resuelto'): ?>
+                <div class="chat-input-wrapper">
                     <form method="POST" action="procesar_respuesta">
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
-                        <div class="input-group">
-                            <textarea name="mensaje" class="form-control bg-dark border-secondary text-light shadow-none"
-                                      rows="1" placeholder="Escribe un mensaje..." required 
-                                      style="border-radius: 10px 0 0 10px; resize: none; min-height: 46px; padding-top: 11px"></textarea>
-                            <button type="submit" class="btn btn-primary px-3" style="border-radius: 0 10px 10px 0">
+                        <div class="d-flex gap-3 align-items-center">
+                            <div class="flex-grow-1">
+                                <textarea name="mensaje" class="form-control input-premium"
+                                          rows="2" placeholder="Escribí un mensaje aquí..." required
+                                          style="resize: none; min-height: 60px; padding-top: 15px;"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-send-ticket" title="Enviar mensaje">
                                 <i class="fa fa-paper-plane"></i>
                             </button>
                         </div>
                         <div class="d-flex gap-2 mt-3 flex-wrap justify-content-center">
                             <?php if ($puede_cerrar): ?>
                                 <button type="submit" name="solo_estado" value="resuelto" class="btn-ic btn-sm"
-                                        style="background:rgba(34,197,94,.1);color:#86efac;border:1px solid rgba(34,197,94,.2)">
+                                        style="background:rgba(34,197,94,.1);color:#16a34a;border:1px solid rgba(34,197,94,.2); font-weight: 700;">
                                     <i class="fa fa-check-double me-1"></i> Resolver Ticket
                                 </button>
                             <?php endif; ?>
                             <?php if ($tk['estado'] === 'abierto'): ?>
                                 <button type="submit" name="solo_estado" value="en_progreso" class="btn-ic btn-sm"
-                                        style="background:rgba(245,158,11,.1);color:#fcd34d;border:1px solid rgba(245,158,11,.2)">
+                                        style="background:rgba(245,158,11,.1);color:#d97706;border:1px solid rgba(245,158,11,.2); font-weight: 700;">
                                     <i class="fa fa-spinner fa-spin-fast me-1"></i> Asignar "En Progreso"
                                 </button>
                             <?php endif; ?>
                         </div>
                     </form>
-                <?php else: ?>
-                    <div class="text-center py-2">
-                        <span class="text-success small fw-bold">
-                            <i class="fa fa-check-circle me-1"></i> TICKET RESUELTO Y CERRADO
-                        </span>
-                        <?php if ($puede_cerrar): ?>
-                            <form method="POST" action="procesar_respuesta" class="d-inline ms-3">
-                                <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
-                                <button type="submit" name="solo_estado" value="abierto"
-                                        class="btn-ic btn-sm" style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color: #9ca3af">
-                                    <i class="fa fa-rotate-left me-1"></i>Reabrir
-                                </button>
-                            </form>
-                        <?php endif; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
+                </div>
+            <?php else: ?>
+                <div class="p-4 text-center bg-dark bg-opacity-50 border-top">
+                    <span class="text-success fw-bold">
+                        <i class="fa fa-check-circle me-1"></i> TICKET RESUELTO Y CERRADO
+                    </span>
+                    <?php if ($puede_cerrar): ?>
+                        <form method="POST" action="procesar_respuesta" class="d-inline ms-3">
+                            <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
+                            <button type="submit" name="solo_estado" value="abierto"
+                                    class="btn-ic btn-sm" style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color: #9ca3af">
+                                <i class="fa fa-rotate-left me-1"></i>Reabrir
+                            </button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 
