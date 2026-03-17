@@ -12,29 +12,32 @@ verificar_permiso('aprobar_rendiciones');
 $pdo         = obtener_conexion();
 $fecha_sel   = $_GET['fecha']       ?? '';
 $cobrador_id = (int)($_GET['cobrador_id'] ?? 0);
+$origen_sel  = $_GET['origen'] ?? '';
 
 if (!$fecha_sel || !$cobrador_id) die('Faltan parametros de busqueda (fecha o cobrador).');
+if (!in_array($origen_sel, ['cobrador', 'manual'])) die('Origen invalido.');
 
 $cob_stmt = $pdo->prepare("SELECT nombre, apellido FROM ic_usuarios WHERE id = ?");
 $cob_stmt->execute([$cobrador_id]);
 $cobrador = $cob_stmt->fetch();
 if (!$cobrador) die('Cobrador no encontrado.');
 
-// Extraer los pagos ya confirmados en esa fecha
+// Extraer los pagos ya confirmados en esa fecha, filtrados por origen
 $dstmt = $pdo->prepare("
-    SELECT pt.*,
+    SELECT pc.*,
            cl.nombres, cl.apellidos,
            cu.numero_cuota, cu.fecha_vencimiento,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
-    FROM ic_pagos_confirmados pt
-    JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
+    FROM ic_pagos_confirmados pc
+    JOIN ic_pagos_temporales pt ON pc.pago_temp_id = pt.id
+    JOIN ic_cuotas cu   ON pc.cuota_id     = cu.id
     JOIN ic_creditos cr ON cu.credito_id   = cr.id
     JOIN ic_clientes cl ON cr.cliente_id   = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
-    WHERE pt.cobrador_id = ? AND DATE(pt.fecha_aprobacion) = ?
-    ORDER BY cl.apellidos ASC, cl.nombres ASC, pt.fecha_pago ASC
+    WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ? AND pt.origen = ?
+    ORDER BY cl.apellidos ASC, cl.nombres ASC, pc.fecha_pago ASC
 ");
-$dstmt->execute([$cobrador_id, $fecha_sel]);
+$dstmt->execute([$cobrador_id, $fecha_sel, $origen_sel]);
 $pagos = $dstmt->fetchAll();
 
 if (empty($pagos)) die('No hay pagos confirmados en la rendicion de esta fecha.');
@@ -63,6 +66,7 @@ class RendicionHistorialPDF extends FPDF
 {
     public string $cobrador_nombre = '';
     public string $fecha_label    = '';
+    public string $tipo_origen    = '';
     public int    $num_pagos      = 0;
     public array  $cols   = [];
     public array  $labels = [];
@@ -77,11 +81,11 @@ class RendicionHistorialPDF extends FPDF
 
         $this->SetFont('Helvetica', 'B', 13);
         $this->SetXY(10, 8);
-        $this->Cell(190, 7, lat('Imperio Comercial - Rendicion Historicda'), 0, 1, 'L');
+        $this->Cell(190, 7, lat('Imperio Comercial - Rendicion Historica'), 0, 1, 'L');
 
         $this->SetFont('Helvetica', '', 8);
         $this->SetX(10);
-        $this->Cell(95, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
+        $this->Cell(95, 5, lat('Cobrador: ' . $this->cobrador_nombre . '   |   Tipo: ' . $this->tipo_origen), 0, 0, 'L');
         $this->Cell(95, 5, lat('Fecha Aprob.: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
 
         // Línea separadora
@@ -112,6 +116,7 @@ $pdf = new RendicionHistorialPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->cobrador_nombre = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
 $pdf->fecha_label     = date('d/m/Y', strtotime($fecha_sel));
+$pdf->tipo_origen     = $origen_sel === 'manual' ? 'Manual (Admin)' : 'Cobrador';
 $pdf->num_pagos       = count($pagos);
 $pdf->cols            = $COLS;
 $pdf->labels          = $LABELS;
@@ -177,5 +182,5 @@ foreach ($resumen as $i => [$label, $valor]) {
     $pdf->Cell($bw2, 7, lat($valor), 1, 1, 'R', false);
 }
 
-$nombre = 'rendicion_historica_' . str_replace('-', '', $fecha_sel) . '_' . $cobrador_id . '.pdf';
+$nombre = 'rendicion_historica_' . $origen_sel . '_' . str_replace('-', '', $fecha_sel) . '_' . $cobrador_id . '.pdf';
 $pdf->Output('I', $nombre);
