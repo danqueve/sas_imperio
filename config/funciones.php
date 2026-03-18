@@ -310,12 +310,23 @@ function aprobar_todas_jornadas(int $cobrador_id, int $aprobador_id, PDO $pdo): 
 function whatsapp_url(string $telefono, string $mensaje = ''): string
 {
     $tel = preg_replace('/[^0-9]/', '', $telefono);
-    // Normalizar a formato internacional Argentina si empieza con 0
-    if (strlen($tel) === 10 && $tel[0] === '0') {
-        $tel = '549' . substr($tel, 1);
-    } elseif (strlen($tel) === 11 && substr($tel, 0, 2) === '15') {
-        $tel = '549' . substr($tel, 2);
+    if (!$tel) return '#';
+
+    // Quitar prefijo de país si ya lo tiene (549... o 54...)
+    if (substr($tel, 0, 3) === '549') {
+        $tel = substr($tel, 3);
+    } elseif (substr($tel, 0, 2) === '54') {
+        $tel = substr($tel, 2);
     }
+
+    // Quitar 0 inicial de discado local (ej: 0351XXXXXXX → 351XXXXXXX)
+    if (strlen($tel) > 0 && $tel[0] === '0') {
+        $tel = substr($tel, 1);
+    }
+
+    // Reconstruir: 54 (Argentina) + 9 (móvil) + característica + número
+    $tel = '549' . $tel;
+
     return 'https://wa.me/' . $tel . ($mensaje ? '?text=' . urlencode($mensaje) : '');
 }
 
