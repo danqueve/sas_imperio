@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     cliente_id=?, articulo_id=?, articulo_desc=?,
                     cobrador_id=?, vendedor_id=?,
                     precio_articulo=?, monto_total=?, interes_pct=?, interes_moratorio_pct=?,
-                    frecuencia=?, cant_cuotas=?, observaciones=?, primer_vencimiento=?
+                    frecuencia=?, cant_cuotas=?, dia_cobro=?, observaciones=?, primer_vencimiento=?
                 WHERE id=?
             ");
             $upd->execute([
@@ -93,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (float)($v['interes_moratorio_pct'] ?? 15),
                 $v['frecuencia'],
                 $cant_cuotas,
+                ($v['dia_cobro'] ?: null),
                 trim($v['observaciones'] ?? ''),
                 $v['primer_vencimiento'],
                 $id,
@@ -321,6 +322,18 @@ require_once __DIR__ . '/../views/layout.php';
                         <?php foreach ($vendedores as $ven): ?>
                             <option value="<?= $ven['id'] ?>" <?= ($v['vendedor_id'] == $ven['id']) ? 'selected' : '' ?>>
                                 <?= e($ven['nombre'] . ' ' . $ven['apellido']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Día de Cobro</label>
+                    <select name="dia_cobro">
+                        <option value="">— Cualquier día —</option>
+                        <?php foreach ([1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado'] as $n => $d): ?>
+                            <option value="<?= $n ?>" <?= ($v['dia_cobro'] == $n) ? 'selected' : '' ?>>
+                                <?= $d ?>
                             </option>
                         <?php endforeach; ?>
                     </select>

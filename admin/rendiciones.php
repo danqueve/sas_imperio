@@ -149,9 +149,28 @@ if ($cobrador_id) {
     }
 }
 
+// ── Badge: cuotas CAP_PAGADA/PARCIAL del cobrador ──
+$cant_condonar = 0;
+if ($cobrador_id > 0) {
+    $sc = $pdo->prepare("
+        SELECT COUNT(*) FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        WHERE cu.estado IN ('CAP_PAGADA','PARCIAL')
+          AND cr.cobrador_id = ?
+          AND cr.estado IN ('EN_CURSO','MOROSO')
+    ");
+    $sc->execute([$cobrador_id]);
+    $cant_condonar = (int) $sc->fetchColumn();
+}
+
 $page_title     = 'Rendiciones';
 $page_current   = 'rendiciones';
 $topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-history"></i> Historial de Rendiciones</a>';
+if ($cant_condonar > 0) {
+    $topbar_actions .= '<a href="pendientes_condonar?cobrador_id=' . $cobrador_id . '" class="btn-ic btn-sm" style="background:#f59e0b;color:#fff;border:none">'
+        . '<i class="fa fa-triangle-exclamation"></i> Pendientes (' . $cant_condonar . ')'
+        . '</a>';
+}
 
 require_once __DIR__ . '/../views/layout.php';
 ?>
