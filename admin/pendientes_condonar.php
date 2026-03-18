@@ -133,16 +133,11 @@ require_once __DIR__ . '/../views/layout.php';
                     </td>
                     <td style="white-space:nowrap">
                         <?php if ($r['estado'] === 'CAP_PAGADA'): ?>
-                            <form method="POST" action="../creditos/condonar_mora" style="display:inline">
-                                <input type="hidden" name="cuota_id"   value="<?= (int) $r['cuota_id'] ?>">
-                                <input type="hidden" name="credito_id" value="<?= (int) $r['credito_id'] ?>">
-                                <input type="hidden" name="redirect"   value="../admin/pendientes_condonar?cobrador_id=<?= $cobrador_id ?>">
-                                <button type="submit" class="btn-ic btn-sm"
-                                    style="background:#4f46e5;color:#fff;border:none"
-                                    data-confirm="¿Condonar la mora de <?= e(addslashes($r['apellidos'] . ', ' . $r['nombres'])) ?>?">
-                                    <i class="fa fa-circle-check"></i> Condonar Mora
-                                </button>
-                            </form>
+                            <a href="../creditos/ver?id=<?= (int) $r['credito_id'] ?>" target="_blank"
+                               class="btn-ic btn-sm"
+                               style="background:#4f46e5;color:#fff;border:none;white-space:nowrap;text-decoration:none">
+                                <i class="fa fa-circle-check"></i> Perdonar Mora
+                            </a>
                         <?php else: ?>
                             <a href="../creditos/ver?id=<?= (int) $r['credito_id'] ?>" target="_blank"
                                class="btn-ic btn-ghost btn-sm">
