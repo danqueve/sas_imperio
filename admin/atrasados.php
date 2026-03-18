@@ -310,13 +310,10 @@ function url_vista(string $v, array $get): string {
                     elseif ($dias > 14) { $badge_bg = '#f97316';       $badge_c = '#fff'; $nivel = 'alerta'; }
                     else                { $badge_bg = '#eab308';       $badge_c = '#000'; $nivel = 'reciente'; }
 
-                    $wa_tel = preg_replace('/\D/', '', $r['telefono'] ?? '');
-                    $wa_msg = urlencode(
-                        'Hola ' . $r['nombres'] . ', le informamos que su cuota #' . $r['numero_cuota'] .
+                    $wa_msg = 'Hola ' . $r['nombres'] . ', le informamos que su cuota #' . $r['numero_cuota'] .
                         ' del artículo ' . $r['articulo'] . ' venció hace ' . $dias . ' días. ' .
                         'Monto adeudado: ' . formato_pesos((float)$r['monto_adeudado']) . '. ' .
-                        'Por favor comuníquese con su cobrador. - Imperio Comercial'
-                    );
+                        'Por favor comuníquese con su cobrador. - Imperio Comercial';
                     ?>
                     <tr data-dias="<?= $dias ?>" data-nivel="<?= $nivel ?>">
                         <td class="text-center text-muted" style="font-size:.82rem"><?= $offset + $i + 1 ?></td>
@@ -352,8 +349,8 @@ function url_vista(string $v, array $get): string {
                             <?php endif; ?>
                         </td>
                         <td class="text-center">
-                            <?php if ($wa_tel): ?>
-                                <a href="https://wa.me/<?= $wa_tel ?>?text=<?= $wa_msg ?>" target="_blank"
+                            <?php if (!empty($r['telefono'])): ?>
+                                <a href="<?= whatsapp_url($r['telefono'], $wa_msg) ?>" target="_blank"
                                    class="btn-ic btn-ghost btn-sm btn-icon"
                                    title="Enviar WhatsApp"
                                    style="color:#22c55e;border-color:#22c55e">
@@ -407,12 +404,9 @@ function url_vista(string $v, array $get): string {
                     elseif ($dias > 14) { $badge_bg = '#f97316';       $badge_c = '#fff'; }
                     else                { $badge_bg = '#eab308';       $badge_c = '#000'; }
 
-                    $wa_tel = preg_replace('/\D/', '', $r['telefono'] ?? '');
-                    $wa_msg = urlencode(
-                        'Hola ' . $r['nombres'] . ', le informamos que tiene ' . $r['cant_cuotas_vencidas'] .
+                    $wa_msg = 'Hola ' . $r['nombres'] . ', le informamos que tiene ' . $r['cant_cuotas_vencidas'] .
                         ' cuota(s) vencida(s) por un total de ' . formato_pesos((float)$r['total_adeudado']) . '. ' .
-                        'Por favor comuníquese con su cobrador. - Imperio Comercial'
-                    );
+                        'Por favor comuníquese con su cobrador. - Imperio Comercial';
                     ?>
                     <tr>
                         <td class="text-center text-muted" style="font-size:.82rem"><?= $offset + $i + 1 ?></td>
@@ -449,8 +443,8 @@ function url_vista(string $v, array $get): string {
                             <?php endif; ?>
                         </td>
                         <td class="text-center">
-                            <?php if ($wa_tel): ?>
-                                <a href="https://wa.me/<?= $wa_tel ?>?text=<?= $wa_msg ?>" target="_blank"
+                            <?php if (!empty($r['telefono'])): ?>
+                                <a href="<?= whatsapp_url($r['telefono'], $wa_msg) ?>" target="_blank"
                                    class="btn-ic btn-ghost btn-sm btn-icon"
                                    title="Enviar WhatsApp"
                                    style="color:#22c55e;border-color:#22c55e">
