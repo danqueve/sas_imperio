@@ -139,9 +139,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo->beginTransaction();
 
-                // 1. Eliminar cuotas no pagadas
-                $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id = ? AND estado != 'PAGADA'")
+                // 1. Eliminar solo cuotas sin pagos confirmados (PENDIENTE / VENCIDA).
+                //    Las cuotas PARCIAL y CAP_PAGADA tienen ic_pagos_confirmados
+                //    referenciándolas con NOT NULL y deben permanecer intactas.
+                $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA')")
                     ->execute([$id]);
+
+                // Determinar desde qué número continuar
+                $mn_stmt = $pdo->prepare("SELECT COALESCE(MAX(numero_cuota),0) FROM ic_cuotas WHERE credito_id=?");
+                $mn_stmt->execute([$id]);
+                $max_num = (int) $mn_stmt->fetchColumn();
 
                 // 2. Generar nuevas cuotas
                 $fecha = new DateTime($f['primer_vencimiento']);
@@ -157,11 +164,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             default     => $fecha->modify('+1 month'),
                         };
                     }
-                    $ins->execute([$id, $cuotas_pagadas + $i, $fecha->format('Y-m-d'), $nuevo_valor_cuota]);
+                    $ins->execute([$id, $max_num + $i, $fecha->format('Y-m-d'), $nuevo_valor_cuota]);
                 }
 
                 // 3. Actualizar crédito
-                $nueva_cant = $cuotas_pagadas + $f['nuevas_cuotas'];
+                $nueva_cant = $max_num + $f['nuevas_cuotas'];
                 $obs        = $f['observaciones'] !== '' ? $f['observaciones'] : ($cr['observaciones'] ?? '');
                 $pdo->prepare("
                     UPDATE ic_creditos SET
