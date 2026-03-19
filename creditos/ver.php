@@ -65,6 +65,37 @@ if (es_admin() || es_supervisor()) {
     }
 }
 
+// ── Historial completo de pagos confirmados del crédito ──────
+$hist_stmt = $pdo->prepare("
+    SELECT
+        pc.id AS pc_id,
+        cu.numero_cuota,
+        cu.monto_cuota,
+        cu.estado AS estado_cuota,
+        pt.monto_efectivo,
+        pt.monto_transferencia,
+        pt.monto_mora_cobrada,
+        pt.monto_total,
+        pt.fecha_jornada,
+        pt.fecha_registro,
+        IFNULL(pt.origen, 'cobrador') AS origen,
+        CONCAT(u.nombre, ' ', u.apellido)  AS cobrador_nombre,
+        CONCAT(ua.nombre, ' ', ua.apellido) AS aprobador_nombre
+    FROM ic_pagos_confirmados pc
+    JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
+    JOIN ic_cuotas cu           ON cu.id = pc.cuota_id
+    JOIN ic_usuarios u          ON u.id  = pt.cobrador_id
+    JOIN ic_usuarios ua         ON ua.id = pc.aprobador_id
+    WHERE cu.credito_id = ?
+    ORDER BY pt.fecha_registro ASC
+");
+$hist_stmt->execute([$id]);
+$historial_pagos = $hist_stmt->fetchAll();
+$hist_total_ef   = array_sum(array_column($historial_pagos, 'monto_efectivo'));
+$hist_total_tr   = array_sum(array_column($historial_pagos, 'monto_transferencia'));
+$hist_total_mora = array_sum(array_column($historial_pagos, 'monto_mora_cobrada'));
+$hist_total      = array_sum(array_column($historial_pagos, 'monto_total'));
+
 // Calcular mora actualizada para cada cuota
 $hoy = new DateTime('today');
 foreach ($lista_cuotas as &$cuota) {
@@ -487,6 +518,87 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
     </div>
 </div>
+
+<?php if (!empty($historial_pagos)): ?>
+<!-- HISTORIAL DE PAGOS -->
+<div class="card-ic mt-4">
+    <div class="card-ic-header">
+        <span class="card-title"><i class="fa fa-history"></i> Historial de Pagos</span>
+        <span style="font-size:.78rem;color:var(--text-muted)">
+            <?= count($historial_pagos) ?> pago<?= count($historial_pagos) !== 1 ? 's' : '' ?> confirmado<?= count($historial_pagos) !== 1 ? 's' : '' ?>
+            — Total cobrado: <strong style="color:var(--success)"><?= formato_pesos($hist_total) ?></strong>
+        </span>
+    </div>
+    <div style="overflow-x:auto">
+        <table class="table-ic" style="font-size:.85rem">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Fecha Jornada</th>
+                    <th>Cuota</th>
+                    <th style="text-align:right">Efectivo</th>
+                    <th style="text-align:right">Transferencia</th>
+                    <th style="text-align:right">Mora</th>
+                    <th style="text-align:right">Total</th>
+                    <th>Cobrador / Aprobador</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($historial_pagos as $i => $h): ?>
+                <tr>
+                    <td class="text-muted"><?= $i + 1 ?></td>
+                    <td class="nowrap">
+                        <?= date('d/m/Y', strtotime($h['fecha_jornada'])) ?>
+                        <br><span class="text-muted" style="font-size:.72rem">
+                            <?= date('d/m/Y H:i', strtotime($h['fecha_registro'])) ?>
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary">#<?= $h['numero_cuota'] ?></span>
+                        <?php if ($h['estado_cuota'] === 'PARCIAL'): ?>
+                            <br><span style="font-size:.7rem;color:var(--warning)">parcial</span>
+                        <?php elseif ($h['estado_cuota'] === 'CAP_PAGADA'): ?>
+                            <br><span style="font-size:.7rem;color:#60a5fa">cap. pagado</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="text-align:right">
+                        <?= $h['monto_efectivo'] > 0 ? formato_pesos($h['monto_efectivo']) : '—' ?>
+                    </td>
+                    <td style="text-align:right">
+                        <?= $h['monto_transferencia'] > 0 ? formato_pesos($h['monto_transferencia']) : '—' ?>
+                    </td>
+                    <td style="text-align:right;<?= $h['monto_mora_cobrada'] > 0 ? 'color:var(--danger)' : '' ?>">
+                        <?= $h['monto_mora_cobrada'] > 0 ? formato_pesos($h['monto_mora_cobrada']) : '—' ?>
+                    </td>
+                    <td style="text-align:right;font-weight:700;color:var(--success)">
+                        <?= formato_pesos($h['monto_total']) ?>
+                    </td>
+                    <td style="font-size:.78rem">
+                        <?php if ($h['origen'] === 'manual'): ?>
+                            <span style="background:rgba(99,102,241,.2);color:#a5b4fc;font-size:.65rem;padding:1px 5px;border-radius:4px">Manual</span>
+                            <br><?= e($h['aprobador_nombre']) ?>
+                        <?php else: ?>
+                            <i class="fa fa-user" style="opacity:.5"></i> <?= e($h['cobrador_nombre']) ?>
+                            <br><span class="text-muted">Aprobó: <?= e($h['aprobador_nombre']) ?></span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+                <tr style="background:rgba(79,70,229,.08);font-weight:700">
+                    <td colspan="3" style="text-align:right;font-size:.8rem;padding-right:10px">TOTAL</td>
+                    <td style="text-align:right;color:var(--success)"><?= formato_pesos($hist_total_ef) ?></td>
+                    <td style="text-align:right;color:var(--primary-light)"><?= formato_pesos($hist_total_tr) ?></td>
+                    <td style="text-align:right;color:var(--danger)"><?= $hist_total_mora > 0 ? formato_pesos($hist_total_mora) : '—' ?></td>
+                    <td style="text-align:right;color:var(--success)"><?= formato_pesos($hist_total) ?></td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
 
 <?php if (es_admin()): ?>
 <!-- MODAL REVERTIR PAGO (admin) -->
