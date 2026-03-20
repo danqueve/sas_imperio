@@ -53,10 +53,10 @@ function fmt(float $v): string {
 require_once __DIR__ . '/../fpdf/fpdf.php';
 
 // Anchos columnas: suma = 190mm (margen 10mm c/lado)
-// #(8) + Cliente(44) + Articulo(34) + Cuota(12) + Vlr.Cuota(20) + Mora(18) + Efectivo(19) + Transfer.(18) + Total(17)
-$COLS   = [8, 44, 34, 12, 20, 18, 19, 18, 17];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vlr. Cuota', 'Mora', 'Efectivo', 'Transfer.', 'Total'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
+// #(8) + Cliente(48) + Articulo(38) + Cuota(13) + Vlr.Cuota(22) + Efectivo(22) + Transfer.(22) + Total(17)
+$COLS   = [8, 48, 38, 13, 22, 22, 22, 17];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Total'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R'];
 
 class RendicionPDF extends FPDF
 {
@@ -138,31 +138,29 @@ foreach ($pagos as $p) {
     if ($es_pura) $has_cuota_pura     = true;
     if ($es_baja) $has_solicitud_baja = true;
 
-    $cliente  = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 30, '..');
-    $articulo = mb_strimwidth($p['articulo'], 0, 24, '..');
-    $mora_str = fmt($p['monto_mora_cobrada']) . ($es_pura ? ' *' : '');
-    $cli_str  = lat($cliente) . ($es_baja ? ' +' : '');
+    $cliente  = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 33, '..');
+    $articulo = mb_strimwidth($p['articulo'], 0, 27, '..');
+    $cli_str  = lat($cliente) . ($es_pura ? ' *' : '') . ($es_baja ? ' +' : '');
 
     $pdf->Cell($COLS[0], 6, $index,                          1, 0, 'C', false);
     $pdf->Cell($COLS[1], 6, $cli_str,                        1, 0, 'L', false);
     $pdf->Cell($COLS[2], 6, lat($articulo),                  1, 0, 'L', false);
     $pdf->Cell($COLS[3], 6, '#' . $p['numero_cuota'],        1, 0, 'C', false);
     $pdf->Cell($COLS[4], 6, fmt($p['monto_cuota']),          1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 6, $mora_str,                       1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 6, fmt($p['monto_efectivo']),       1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 6, fmt($p['monto_transferencia']),  1, 0, 'R', false);
-    $pdf->Cell($COLS[8], 6, fmt($p['monto_total']),          1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 6, fmt($p['monto_efectivo']),       1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 6, fmt($p['monto_transferencia']),  1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 6, fmt($p['monto_total']),          1, 0, 'R', false);
     $pdf->Ln();
     $index++;
 }
 
 // ── Fila TOTALES — negrita, sin relleno ────────────────────────
 $pdf->SetFont('Helvetica', 'B', 8);
-$ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4] + $COLS[5];
+$ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
 $pdf->Cell($ancho_label, 7, lat('TOTALES'), 1, 0, 'R', false);
-$pdf->Cell($COLS[6], 7, fmt($total_efectivo),      1, 0, 'R', false);
-$pdf->Cell($COLS[7], 7, fmt($total_transferencia), 1, 0, 'R', false);
-$pdf->Cell($COLS[8], 7, fmt($total_general),       1, 0, 'R', false);
+$pdf->Cell($COLS[5], 7, fmt($total_efectivo),      1, 0, 'R', false);
+$pdf->Cell($COLS[6], 7, fmt($total_transferencia), 1, 0, 'R', false);
+$pdf->Cell($COLS[7], 7, fmt($total_general),       1, 0, 'R', false);
 $pdf->Ln();
 
 // ── Resumen al pie — sin rellenos ─────────────────────────────
@@ -177,7 +175,6 @@ $bw2 = 38;
 $resumen = [
     ['Efectivo cobrado',  fmt($total_efectivo)],
     ['Transferencias',    fmt($total_transferencia)],
-    ['Mora cobrada',      fmt($total_mora)],
     ['TOTAL GENERAL',     fmt($total_general)],
 ];
 
@@ -197,7 +194,7 @@ if ($has_cuota_pura || $has_solicitud_baja) {
     $pdf->SetTextColor(80, 80, 80);
     $pdf->SetX(10);
     if ($has_cuota_pura) {
-        $pdf->Cell(190, 4, lat('* Cuota pura: se cobro solo el capital. La mora indicada queda pendiente y no esta incluida en el total cobrado.'), 0, 1, 'L');
+        $pdf->Cell(190, 4, lat('* Cuota pura: se cobro solo el capital. La mora queda pendiente para cobro posterior.'), 0, 1, 'L');
     }
     if ($has_solicitud_baja) {
         $pdf->Cell(190, 4, lat('+ Solicitud de baja de credito pendiente de aprobacion.'), 0, 1, 'L');
