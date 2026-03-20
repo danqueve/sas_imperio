@@ -36,6 +36,8 @@ $dstmt = $pdo->prepare("
 $dstmt->execute([$cobrador_id, $fecha_sel]);
 $pagos = $dstmt->fetchAll();
 
+if (empty($pagos)) die('No hay pagos pendientes para esta rendicion en la fecha indicada.');
+
 $total_efectivo      = array_sum(array_column($pagos, 'monto_efectivo'));
 $total_transferencia = array_sum(array_column($pagos, 'monto_transferencia'));
 $total_mora          = array_sum(array_column($pagos, 'monto_mora_cobrada'));
@@ -45,22 +47,23 @@ function lat(string $s): string {
     return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
 }
 function fmt(float $v): string {
-    return '$ ' . number_format($v, 2, ',', '.');
+    return '$ ' . number_format($v, 0, ',', '.');
 }
 
 require_once __DIR__ . '/../fpdf/fpdf.php';
 
 // Anchos columnas: suma = 190mm (margen 10mm c/lado)
-// #(8) + Cliente(52) + Articulo(40) + Cuota(10) + Vlr.Cuota(20) + Mora(20) + Efectivo(20) + Transfer(20)
-$COLS   = [8, 52, 40, 10, 20, 20, 20, 20]; 
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vlr. Cuota', 'Mora', 'Efectivo', 'Transfer.'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R'];
+// #(8) + Cliente(44) + Articulo(34) + Cuota(12) + Vlr.Cuota(20) + Mora(18) + Efectivo(19) + Transfer.(18) + Total(17)
+$COLS   = [8, 44, 34, 12, 20, 18, 19, 18, 17];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vlr. Cuota', 'Mora', 'Efectivo', 'Transfer.', 'Total'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
 
 class RendicionPDF extends FPDF
 {
-    public string $cobrador_nombre = '';
-    public string $fecha_label    = '';
-    public int    $num_pagos      = 0;
+    public string $cobrador_nombre  = '';
+    public string $fecha_label     = '';
+    public string $fecha_impresion = '';
+    public int    $num_pagos       = 0;
     public array  $cols   = [];
     public array  $labels = [];
     public array  $aligns = [];
@@ -80,6 +83,8 @@ class RendicionPDF extends FPDF
         $this->SetX(10);
         $this->Cell(95, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
         $this->Cell(95, 5, lat('Fecha: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
+        $this->SetX(10);
+        $this->Cell(190, 4, lat('Impreso: ' . $this->fecha_impresion), 0, 1, 'R');
 
         // Línea separadora
         $this->SetLineWidth(0.4);
@@ -107,9 +112,10 @@ class RendicionPDF extends FPDF
 
 $pdf = new RendicionPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
-$pdf->cobrador_nombre = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
-$pdf->fecha_label     = date('d/m/Y', strtotime($fecha_sel));
-$pdf->num_pagos       = count($pagos);
+$pdf->cobrador_nombre  = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
+$pdf->fecha_label      = date('d/m/Y', strtotime($fecha_sel));
+$pdf->fecha_impresion  = date('d/m/Y H:i');
+$pdf->num_pagos        = count($pagos);
 $pdf->cols            = $COLS;
 $pdf->labels          = $LABELS;
 $pdf->aligns          = $ALIGNS;
@@ -124,18 +130,28 @@ $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
 
 $index = 1;
+$has_cuota_pura     = false;
+$has_solicitud_baja = false;
 foreach ($pagos as $p) {
-    $cliente  = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 35, '..');
-    $articulo = mb_strimwidth($p['articulo'], 0, 30, '..');
+    $es_pura = (int)($p['es_cuota_pura'] ?? 0);
+    $es_baja = (int)($p['solicitud_baja'] ?? 0);
+    if ($es_pura) $has_cuota_pura     = true;
+    if ($es_baja) $has_solicitud_baja = true;
 
-    $pdf->Cell($COLS[0], 6, $index,                      1, 0, 'C', false);
-    $pdf->Cell($COLS[1], 6, lat($cliente),               1, 0, 'L', false);
-    $pdf->Cell($COLS[2], 6, lat($articulo),              1, 0, 'L', false);
-    $pdf->Cell($COLS[3], 6, '#' . $p['numero_cuota'],    1, 0, 'C', false);
-    $pdf->Cell($COLS[4], 6, fmt($p['monto_cuota']),         1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 6, fmt($p['monto_mora_cobrada']),  1, 0, 'R', false);
+    $cliente  = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 30, '..');
+    $articulo = mb_strimwidth($p['articulo'], 0, 24, '..');
+    $mora_str = fmt($p['monto_mora_cobrada']) . ($es_pura ? ' *' : '');
+    $cli_str  = lat($cliente) . ($es_baja ? ' +' : '');
+
+    $pdf->Cell($COLS[0], 6, $index,                          1, 0, 'C', false);
+    $pdf->Cell($COLS[1], 6, $cli_str,                        1, 0, 'L', false);
+    $pdf->Cell($COLS[2], 6, lat($articulo),                  1, 0, 'L', false);
+    $pdf->Cell($COLS[3], 6, '#' . $p['numero_cuota'],        1, 0, 'C', false);
+    $pdf->Cell($COLS[4], 6, fmt($p['monto_cuota']),          1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 6, $mora_str,                       1, 0, 'R', false);
     $pdf->Cell($COLS[6], 6, fmt($p['monto_efectivo']),       1, 0, 'R', false);
     $pdf->Cell($COLS[7], 6, fmt($p['monto_transferencia']),  1, 0, 'R', false);
+    $pdf->Cell($COLS[8], 6, fmt($p['monto_total']),          1, 0, 'R', false);
     $pdf->Ln();
     $index++;
 }
@@ -146,6 +162,7 @@ $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4] + $COLS[5];
 $pdf->Cell($ancho_label, 7, lat('TOTALES'), 1, 0, 'R', false);
 $pdf->Cell($COLS[6], 7, fmt($total_efectivo),      1, 0, 'R', false);
 $pdf->Cell($COLS[7], 7, fmt($total_transferencia), 1, 0, 'R', false);
+$pdf->Cell($COLS[8], 7, fmt($total_general),       1, 0, 'R', false);
 $pdf->Ln();
 
 // ── Resumen al pie — sin rellenos ─────────────────────────────
@@ -160,7 +177,7 @@ $bw2 = 38;
 $resumen = [
     ['Efectivo cobrado',  fmt($total_efectivo)],
     ['Transferencias',    fmt($total_transferencia)],
-    ['Mora no cobradas',  fmt($total_mora)],
+    ['Mora cobrada',      fmt($total_mora)],
     ['TOTAL GENERAL',     fmt($total_general)],
 ];
 
@@ -171,6 +188,21 @@ foreach ($resumen as $i => [$label, $valor]) {
     $pdf->Cell($bw1, 7, lat($label), 1, 0, 'L', false);
     $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->Cell($bw2, 7, lat($valor), 1, 1, 'R', false);
+}
+
+// ── Nota al pie ────────────────────────────────────────────────
+if ($has_cuota_pura || $has_solicitud_baja) {
+    $pdf->Ln(4);
+    $pdf->SetFont('Helvetica', 'I', 7);
+    $pdf->SetTextColor(80, 80, 80);
+    $pdf->SetX(10);
+    if ($has_cuota_pura) {
+        $pdf->Cell(190, 4, lat('* Cuota pura: se cobro solo el capital. La mora indicada queda pendiente y no esta incluida en el total cobrado.'), 0, 1, 'L');
+    }
+    if ($has_solicitud_baja) {
+        $pdf->Cell(190, 4, lat('+ Solicitud de baja de credito pendiente de aprobacion.'), 0, 1, 'L');
+    }
+    $pdf->SetTextColor(0, 0, 0);
 }
 
 // ── Área de Firmas ─────────────────────────────────────────────
