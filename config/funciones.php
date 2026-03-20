@@ -214,34 +214,45 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 ->execute([$pago['id']]);
 
             // 4. Recalcular estado del crédito (FINALIZADO, MOROSO o EN_CURSO)
-            $cr_stmt = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");
+            $cr_stmt = $pdo->prepare("SELECT cr.estado, cr.cliente_id FROM ic_creditos cr WHERE cr.id=?");
             $cr_stmt->execute([$pago['credito_id']]);
-            $estado_actual_cr = $cr_stmt->fetchColumn();
+            $cr_row = $cr_stmt->fetch();
+            $estado_actual_cr = $cr_row ? $cr_row['estado'] : '';
+            $cliente_id_cr    = $cr_row ? (int)$cr_row['cliente_id'] : 0;
 
             if ($estado_actual_cr !== 'CANCELADO') {
                 $check = $pdo->prepare("
-                    SELECT 
-                        SUM(CASE WHEN estado != 'PAGADA' THEN 1 ELSE 0 END) as pendientes,
-                        SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) as vencidas
+                    SELECT
+                        SUM(CASE WHEN estado NOT IN ('PAGADA','CANCELADA') THEN 1 ELSE 0 END) AS pendientes,
+                        SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) AS vencidas
                     FROM ic_cuotas
                     WHERE credito_id = ?
                 ");
                 $check->execute([$pago['credito_id']]);
                 $counts = $check->fetch(PDO::FETCH_ASSOC);
 
-                if ((int) $counts['pendientes'] === 0) {
+                if ((int)$counts['pendientes'] === 0) {
                     $nuevo_cr_estado = 'FINALIZADO';
-                } elseif ((int) $counts['vencidas'] > 0) {
+                    // Auto-finalización: establecer fecha y motivo si aún no están seteados
+                    $pdo->prepare("
+                        UPDATE ic_creditos
+                        SET estado = 'FINALIZADO',
+                            fecha_finalizacion = COALESCE(fecha_finalizacion, ?),
+                            motivo_finalizacion = COALESCE(motivo_finalizacion, 'PAGO_COMPLETO')
+                        WHERE id = ?
+                    ")->execute([$fecha, $pago['credito_id']]);
+                } elseif ((int)$counts['vencidas'] > 0) {
                     $nuevo_cr_estado = 'MOROSO';
+                    $pdo->prepare("UPDATE ic_creditos SET estado='MOROSO' WHERE id=?")
+                        ->execute([$pago['credito_id']]);
                 } else {
                     $nuevo_cr_estado = 'EN_CURSO';
+                    $pdo->prepare("UPDATE ic_creditos SET estado='EN_CURSO' WHERE id=?")
+                        ->execute([$pago['credito_id']]);
                 }
-                $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")
-                    ->execute([$nuevo_cr_estado, $pago['credito_id']]);
             }
 
             $pdo->commit();
-            $resultado['aprobados']++;
 
             // 5. Notificación WhatsApp — pago confirmado (fire-and-forget)
             if ($nuevo_estado === 'PAGADA' && !empty($pago['cliente_tel'])) {
@@ -401,3 +412,117 @@ function registrar_log(
         // El log nunca interrumpe el flujo principal
     }
 }
+
+// ── Puntaje de pago ───────────────────────────────────────────
+
+/**
+ * Calcula el puntaje de pago de un crédito finalizad.
+ * Examina si hubo cuotas vencidas con mora y refinanciaciones.
+ * @return int 1=Excelente, 2=Bueno, 3=Regular, 4=Malo
+ */
+function calcular_puntaje_credito(int $credito_id, PDO $pdo): int
+{
+    // Contar cuotas con mora registrada
+    $stmt = $pdo->prepare("
+        SELECT 
+            COUNT(*) AS total_cuotas,
+            SUM(CASE WHEN monto_mora > 0 THEN 1 ELSE 0 END) AS cuotas_con_mora,
+            MAX(dias_atraso) AS max_atraso
+        FROM ic_cuotas
+        WHERE credito_id = ?
+    ");
+    $stmt->execute([$credito_id]);
+    $r = $stmt->fetch();
+
+    // Contar veces refinanciado
+    $ref_stmt = $pdo->prepare("SELECT veces_refinanciado FROM ic_creditos WHERE id = ?");
+    $ref_stmt->execute([$credito_id]);
+    $veces_ref = (int)($ref_stmt->fetchColumn() ?? 0);
+
+    $cuotas_con_mora = (int)($r['cuotas_con_mora'] ?? 0);
+    $max_atraso      = (int)($r['max_atraso'] ?? 0);
+
+    if ($veces_ref >= 2 || $cuotas_con_mora >= 3 || $max_atraso > 30) {
+        return 4; // Malo
+    }
+    if ($veces_ref === 1 || $cuotas_con_mora >= 2 || $max_atraso > 14) {
+        return 3; // Regular
+    }
+    if ($cuotas_con_mora === 1 || $max_atraso > 0) {
+        return 2; // Bueno
+    }
+    return 1; // Excelente — sin mora en ninguna cuota
+}
+
+/**
+ * Recalcula y guarda el puntaje promedio del cliente
+ * basado en todos sus créditos finalizados con pago.
+ */
+function actualizar_puntaje_cliente(int $cliente_id, PDO $pdo): void
+{
+    try {
+        // Obtener todos los créditos finalizados con pago del cliente
+        $stmt = $pdo->prepare("
+            SELECT id FROM ic_creditos
+            WHERE cliente_id = ?
+              AND estado = 'FINALIZADO'
+              AND motivo_finalizacion IN ('PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA')
+        ");
+        $stmt->execute([$cliente_id]);
+        $creditos = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+
+        if (empty($creditos)) return;
+
+        $total      = count($creditos);
+        $sin_mora   = 0;
+        $suma_punt  = 0;
+
+        foreach ($creditos as $cid) {
+            $punt = calcular_puntaje_credito((int)$cid, $pdo);
+            $suma_punt += $punt;
+            if ($punt === 1) $sin_mora++;
+        }
+
+        $puntaje_promedio = (int)round($suma_punt / $total);
+        $puntaje_promedio = min(4, max(1, $puntaje_promedio));
+
+        $pdo->prepare("
+            UPDATE ic_clientes
+            SET puntaje_pago = ?,
+                total_creditos_finalizados = ?,
+                creditos_sin_mora = ?
+            WHERE id = ?
+        ")->execute([$puntaje_promedio, $total, $sin_mora, $cliente_id]);
+    } catch (Exception $e) {
+        // No interrumpir flujo principal
+    }
+}
+
+/**
+ * Etiqueta de puntaje de pago para UI.
+ * @param int|null $puntaje
+ * @return string HTML con badge coloreado
+ */
+function badge_puntaje_pago(?int $puntaje): string
+{
+    if ($puntaje === null) return '';
+    $map = [
+        1 => ['⭐⭐⭐ Excelente', 'success'],
+        2 => ['⭐⭐ Bueno',      'primary'],
+        3 => ['⭐ Regular',      'warning'],
+        4 => ['Sin mora',       'danger'],
+    ];
+    [$label, $color] = $map[$puntaje] ?? ['—', 'secondary'];
+    return "<span class=\"badge-ic badge-{$color}\">{$label}</span>";
+}
+
+/**
+ * Genera la URL de WhatsApp con mensaje de felicitación por finalización de crédito.
+ */
+function whatsapp_finalizacion_url(string $telefono, string $nombre, string $articulo): string
+{
+    $mensaje = "¡Hola {$nombre}! 🎉 Tu crédito de {$articulo} está saldado completamente. "
+             . "Fue un gusto trabajar con vos. Cuando quieras, tenemos nuevas opciones disponibles. ¡Gracias!";
+    return whatsapp_url($telefono, $mensaje);
+}
+

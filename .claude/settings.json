@@ -7,7 +7,10 @@
       "Read(//c/Users/danqu/.agents/skills/ui-ux-pro-max/**)",
       "Bash(python \"C:\\\\Users\\\\danqu\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"collections dashboard mobile field agent dark mode data-dense\" --design-system -f markdown)",
       "Read(//c/Users/danqu/.claude/skills/ui-ux-pro-max/scripts 2>/dev/**)",
-      "Bash(mysql -u root -e \"DESCRIBE creditos.ic_pagos_temporales;\")"
+      "Bash(mysql -u root -e \"DESCRIBE creditos.ic_pagos_temporales;\")",
+      "Bash(git pull)",
+      "Bash(git pull origin main)",
+      "Bash(grep -n \"function verificar_permiso\\\\|function usuario_actual\\\\|function obtener_conexion\\\\|function es_admin\" /c/wamp64/www/creditos/config/*.php)"
     ]
   }
 }

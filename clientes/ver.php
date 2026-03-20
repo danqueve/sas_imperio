@@ -27,9 +27,11 @@ $garante->execute([$id]);
 $g = $garante->fetch();
 
 $creditos = $pdo->prepare("
-    SELECT cr.*, COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
+    SELECT cr.*,
+           COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas,
-           (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id) AS total_cuotas
+           (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id) AS total_cuotas,
+           (SELECT SUM(monto_cuota) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS total_cobrado
     FROM ic_creditos cr
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
     WHERE cr.cliente_id = ?
@@ -37,6 +39,12 @@ $creditos = $pdo->prepare("
 ");
 $creditos->execute([$id]);
 $listado_creditos = $creditos->fetchAll();
+
+// Calcular el total pagado histórico
+$total_pagado_historico = array_sum(array_column(
+    array_filter($listado_creditos, fn($r) => $r['estado'] === 'FINALIZADO' || $r['estado'] === 'EN_CURSO'),
+    'total_cobrado'
+));
 
 $page_title    = e($c['apellidos'] . ', ' . $c['nombres']);
 $page_current  = 'clientes';
@@ -65,9 +73,12 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="fw-bold" style="font-size:.95rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                     <?= e($c['apellidos'] . ', ' . $c['nombres']) ?>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
                     <span class="text-muted" style="font-size:.7rem">#<?= $c['id'] ?></span>
                     <?= badge_estado_cliente($c['estado']) ?>
+                    <?php if (!empty($c['puntaje_pago'])): ?>
+                        <?= badge_puntaje_pago((int)$c['puntaje_pago']) ?>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

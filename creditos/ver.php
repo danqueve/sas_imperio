@@ -844,4 +844,81 @@ JS;
 </div>
 <?php endif; ?>
 
-<?php require_once __DIR__ . '/../views/layout_footer.php'; ?>
+<?php if (es_admin() || es_supervisor()): ?>
+<!-- NOTAS INTERNAS DEL CRÉDITO -->
+<div class="card-ic mt-4" id="notas-credito-section">
+    <div class="card-ic-header">
+        <span class="card-title"><i class="fa fa-sticky-note"></i> Notas Internas</span>
+        <span style="font-size:.78rem;color:var(--text-muted)">Solo visibles para admin y supervisores</span>
+    </div>
+    <div id="notas-lista" style="padding:12px;min-height:40px">
+        <p class="text-muted" style="font-size:.85rem">Cargando notas...</p>
+    </div>
+    <div style="padding:12px;border-top:1px solid var(--dark-border)">
+        <form id="form-nota" style="display:flex;gap:8px;align-items:flex-end">
+            <div style="flex:1">
+                <textarea id="nota-texto" rows="2" maxlength="500"
+                    placeholder="Agregar nota interna sobre este crédito..."
+                    style="width:100%;resize:vertical;font-size:.875rem"></textarea>
+            </div>
+            <button type="submit" class="btn-ic btn-primary btn-sm" style="align-self:flex-end">
+                <i class="fa fa-paper-plane"></i> Guardar
+            </button>
+        </form>
+    </div>
+</div>
+<script>
+(function() {
+    const CID = <?= $id ?>;
+    const BASE = '<?= BASE_URL ?>';
+    const esAdmin = <?= es_admin() ? 'true' : 'false' ?>;
+
+    function cargarNotas() {
+        fetch(BASE + 'creditos/notas_ajax?credito_id=' + CID)
+            .then(r => r.json())
+            .then(notas => {
+                const el = document.getElementById('notas-lista');
+                if (!notas.length) {
+                    el.innerHTML = '<p class="text-muted" style="font-size:.85rem;padding:4px 0">Sin notas aún.</p>';
+                    return;
+                }
+                el.innerHTML = notas.map(n => `
+                    <div style="padding:8px 0;border-bottom:1px solid var(--dark-border);display:flex;gap:10px;align-items:start">
+                        <div style="flex:1">
+                            <div style="font-size:.82rem;margin-bottom:2px">${n.nota.replace(/\n/g,'<br>')}</div>
+                            <div class="text-muted" style="font-size:.72rem">${n.autor} — ${n.created_at}</div>
+                        </div>
+                        ${esAdmin ? `<button onclick="eliminarNota(${n.id})" class="btn-ic btn-ghost btn-icon btn-sm" style="opacity:.5;flex-shrink:0" title="Eliminar"><i class="fa fa-trash"></i></button>` : ''}
+                    </div>`).join('');
+            });
+    }
+
+    document.getElementById('form-nota').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const texto = document.getElementById('nota-texto').value.trim();
+        if (!texto) return;
+        const fd = new FormData();
+        fd.append('credito_id', CID);
+        fd.append('nota', texto);
+        fetch(BASE + 'creditos/notas_ajax', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(res => {
+                if (res.ok) {
+                    document.getElementById('nota-texto').value = '';
+                    cargarNotas();
+                }
+            });
+    });
+
+    window.eliminarNota = function(notaId) {
+        if (!confirm('¿Eliminar esta nota?')) return;
+        fetch(BASE + 'creditos/notas_ajax?credito_id=' + CID + '&nota_id=' + notaId, {method:'DELETE'})
+            .then(() => cargarNotas());
+    };
+
+    cargarNotas();
+})();
+</script>
+<?php endif; ?>
+
+<?php require_once __DIR__ . '/../views/layout_footer.php'; ?>

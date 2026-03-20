@@ -202,11 +202,29 @@ if ($rol === 'admin') {
                         <i class="fa fa-chart-bar"></i>
                         <span class="nav-text">Estadísticas</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'ranking_cobradores' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/ranking_cobradores"
+                       data-tooltip="Ranking de Cobradores">
+                        <i class="fa fa-trophy"></i>
+                        <span class="nav-text">Ranking Cob.</span>
+                    </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'estadisticas_cob' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/estadisticas_cobrador"
+                       data-tooltip="Estadísticas por Cobrador">
+                        <i class="fa fa-chart-column"></i>
+                        <span class="nav-text">Estad. Cobrador</span>
+                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'atrasados' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/atrasados"
-                       data-tooltip="Cuotas Atrasadas">
-                        <i class="fa fa-triangle-exclamation"></i>
+                       data-tooltip="Créditos Atrasados">
+                        <i class="fa fa-hand-holding-dollar"></i>
                         <span class="nav-text">Atrasados</span>
+                    </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'finalizados' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/finalizados"
+                       data-tooltip="Créditos Finalizados">
+                        <i class="fa fa-circle-check"></i>
+                        <span class="nav-text">Finalizados</span>
                     </a>
                 <?php endif; ?>
 

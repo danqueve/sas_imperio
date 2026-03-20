@@ -20,6 +20,34 @@ $pagos_hoy         = (int)$pdo->query("SELECT COUNT(*) FROM ic_pagos_confirmados
 $cobrado_mes       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_pago>=DATE_FORMAT(CURDATE(),'%Y-%m-01')")->fetchColumn();
 $rend_pend         = (int)$pdo->query("SELECT COUNT(DISTINCT cobrador_id) FROM ic_pagos_temporales WHERE estado='PENDIENTE'")->fetchColumn();
 
+// ── Nuevos KPIs ───────────────────────────────────────────────
+$proximos_cerrar   = (int)$pdo->query("
+    SELECT COUNT(*) FROM ic_creditos cr
+    WHERE cr.estado='EN_CURSO'
+      AND (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado NOT IN ('PAGADA','CANCELADA')) BETWEEN 1 AND 2
+")->fetchColumn();
+
+$finalizados_mes   = (int)$pdo->query("
+    SELECT COUNT(*) FROM ic_creditos
+    WHERE estado='FINALIZADO'
+      AND fecha_finalizacion>=DATE_FORMAT(CURDATE(),'%Y-%m-01')
+")->fetchColumn();
+
+$clientes_dormidos = (int)$pdo->query("
+    SELECT COUNT(*) FROM ic_clientes cl
+    WHERE cl.estado='ACTIVO'
+      AND NOT EXISTS (
+          SELECT 1 FROM ic_creditos cr
+          WHERE cr.cliente_id=cl.id
+            AND cr.estado IN ('EN_CURSO','MOROSO')
+      )
+      AND EXISTS (
+          SELECT 1 FROM ic_creditos cr2
+          WHERE cr2.cliente_id=cl.id
+            AND cr2.fecha_finalizacion < DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+      )
+")->fetchColumn();
+
 // ── Solicitudes de anulación pendientes (solo admin) ──────────
 $sol_baja_items = [];
 if (es_admin()) {
@@ -287,6 +315,51 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="kpi-sub">
                 <span style="color:var(--danger)"><?= number_format($cartera['vencidas']) ?> vencidas</span>
                 <span class="kpi-pct" style="color:var(--warning)">· <?= $g_al_dia ?>% vigente</span>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Nuevos KPIs: ciclo de vida ─────────────────────── -->
+<div class="db-kpi-grid mb-4">
+
+    <div class="kpi-card" style="--kpi-color:#f97316;cursor:pointer"
+         onclick="window.open('<?= BASE_URL ?>admin/proximos_cerrar', '_blank')">
+        <div class="kpi-icon-box" style="--icon-bg:rgba(249,115,22,.15);--icon-color:#f97316">
+            <i class="fa fa-flag-checkered"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Próximos a Cerrar</div>
+            <div class="kpi-value"><?= number_format($proximos_cerrar) ?></div>
+            <div class="kpi-sub">
+                <span style="color:#f97316;text-decoration:underline dotted">ver listado con puntaje de clientes ↗</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card" style="--kpi-color:var(--success)">
+        <div class="kpi-icon-box" style="--icon-bg:rgba(16,185,129,.15);--icon-color:#10b981">
+            <i class="fa fa-circle-check"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Finalizados este Mes</div>
+            <div class="kpi-value"><?= number_format($finalizados_mes) ?></div>
+            <div class="kpi-sub">
+                <a href="<?= BASE_URL ?>admin/finalizados" style="color:inherit;text-decoration:underline dotted">ver reporte completo →</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card" style="--kpi-color:var(--warning)">
+        <div class="kpi-icon-box" style="--icon-bg:rgba(245,158,11,.15);--icon-color:#f59e0b">
+            <i class="fa fa-user-clock"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Clientes Dormidos</div>
+            <div class="kpi-value"><?= number_format($clientes_dormidos) ?></div>
+            <div class="kpi-sub">
+                <span class="text-muted">sin crédito activo +90 días</span>
             </div>
         </div>
     </div>
