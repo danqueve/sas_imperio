@@ -59,7 +59,7 @@ $por_dia = [];
 foreach ($dias_sel as $d) $por_dia[$d] = [];
 $visto = [];
 foreach ($rows as $r) {
-    $clave = $r['dia_cobro'] . '-' . $r['cliente_id'];
+    $clave = $r['dia_cobro'] . '-' . $r['credito_id'];
     if (isset($visto[$clave])) continue;
     $visto[$clave] = true;
     $por_dia[$r['dia_cobro']][] = $r;
