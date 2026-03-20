@@ -333,6 +333,9 @@ require_once __DIR__ . '/../views/layout.php';
             <button type="button" class="btn-ic btn-ghost" onclick="openModal('modal-agenda-pdf')">
                 <i class="fa fa-file-pdf"></i> Ficha PDF
             </button>
+            <button type="button" class="btn-ic btn-ghost" onclick="openModal('modal-clientes-zona-pdf')">
+                <i class="fa fa-map-location-dot"></i> Clientes por Zona
+            </button>
         <?php endif; ?>
     </form>
 </div>
@@ -384,6 +387,36 @@ require_once __DIR__ . '/../views/layout.php';
                     <i class="fa fa-file-pdf"></i> Generar PDF
                 </button>
                 <button type="button" onclick="closeModal('modal-agenda-pdf')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (!$is_cobrador): ?>
+<!-- MODAL CLIENTES POR ZONA PDF -->
+<div class="modal-overlay" id="modal-clientes-zona-pdf">
+    <div class="modal-box" style="max-width:400px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-map-location-dot"></i> Clientes por Zona</div>
+            <button class="modal-close" onclick="closeModal('modal-clientes-zona-pdf')">✕</button>
+        </div>
+        <form target="_blank" action="clientes_zona_pdf.php" method="GET">
+            <div class="form-group mb-4">
+                <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
+                <select name="cobrador_id" style="width:100%">
+                    <?php foreach ($cobradores as $cob): ?>
+                        <option value="<?= $cob['id'] ?>" <?= $cobrador_filtro == $cob['id'] ? 'selected' : '' ?>>
+                            <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-primary w-100" style="justify-content:center">
+                    <i class="fa fa-file-pdf"></i> Generar PDF
+                </button>
+                <button type="button" onclick="closeModal('modal-clientes-zona-pdf')" class="btn-ic btn-ghost">Cancelar</button>
             </div>
         </form>
     </div>
