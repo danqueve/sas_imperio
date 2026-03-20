@@ -249,7 +249,7 @@ foreach ($dias_sel as $dia) {
         $pdf->SetFont('Helvetica', 'I', 8);
         $pdf->Cell(190, 6, lat('Sin clientes para este dia.'), 1, 1, 'C', false);
         $pdf->Ln(3);
-        $resumen[] = ['label' => $nombre_dia, 'cant' => 0, 'total' => 0.0];
+        $resumen[] = ['tipo' => 'dia', 'label' => $nombre_dia, 'cant' => 0, 'total' => 0.0];
         continue;
     }
 
@@ -300,7 +300,7 @@ foreach ($dias_sel as $dia) {
     $pdf->Ln();
     $pdf->Ln(3);
 
-    $resumen[] = ['label' => $nombre_dia, 'cant' => $cant, 'total' => $total_dia];
+    $resumen[] = ['tipo' => 'dia', 'label' => $nombre_dia, 'cant' => $cant, 'total' => $total_dia];
 }
 
 // ── Sección: Quincenales y Mensuales ────────────────────────────
@@ -402,7 +402,7 @@ if (!empty($rows_qm)) {
         $pdf->Ln();
         $pdf->Ln(3);
 
-        $resumen[] = ['label' => $titulo, 'cant' => count($lista), 'total' => $total_frec];
+        $resumen[] = ['tipo' => 'frec', 'label' => $titulo, 'cant' => count($lista), 'total' => $total_frec];
     }
 }
 
@@ -416,25 +416,75 @@ if (!empty($resumen)) {
     $pdf->SetFont('Helvetica', 'B', 10);
     $pdf->Cell(190, 7, lat('Resumen General'), 0, 1, 'L');
 
-    // Encabezado resumen
-    $pdf->SetFont('Helvetica', 'B', 8);
-    $pdf->Cell(100, 6, lat('Seccion'), 1, 0, 'L');
-    $pdf->Cell(45,  6, lat('Clientes / Cuotas'), 1, 0, 'C');
-    $pdf->Cell(45,  6, lat('Monto Total'), 1, 1, 'R');
+    // Separar por tipo
+    $dias_res = array_values(array_filter($resumen, fn($r) => $r['tipo'] === 'dia'));
+    $frec_res = array_values(array_filter($resumen, fn($r) => $r['tipo'] === 'frec'));
 
     $total_gral_cant  = 0;
     $total_gral_monto = 0.0;
 
-    $pdf->SetFont('Helvetica', '', 8);
-    foreach ($resumen as $row) {
-        $pdf->Cell(100, 6, lat($row['label']), 1, 0, 'L');
-        $pdf->Cell(45,  6, (string)$row['cant'], 1, 0, 'C');
-        $pdf->Cell(45,  6, fmt($row['total']), 1, 1, 'R');
-        $total_gral_cant  += $row['cant'];
-        $total_gral_monto += $row['total'];
+    // ── Grupo Semanales (Lun–Sáb) ──────────────────────────────
+    $pdf->SetFont('Helvetica', 'B', 8);
+    $pdf->SetFillColor(240, 240, 240);
+    $pdf->Cell(190, 6, lat('  Semanales'), 1, 1, 'L', true);
+    $pdf->SetFillColor(255, 255, 255);
+
+    $pdf->SetFont('Helvetica', 'B', 7);
+    $pdf->Cell(100, 5, lat('Dia'), 1, 0, 'L');
+    $pdf->Cell(45,  5, lat('Cuotas'), 1, 0, 'C');
+    $pdf->Cell(45,  5, lat('Monto'), 1, 1, 'R');
+
+    $sub_cant_dias  = 0;
+    $sub_monto_dias = 0.0;
+    $pdf->SetFont('Helvetica', '', 7);
+    foreach ($dias_res as $row) {
+        $pdf->Cell(100, 5, lat($row['label']), 1, 0, 'L');
+        $pdf->Cell(45,  5, (string)$row['cant'], 1, 0, 'C');
+        $pdf->Cell(45,  5, fmt($row['total']), 1, 1, 'R');
+        $sub_cant_dias  += $row['cant'];
+        $sub_monto_dias += $row['total'];
+    }
+    $pdf->SetFont('Helvetica', 'B', 7);
+    $pdf->Cell(100, 5, lat('Subtotal Semanales'), 1, 0, 'R');
+    $pdf->Cell(45,  5, (string)$sub_cant_dias, 1, 0, 'C');
+    $pdf->Cell(45,  5, fmt($sub_monto_dias), 1, 1, 'R');
+    $total_gral_cant  += $sub_cant_dias;
+    $total_gral_monto += $sub_monto_dias;
+
+    // ── Grupo Quincenales y Mensuales ───────────────────────────
+    if (!empty($frec_res)) {
+        $pdf->Ln(2);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->SetFillColor(240, 240, 240);
+        $pdf->Cell(190, 6, lat('  Quincenales / Mensuales'), 1, 1, 'L', true);
+        $pdf->SetFillColor(255, 255, 255);
+
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->Cell(100, 5, lat('Frecuencia'), 1, 0, 'L');
+        $pdf->Cell(45,  5, lat('Clientes'), 1, 0, 'C');
+        $pdf->Cell(45,  5, lat('Monto'), 1, 1, 'R');
+
+        $sub_cant_frec  = 0;
+        $sub_monto_frec = 0.0;
+        $pdf->SetFont('Helvetica', '', 7);
+        foreach ($frec_res as $row) {
+            $pdf->Cell(100, 5, lat($row['label']), 1, 0, 'L');
+            $pdf->Cell(45,  5, (string)$row['cant'], 1, 0, 'C');
+            $pdf->Cell(45,  5, fmt($row['total']), 1, 1, 'R');
+            $sub_cant_frec  += $row['cant'];
+            $sub_monto_frec += $row['total'];
+        }
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->Cell(100, 5, lat('Subtotal Quinc./Mens.'), 1, 0, 'R');
+        $pdf->Cell(45,  5, (string)$sub_cant_frec, 1, 0, 'C');
+        $pdf->Cell(45,  5, fmt($sub_monto_frec), 1, 1, 'R');
+        $total_gral_cant  += $sub_cant_frec;
+        $total_gral_monto += $sub_monto_frec;
     }
 
-    $pdf->SetFont('Helvetica', 'B', 8);
+    // ── Total General ───────────────────────────────────────────
+    $pdf->Ln(2);
+    $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->Cell(100, 7, lat('TOTAL GENERAL'), 1, 0, 'R');
     $pdf->Cell(45,  7, (string)$total_gral_cant, 1, 0, 'C');
     $pdf->Cell(45,  7, fmt($total_gral_monto), 1, 1, 'R');
