@@ -46,8 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Solo los administradores pueden rechazar pagos.'];
         } else {
             $pago_id = (int) $_POST['pago_id'];
-            $pdo->prepare("UPDATE ic_pagos_temporales SET estado='RECHAZADO' WHERE id=?")
-                ->execute([$pago_id]);
+            $pdo->prepare("UPDATE ic_pagos_temporales SET estado='RECHAZADO' WHERE id=? AND cobrador_id=?")
+                ->execute([$pago_id, $cobrador_id]);
             registrar_log($pdo, $_SESSION['user_id'], 'PAGO_RECHAZADO', 'pago_temporal', $pago_id);
             $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Pago rechazado.'];
         }
@@ -59,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($ef < 0 || $tr < 0 || $total <= 0) {
             $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Montos inválidos.'];
         } else {
-            $pdo->prepare("UPDATE ic_pagos_temporales SET monto_efectivo=?, monto_transferencia=?, monto_total=? WHERE id=? AND estado='PENDIENTE'")
-                ->execute([$ef, $tr, $total, $pago_id]);
+            $pdo->prepare("UPDATE ic_pagos_temporales SET monto_efectivo=?, monto_transferencia=?, monto_total=? WHERE id=? AND cobrador_id=? AND estado='PENDIENTE'")
+                ->execute([$ef, $tr, $total, $pago_id, $cobrador_id]);
             registrar_log($pdo, $_SESSION['user_id'], 'PAGO_EDITADO', 'pago_temporal', $pago_id,
                 'Ef: ' . formato_pesos($ef) . ' | Tr: ' . formato_pesos($tr));
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago actualizado correctamente.'];
@@ -88,7 +88,8 @@ $cobradores_con_pend = $pdo->query("
            SUM(pt.monto_total) AS total_general,
            COUNT(DISTINCT pt.fecha_jornada) AS cant_jornadas,
            GROUP_CONCAT(DISTINCT pt.fecha_jornada ORDER BY pt.fecha_jornada SEPARATOR ',') AS fechas_jornadas,
-           SUM(CASE WHEN pt.solicitud_baja = 1 THEN 1 ELSE 0 END) AS cant_baja
+           SUM(CASE WHEN pt.solicitud_baja = 1 THEN 1 ELSE 0 END) AS cant_baja,
+           SUM(pt.monto_mora_cobrada) AS total_mora
     FROM ic_pagos_temporales pt
     JOIN ic_usuarios u ON pt.cobrador_id = u.id
     WHERE pt.estado = 'PENDIENTE'
@@ -222,6 +223,9 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="text-muted" style="font-size:.78rem;margin-top:4px">
                     <?= (int) $cob['cant_pagos_total'] ?> pago<?= (int) $cob['cant_pagos_total'] !== 1 ? 's' : '' ?> —
                     <strong><?= formato_pesos($cob['total_general']) ?></strong>
+                    <?php if ((float)$cob['total_mora'] > 0): ?>
+                        <br><span style="color:var(--warning)"><i class="fa fa-exclamation-triangle"></i> Mora: <?= formato_pesos($cob['total_mora']) ?></span>
+                    <?php endif; ?>
                 </div>
             </a>
             <?php endforeach; ?>
@@ -299,13 +303,24 @@ require_once __DIR__ . '/../views/layout.php';
                             <tr <?= $p['solicitud_baja'] ? 'style="background:rgba(245,158,11,.08);border-left:3px solid var(--warning)"' : '' ?>>
                                 <td class="fw-bold">
                                     <?= e($p['apellidos'] . ', ' . $p['nombres']) ?>
+                                    <?php if ($p['es_cuota_pura']): ?>
+                                        <span style="font-size:.68rem;background:rgba(245,158,11,.15);color:var(--warning);padding:1px 5px;border-radius:4px;margin-left:4px">solo capital</span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($p['observaciones'])): ?>
+                                        <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
+                                            <i class="fa fa-comment"></i> <?= e($p['observaciones']) ?>
+                                        </div>
+                                    <?php endif; ?>
                                     <?php if ($p['solicitud_baja']): ?>
                                         <div style="font-size:.72rem;color:var(--warning);margin-top:2px">
                                             <i class="fa fa-flag"></i> Solicitud: <?= e($p['motivo_baja']) ?>
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td>#<?= $p['numero_cuota'] ?> — <?= date('d/m/Y', strtotime($p['fecha_vencimiento'])) ?></td>
+                                <td>
+                                    #<?= $p['numero_cuota'] ?> — <?= date('d/m/Y', strtotime($p['fecha_vencimiento'])) ?>
+                                    <div style="font-size:.7rem;color:var(--text-muted)">Reg: <?= date('d/m H:i', strtotime($p['fecha_registro'])) ?></div>
+                                </td>
                                 <td><?= e($p['articulo']) ?></td>
                                 <td class="nowrap"><?= formato_pesos($p['monto_efectivo']) ?></td>
                                 <td class="nowrap"><?= formato_pesos($p['monto_transferencia']) ?></td>

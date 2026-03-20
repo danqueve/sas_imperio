@@ -194,7 +194,7 @@ foreach ($detalle_pagos as $p) {
 
     <?php if (empty($detalle_pagos)): ?>
         <p class="text-center" style="padding: 40px; color: #6b7280; border: 1px dashed var(--border-color);">
-            No nay pagos registrados para este cobrador en la fecha seleccionada.
+            No hay pagos registrados para este cobrador en la fecha seleccionada.
         </p>
     <?php else: ?>
         <table>

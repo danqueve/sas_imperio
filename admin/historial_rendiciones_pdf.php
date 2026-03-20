@@ -12,10 +12,8 @@ verificar_permiso('aprobar_rendiciones');
 $pdo         = obtener_conexion();
 $fecha_sel   = $_GET['fecha']       ?? '';
 $cobrador_id = (int)($_GET['cobrador_id'] ?? 0);
-$origen_sel  = $_GET['origen'] ?? '';
 
 if (!$fecha_sel || !$cobrador_id) die('Faltan parametros de busqueda (fecha o cobrador).');
-if (!in_array($origen_sel, ['cobrador', 'manual'])) die('Origen invalido.');
 
 $cob_stmt = $pdo->prepare("SELECT nombre, apellido FROM ic_usuarios WHERE id = ?");
 $cob_stmt->execute([$cobrador_id]);
@@ -29,15 +27,14 @@ $dstmt = $pdo->prepare("
            cu.numero_cuota, cu.fecha_vencimiento,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo
     FROM ic_pagos_confirmados pc
-    JOIN ic_pagos_temporales pt ON pc.pago_temp_id = pt.id
     JOIN ic_cuotas cu   ON pc.cuota_id     = cu.id
     JOIN ic_creditos cr ON cu.credito_id   = cr.id
     JOIN ic_clientes cl ON cr.cliente_id   = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
-    WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ? AND pt.origen = ?
+    WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?
     ORDER BY cl.apellidos ASC, cl.nombres ASC, pc.fecha_pago ASC
 ");
-$dstmt->execute([$cobrador_id, $fecha_sel, $origen_sel]);
+$dstmt->execute([$cobrador_id, $fecha_sel]);
 $pagos = $dstmt->fetchAll();
 
 if (empty($pagos)) die('No hay pagos confirmados en la rendicion de esta fecha.');
