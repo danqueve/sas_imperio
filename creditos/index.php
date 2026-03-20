@@ -9,10 +9,16 @@ verificar_sesion();
 verificar_permiso('alta_creditos');
 
 $pdo = obtener_conexion();
-$q          = trim($_GET['q'] ?? '');
-$estado     = trim($_GET['estado'] ?? '');
-$frec       = trim($_GET['frecuencia'] ?? '');
-$cobrador_f = (int) ($_GET['cobrador_id'] ?? 0);
+$q              = trim($_GET['q'] ?? '');
+$estado         = trim($_GET['estado'] ?? '');
+$frec           = trim($_GET['frecuencia'] ?? '');
+$cobrador_f     = (int) ($_GET['cobrador_id'] ?? 0);
+$desde          = trim($_GET['desde'] ?? '');
+$hasta          = trim($_GET['hasta'] ?? '');
+$refinanciado   = !empty($_GET['refinanciado']);
+$proximo_vencer = !empty($_GET['proximo_vencer']);
+$orden          = in_array($_GET['orden'] ?? '', ['fecha','monto','cliente','avance']) ? $_GET['orden'] : 'fecha';
+$export_csv     = ($_GET['export'] ?? '') === 'csv';
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $limit = 25;
 $offset = ($page - 1) * $limit;
@@ -36,7 +42,31 @@ if ($cobrador_f > 0) {
     $where[] = 'cr.cobrador_id=?';
     $params[] = $cobrador_f;
 }
+if ($desde !== '') {
+    $where[] = 'cr.fecha_alta >= ?';
+    $params[] = $desde;
+}
+if ($hasta !== '') {
+    $where[] = 'cr.fecha_alta <= ?';
+    $params[] = $hasta . ' 23:59:59';
+}
+if ($refinanciado) {
+    $where[] = 'cr.veces_refinanciado >= 1';
+}
+if ($proximo_vencer) {
+    $where[] = "EXISTS (SELECT 1 FROM ic_cuotas cu2
+        WHERE cu2.credito_id = cr.id AND cu2.estado = 'PENDIENTE'
+        AND cu2.fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY))";
+}
 $whereStr = implode(' AND ', $where);
+
+$orden_map = [
+    'fecha'   => 'cr.fecha_alta DESC',
+    'monto'   => 'cr.monto_total DESC',
+    'cliente' => 'cl.apellidos ASC, cl.nombres ASC',
+    'avance'  => 'cuotas_pagadas DESC',
+];
+$orderBy = $orden_map[$orden];
 
 $cobradores = $pdo->query("SELECT id, nombre, apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY apellido, nombre")->fetchAll();
 
@@ -63,11 +93,48 @@ $stmt = $pdo->prepare("
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
     LEFT JOIN ic_usuarios v ON cr.vendedor_id=v.id
     WHERE $whereStr
-    ORDER BY cr.fecha_alta DESC
+    ORDER BY $orderBy
     LIMIT $limit OFFSET $offset
 ");
 $stmt->execute($params);
 $creditos = $stmt->fetchAll();
+
+// ── Export CSV (#9) ───────────────────────────────────────────
+if ($export_csv) {
+    $csv_stmt = $pdo->prepare("
+        SELECT cr.id, cl.apellidos, cl.nombres, cl.telefono,
+               COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
+               cr.monto_total, cr.monto_cuota, cr.frecuencia,
+               u.nombre AS cobrador_n, u.apellido AS cobrador_a,
+               cr.estado, cr.fecha_alta, cr.cant_cuotas, cr.veces_refinanciado,
+               (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas
+        FROM ic_creditos cr
+        JOIN ic_clientes cl ON cr.cliente_id=cl.id
+        LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
+        JOIN ic_usuarios u ON cr.cobrador_id=u.id
+        LEFT JOIN ic_usuarios v ON cr.vendedor_id=v.id
+        WHERE $whereStr
+        ORDER BY $orderBy
+    ");
+    $csv_stmt->execute($params);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="creditos_' . date('Ymd') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputs($out, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($out, ['#ID','Cliente','Teléfono','Artículo','Total','Cuota','Frecuencia','Cobrador','Estado','C.Pagadas','C.Total','Refinanciado','Fecha Alta'], ';');
+    foreach ($csv_stmt->fetchAll() as $r) {
+        fputcsv($out, [
+            $r['id'], $r['apellidos'].', '.$r['nombres'], $r['telefono'], $r['articulo'],
+            number_format((float)$r['monto_total'], 2, '.', ''),
+            number_format((float)$r['monto_cuota'], 2, '.', ''),
+            $r['frecuencia'], $r['cobrador_n'].' '.$r['cobrador_a'], $r['estado'],
+            $r['cuotas_pagadas'], $r['cant_cuotas'],
+            (int)$r['veces_refinanciado'] > 0 ? 'Sí' : 'No', $r['fecha_alta'],
+        ], ';');
+    }
+    fclose($out);
+    exit;
+}
 
 // ── Solicitudes de anulación pendientes (admin y supervisor) ──
 $sol_baja_creditos = []; // credito_id => true  (para marcar filas)
@@ -105,7 +172,9 @@ if (es_admin() || es_supervisor()) {
 
 $page_title = 'Créditos';
 $page_current = 'creditos';
-$topbar_actions = '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Crédito</a>';
+$csv_url = '?' . http_build_query(array_merge(array_filter(['q' => $q, 'estado' => $estado, 'frecuencia' => $frec, 'cobrador_id' => $cobrador_f ?: '', 'desde' => $desde, 'hasta' => $hasta, 'refinanciado' => $refinanciado ? '1' : '', 'proximo_vencer' => $proximo_vencer ? '1' : '', 'orden' => $orden !== 'fecha' ? $orden : '']), fn($v) => $v !== ''), ['export' => 'csv']);
+$topbar_actions = '<a href="' . $csv_url . '" class="btn-ic btn-ghost btn-sm" title="Exportar a CSV"><i class="fa fa-file-csv"></i> CSV</a> ';
+$topbar_actions .= '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Crédito</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -180,6 +249,20 @@ require_once __DIR__ . '/../views/layout.php';
                 </option>
             <?php endforeach; ?>
         </select>
+        <input type="date" name="desde" value="<?= e($desde) ?>" title="Alta desde" style="max-width:140px">
+        <input type="date" name="hasta" value="<?= e($hasta) ?>" title="Alta hasta" style="max-width:140px">
+        <select name="orden" title="Ordenar por">
+            <option value="fecha"   <?= $orden === 'fecha'   ? 'selected' : '' ?>>Más reciente</option>
+            <option value="monto"   <?= $orden === 'monto'   ? 'selected' : '' ?>>Mayor monto</option>
+            <option value="cliente" <?= $orden === 'cliente' ? 'selected' : '' ?>>Cliente A-Z</option>
+            <option value="avance"  <?= $orden === 'avance'  ? 'selected' : '' ?>>Más pagado</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" name="refinanciado" value="1" <?= $refinanciado ? 'checked' : '' ?>> Refinanciados
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" name="proximo_vencer" value="1" <?= $proximo_vencer ? 'checked' : '' ?>> Próx. a vencer
+        </label>
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
         <a href="?" class="btn-ic btn-ghost">Limpiar</a>
         <a href="creditos_print.php?<?= http_build_query(array_filter(['q' => $q, 'estado' => $estado, 'frecuencia' => $frec, 'cobrador_id' => $cobrador_f ?: ''])) ?>"

@@ -64,6 +64,28 @@ foreach ($cuotas_pendientes as $cp) {
 }
 $cant_pendientes = count($cuotas_pendientes);
 
+// ── Cuotas CAP_PAGADA: capital ya cobrado, mora pendiente (#12) ─
+$cap_stmt = $pdo->prepare("
+    SELECT id, monto_mora, monto_cuota, fecha_vencimiento
+    FROM ic_cuotas
+    WHERE credito_id = ? AND estado = 'CAP_PAGADA'
+");
+$cap_stmt->execute([$id]);
+$cuotas_cap_pagada = $cap_stmt->fetchAll();
+$mora_cap_pagada   = 0.0;
+foreach ($cuotas_cap_pagada as $cp) {
+    // Si hay mora congelada la usamos; si no, la calculamos
+    if ((float)$cp['monto_mora'] > 0) {
+        $mora_cap_pagada += (float) $cp['monto_mora'];
+    } else {
+        $dias = dias_atraso_habiles($cp['fecha_vencimiento']);
+        if ($dias > 0) {
+            $mora_cap_pagada += calcular_mora($cp['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
+        }
+    }
+}
+$total_mora += $mora_cap_pagada;
+
 // ── Pagos temporales pendientes (bloquean el borrado de cuotas) ─
 $pt_stmt = $pdo->prepare("
     SELECT COUNT(*) FROM ic_pagos_temporales pt
@@ -139,11 +161,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo->beginTransaction();
 
-                // 1. Eliminar solo cuotas sin pagos confirmados (PENDIENTE / VENCIDA).
-                //    Las cuotas PARCIAL y CAP_PAGADA tienen ic_pagos_confirmados
-                //    referenciándolas con NOT NULL y deben permanecer intactas.
+                // 1. Eliminar cuotas PENDIENTE y VENCIDA (sin pagos confirmados).
+                //    CAP_PAGADA se mantiene (tiene FK en ic_pagos_confirmados),
+                //    pero si capitalizamos mora, la condonamos en ellas (#12).
                 $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA')")
                     ->execute([$id]);
+
+                // Condonar mora en cuotas CAP_PAGADA si se capitalizó (#12)
+                if ($f['capitalizar_mora'] && $mora_cap_pagada > 0) {
+                    $pdo->prepare("UPDATE ic_cuotas SET monto_mora = 0 WHERE credito_id = ? AND estado = 'CAP_PAGADA'")
+                        ->execute([$id]);
+                }
 
                 // Determinar desde qué número continuar
                 $mn_stmt = $pdo->prepare("SELECT COALESCE(MAX(numero_cuota),0) FROM ic_cuotas WHERE credito_id=?");
@@ -181,6 +209,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         observaciones = ?
                     WHERE id = ?
                 ")->execute([$nueva_cant, $nuevo_valor_cuota, $f['frecuencia'], $f['cobrador_id'], $obs, $id]);
+
+                // 4. Registrar en historial de refinanciaciones (#7)
+                $pdo->prepare("
+                    INSERT INTO ic_historial_refinanciaciones
+                        (credito_id, usuario_id, cuotas_anteriores, monto_cuota_anterior,
+                         cuotas_nuevas, monto_cuota_nueva, deuda_capital, frecuencia_nueva, observaciones)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ")->execute([
+                    $id,
+                    $_SESSION['user_id'],
+                    $cant_pendientes + count($cuotas_cap_pagada),
+                    $cr['monto_cuota'],
+                    $f['nuevas_cuotas'],
+                    $nuevo_valor_cuota,
+                    $deuda_capital,
+                    $f['frecuencia'],
+                    $f['observaciones'] ?: null,
+                ]);
 
                 $pdo->commit();
 
@@ -316,6 +362,10 @@ require_once __DIR__ . '/../views/layout.php';
                     </label>
                     <?php if ($total_mora == 0): ?>
                         <small class="text-muted">No hay mora acumulada a la fecha.</small>
+                    <?php elseif ($mora_cap_pagada > 0): ?>
+                        <small class="text-muted">
+                            Incluye <?= formato_pesos($mora_cap_pagada) ?> de mora en cuotas CAP_PAGADA, que será condonada al capitalizar.
+                        </small>
                     <?php endif; ?>
                 </div>
 
@@ -329,10 +379,9 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
 
                 <div class="form-group" style="grid-column:span 2">
-                    <label>Observaciones</label>
-                    <input type="text" name="observaciones"
-                           value="<?= e($f['observaciones']) ?>"
-                           placeholder="Ej: Refinanciación acordada el <?= date('d/m/Y') ?>...">
+                    <label>Motivo / Observaciones de la refinanciación</label>
+                    <textarea name="observaciones" rows="2"
+                              placeholder="Ej: Cliente solicitó extensión de plazo, acordado el <?= date('d/m/Y') ?>..."><?= e($f['observaciones']) ?></textarea>
                 </div>
             </div>
 

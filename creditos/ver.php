@@ -17,6 +17,7 @@ if (!$id) {
 
 $stmt = $pdo->prepare("
     SELECT cr.*, cl.nombres, cl.apellidos, cl.telefono, cl.dni, cl.id AS cid,
+           cl.puntaje_pago,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            u.nombre AS cobrador_n, u.apellido AS cobrador_a,
            v.nombre AS vendedor_n, v.apellido AS vendedor_a
@@ -96,6 +97,39 @@ $hist_total_tr   = array_sum(array_column($historial_pagos, 'monto_transferencia
 $hist_total_mora = array_sum(array_column($historial_pagos, 'monto_mora_cobrada'));
 $hist_total      = array_sum(array_column($historial_pagos, 'monto_total'));
 
+// ── Historial de Refinanciaciones ────────────────────────────
+$ref_historial = [];
+try {
+    $ref_stmt = $pdo->prepare("
+        SELECT hr.fecha, hr.cuotas_anteriores, hr.monto_cuota_anterior,
+               hr.cuotas_nuevas, hr.monto_cuota_nueva, hr.deuda_capital,
+               hr.frecuencia_nueva, hr.observaciones,
+               u.nombre, u.apellido
+        FROM ic_historial_refinanciaciones hr
+        JOIN ic_usuarios u ON hr.usuario_id = u.id
+        WHERE hr.credito_id = ?
+        ORDER BY hr.fecha DESC
+    ");
+    $ref_stmt->execute([$id]);
+    $ref_historial = $ref_stmt->fetchAll();
+} catch (\PDOException $e) { /* tabla puede no existir aún */ }
+
+// ── Notas para Timeline ───────────────────────────────────────
+$notas_tl = [];
+if (es_admin() || es_supervisor()) {
+    try {
+        $notas_stmt = $pdo->prepare("
+            SELECT n.nota, n.created_at, CONCAT(u.nombre,' ',u.apellido) AS autor
+            FROM ic_notas_credito n
+            JOIN ic_usuarios u ON n.usuario_id = u.id
+            WHERE n.credito_id = ?
+            ORDER BY n.created_at ASC
+        ");
+        $notas_stmt->execute([$id]);
+        $notas_tl = $notas_stmt->fetchAll();
+    } catch (\PDOException $e) {}
+}
+
 // Calcular mora actualizada para cada cuota
 $hoy = new DateTime('today');
 foreach ($lista_cuotas as &$cuota) {
@@ -129,10 +163,84 @@ $deuda_pendiente = array_sum(array_map(fn($c) =>
     : ($c['estado'] !== 'PAGADA'  ? $c['monto_cuota'] : 0),
     $lista_cuotas));
 
+// #5 Progreso temporal
+$pct_pagado = $porc;
+$ultimo_venc = null;
+foreach ($lista_cuotas as $c) {
+    if ($ultimo_venc === null || $c['fecha_vencimiento'] > $ultimo_venc) $ultimo_venc = $c['fecha_vencimiento'];
+}
+$pct_tiempo = 0;
+if (!empty($cr['primer_vencimiento']) && $ultimo_venc) {
+    $dt_ini  = new DateTime($cr['primer_vencimiento']);
+    $dt_fin  = new DateTime($ultimo_venc);
+    $dt_hoy2 = new DateTime('today');
+    $dias_total = max(1, (int)$dt_ini->diff($dt_fin)->days);
+    $dias_trans = $dt_hoy2 < $dt_ini ? 0 : min($dias_total, (int)$dt_ini->diff($dt_hoy2)->days);
+    $pct_tiempo = min(100, (int)round($dias_trans / $dias_total * 100));
+}
+
+// #8 Simulador
+$sim_capital = 0; $sim_mora = 0;
+foreach ($lista_cuotas as $c) {
+    if ($c['estado'] !== 'PAGADA') {
+        $sim_capital += max(0, (float)$c['monto_cuota'] - (float)($c['saldo_pagado'] ?? 0));
+        $sim_mora    += (float)$c['mora_calc'];
+    }
+}
+$sim_total = $sim_capital + $sim_mora;
+
+// #14 Panel mora hoy
+$mora_vencida_hoy  = array_sum(array_map(
+    fn($c) => (float)$c['mora_calc'],
+    array_filter($lista_cuotas, fn($c) => $c['mora_calc'] > 0)
+));
+$capital_pendiente = array_sum(array_map(
+    fn($c) => max(0, (float)$c['monto_cuota'] - (float)($c['saldo_pagado'] ?? 0)),
+    array_filter($lista_cuotas, fn($c) => !in_array($c['estado'], ['PAGADA']))
+));
+
+// #11 Próximas a vencer (3 días hábiles, excl. domingo)
+$proximas_3d = [];
+$hoy_ts = strtotime('today');
+$dias_hab = 0; $limite_ts = $hoy_ts; $chk_ts = $hoy_ts;
+while ($dias_hab < 3) {
+    $chk_ts += 86400;
+    if ((int)date('w', $chk_ts) !== 0) { $dias_hab++; $limite_ts = $chk_ts; }
+}
+foreach ($lista_cuotas as $c) {
+    if ($c['estado'] === 'PENDIENTE') {
+        $vts = strtotime($c['fecha_vencimiento']);
+        if ($vts >= $hoy_ts && $vts <= $limite_ts) $proximas_3d[] = $c;
+    }
+}
+
+// #4 Timeline
+$timeline = [['fecha' => $cr['fecha_alta'] . ' 00:00:00', 'tipo' => 'alta', 'icon' => 'fa-star',
+    'color' => 'var(--primary)', 'texto' => 'Alta del crédito',
+    'sub'   => formato_pesos($cr['monto_total']) . ' — ' . $cr['cant_cuotas'] . ' cuotas ' . $cr['frecuencia']]];
+foreach ($historial_pagos as $hp) {
+    $timeline[] = ['fecha' => $hp['fecha_registro'], 'tipo' => 'pago', 'icon' => 'fa-dollar-sign',
+        'color' => 'var(--success)', 'texto' => 'Pago cuota #' . $hp['numero_cuota'],
+        'sub'   => formato_pesos($hp['monto_total']) . ' — ' . e($hp['cobrador_nombre'])];
+}
+foreach ($ref_historial as $rh) {
+    $obs = !empty($rh['observaciones']) ? ' — ' . mb_substr($rh['observaciones'], 0, 60) : '';
+    $timeline[] = ['fecha' => $rh['fecha'], 'tipo' => 'refin', 'icon' => 'fa-sync-alt',
+        'color' => 'var(--warning)', 'texto' => 'Refinanciación',
+        'sub'   => $rh['cuotas_nuevas'] . ' cuotas × ' . formato_pesos($rh['monto_cuota_nueva']) . $obs];
+}
+foreach ($notas_tl as $nt) {
+    $preview = e(mb_substr($nt['nota'], 0, 80)) . (mb_strlen($nt['nota']) > 80 ? '…' : '');
+    $timeline[] = ['fecha' => $nt['created_at'], 'tipo' => 'nota', 'icon' => 'fa-sticky-note',
+        'color' => 'var(--text-muted)', 'texto' => 'Nota interna',
+        'sub'   => $preview . ' — ' . e($nt['autor'])];
+}
+usort($timeline, fn($a, $b) => strcmp($b['fecha'], $a['fecha']));
+
 $page_title   = 'Crédito #' . $id;
 $page_current = 'creditos';
 
-$topbar_actions = '';
+$topbar_actions = '<a href="resumen_pdf.php?id=' . $id . '" target="_blank" class="btn-ic btn-ghost btn-sm"><i class="fa fa-file-pdf"></i> PDF Resumen</a> ';
 if (es_admin()) {
     $topbar_actions .= '<a href="editar?id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar</a> ';
 }
@@ -203,6 +311,40 @@ require_once __DIR__ . '/../views/layout.php';
     </div>
 </div>
 
+<?php if (!empty($proximas_3d)): ?>
+<div class="alert-ic alert-warning mb-3" style="display:flex;align-items:center;gap:10px">
+    <i class="fa fa-bell" style="font-size:1.1rem;flex-shrink:0"></i>
+    <span>
+        <strong><?= count($proximas_3d) ?> cuota<?= count($proximas_3d) > 1 ? 's' : '' ?></strong>
+        vence<?= count($proximas_3d) > 1 ? 'n' : '' ?> en los próximos 3 días hábiles:
+        <?= implode(', ', array_map(fn($c) => '#' . $c['numero_cuota'] . ' (' . date('d/m', strtotime($c['fecha_vencimiento'])) . ')', $proximas_3d)) ?>
+    </span>
+</div>
+<?php endif; ?>
+
+<?php if ($mora_vencida_hoy > 0 || $capital_pendiente > 0): ?>
+<div class="card-ic mb-4" style="border-left:4px solid var(--danger)">
+    <div class="card-ic-header">
+        <span class="card-title"><i class="fa fa-fire"></i> Estado de Deuda Hoy</span>
+        <span style="font-size:.78rem;color:var(--text-muted)"><?= date('d/m/Y') ?></span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:16px 20px">
+        <div style="text-align:center">
+            <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:4px">Capital Pendiente</div>
+            <div style="font-size:1.4rem;font-weight:800;color:var(--warning)"><?= formato_pesos($capital_pendiente) ?></div>
+        </div>
+        <div style="text-align:center;border-left:1px solid var(--dark-border);border-right:1px solid var(--dark-border)">
+            <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:4px">Mora a Hoy</div>
+            <div style="font-size:1.4rem;font-weight:800;color:var(--danger)"><?= formato_pesos($mora_vencida_hoy) ?></div>
+        </div>
+        <div style="text-align:center">
+            <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:4px">Total si Paga Hoy</div>
+            <div style="font-size:1.4rem;font-weight:800;color:var(--primary)"><?= formato_pesos($capital_pendiente + $mora_vencida_hoy) ?></div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <div style="display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start">
 
     <!-- SIDEBAR DEL CRÉDITO -->
@@ -212,9 +354,14 @@ require_once __DIR__ . '/../views/layout.php';
             <table style="width:100%;font-size:.875rem;border-collapse:collapse">
                 <tr>
                     <td class="text-muted" style="padding:5px 0;width=45%">Cliente</td>
-                    <td><a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="fw-bold">
+                    <td>
+                        <a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="fw-bold">
                             <?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?>
-                        </a></td>
+                        </a>
+                        <?php if (!empty($cr['puntaje_pago'])): ?>
+                            <?= badge_puntaje_pago((int)$cr['puntaje_pago']) ?>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <?php if (!empty($cr['dni'])): ?>
                 <tr>
@@ -307,23 +454,33 @@ require_once __DIR__ . '/../views/layout.php';
                 <?php endif; ?>
             </table>
             <hr class="divider">
-            <!-- Barra de progreso -->
-            <div class="text-muted mb-2" style="font-size:.75rem">
-                <?= $porc ?>% pagado
+            <!-- Barra de progreso doble (#5) -->
+            <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--text-muted);margin-bottom:4px">
+                <span><span style="color:var(--success)">●</span> <?= $pct_pagado ?>% pagado</span>
+                <span><span style="color:rgba(245,158,11,.8)">●</span> <?= $pct_tiempo ?>% del tiempo</span>
             </div>
-            <div style="background:var(--dark-border);border-radius:6px;height:8px">
-                <div
-                    style="width:<?= $porc ?>%;height:100%;background:var(--success);border-radius:6px;transition:width .4s">
-                </div>
+            <div style="background:var(--dark-border);border-radius:6px;height:10px;position:relative;overflow:hidden">
+                <div style="position:absolute;top:0;left:0;width:<?= $pct_tiempo ?>%;height:100%;background:rgba(245,158,11,.3);border-radius:6px"></div>
+                <div style="position:absolute;top:0;left:0;width:<?= $pct_pagado ?>%;height:100%;background:var(--success);border-radius:6px;transition:width .4s"></div>
             </div>
+            <?php if ($pct_tiempo > $pct_pagado + 10): ?>
+                <div style="font-size:.7rem;color:var(--warning);margin-top:3px"><i class="fa fa-exclamation-triangle"></i> El tiempo avanza más rápido que los pagos</div>
+            <?php elseif ($pct_pagado >= $pct_tiempo && $pct_pagado > 0): ?>
+                <div style="font-size:.7rem;color:var(--success);margin-top:3px"><i class="fa fa-check-circle"></i> Al día con los pagos</div>
+            <?php endif; ?>
             <hr class="divider">
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2" style="flex-wrap:wrap">
                 <a href="cronograma_pdf.php?id=<?= $id ?>" target="_blank" class="btn-ic btn-ghost btn-sm">
                     <i class="fa fa-print"></i> PDF / Imprimir
                 </a>
                 <a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="btn-ic btn-ghost btn-sm">
                     <i class="fa fa-user"></i> Cliente
                 </a>
+                <?php if ($sim_total > 0): ?>
+                <button onclick="openModal('modal-simulador')" class="btn-ic btn-ghost btn-sm">
+                    <i class="fa fa-calculator"></i> ¿Cuánto debe?
+                </button>
+                <?php endif; ?>
                 <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
                     <a href="finalizar?id=<?= $id ?>" class="btn-ic btn-danger btn-sm" title="Finalizar Crédito">
                         <i class="fa fa-power-off"></i>
@@ -600,6 +757,54 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 <?php endif; ?>
 
+<?php if (!empty($ref_historial)): ?>
+<!-- HISTORIAL DE REFINANCIACIONES (#7/#I) -->
+<div class="card-ic mt-4">
+    <div class="card-ic-header" style="cursor:pointer;user-select:none"
+         onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">
+        <span class="card-title"><i class="fa fa-sync-alt"></i> Historial de Refinanciaciones</span>
+        <span><span class="badge-ic badge-warning"><?= count($ref_historial) ?></span>
+        <i class="fa fa-chevron-down" style="font-size:.75rem;margin-left:6px;opacity:.5"></i></span>
+    </div>
+    <div>
+        <div style="overflow-x:auto">
+            <table class="table-ic" style="font-size:.85rem">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th style="text-align:center">Cuotas ant.</th>
+                        <th>Cuota ant. $</th>
+                        <th style="text-align:center">Cuotas nuevas</th>
+                        <th>Cuota nueva $</th>
+                        <th>Capital ref.</th>
+                        <th>Frecuencia</th>
+                        <th>Usuario</th>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($ref_historial as $rh): ?>
+                    <tr>
+                        <td class="nowrap"><?= date('d/m/Y H:i', strtotime($rh['fecha'])) ?></td>
+                        <td class="text-center"><?= (int)$rh['cuotas_anteriores'] ?></td>
+                        <td class="nowrap"><?= formato_pesos($rh['monto_cuota_anterior']) ?></td>
+                        <td class="text-center fw-bold"><?= (int)$rh['cuotas_nuevas'] ?></td>
+                        <td class="nowrap fw-bold"><?= formato_pesos($rh['monto_cuota_nueva']) ?></td>
+                        <td class="nowrap"><?= formato_pesos($rh['deuda_capital']) ?></td>
+                        <td><?= ucfirst($rh['frecuencia_nueva']) ?></td>
+                        <td><?= e($rh['nombre'] . ' ' . $rh['apellido']) ?></td>
+                        <td style="max-width:200px;font-size:.78rem;color:var(--text-muted)">
+                            <?= !empty($rh['observaciones']) ? e($rh['observaciones']) : '—' ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <?php if (es_admin()): ?>
 <!-- MODAL REVERTIR PAGO (admin) -->
 <div class="modal-overlay" id="modal-revertir">
@@ -723,6 +928,36 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 <?php endif; ?>
 
+<!-- MODAL SIMULADOR (#8) -->
+<div class="modal-overlay" id="modal-simulador">
+    <div class="modal-box" style="max-width:420px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-calculator"></i> ¿Cuánto debe hoy?</div>
+            <button class="modal-close" onclick="closeModal('modal-simulador')">✕</button>
+        </div>
+        <div style="padding:4px 0">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+                <div style="background:rgba(0,0,0,.25);border-radius:8px;padding:14px;text-align:center">
+                    <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:4px">Capital pendiente</div>
+                    <div style="font-size:1.3rem;font-weight:800;color:var(--warning)"><?= formato_pesos($sim_capital) ?></div>
+                </div>
+                <div style="background:rgba(0,0,0,.25);border-radius:8px;padding:14px;text-align:center">
+                    <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:4px">Mora acumulada</div>
+                    <div style="font-size:1.3rem;font-weight:800;color:var(--danger)"><?= formato_pesos($sim_mora) ?></div>
+                </div>
+            </div>
+            <div style="background:rgba(79,70,229,.15);border:1px solid rgba(79,70,229,.4);border-radius:8px;padding:16px;text-align:center;margin-bottom:14px">
+                <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:4px">TOTAL A PAGAR HOY</div>
+                <div style="font-size:2rem;font-weight:900;color:var(--primary)"><?= formato_pesos($sim_total) ?></div>
+            </div>
+            <p style="font-size:.74rem;color:var(--text-muted);margin:0">
+                <i class="fa fa-info-circle"></i> Calculado al <?= date('d/m/Y') ?>.
+                La mora aumenta cada día hábil. El monto puede variar si se realizan pagos.
+            </p>
+        </div>
+    </div>
+</div>
+
 <?php
 $page_scripts = <<<JS
 <script>
@@ -840,6 +1075,37 @@ JS;
                 <button type="button" onclick="closeModal('modal-eliminar-credito')" class="btn-ic btn-ghost">Cancelar</button>
             </div>
         </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($timeline)): ?>
+<!-- TIMELINE (#4) -->
+<div class="card-ic mt-4">
+    <div class="card-ic-header" style="cursor:pointer;user-select:none"
+         onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none'">
+        <span class="card-title"><i class="fa fa-stream"></i> Línea de Tiempo</span>
+        <span><span class="badge-ic" style="background:rgba(255,255,255,.1)"><?= count($timeline) ?> eventos</span>
+        <i class="fa fa-chevron-down" style="font-size:.75rem;margin-left:6px;opacity:.5"></i></span>
+    </div>
+    <div style="display:none">
+        <div style="padding:16px 20px">
+            <?php foreach ($timeline as $ev): ?>
+            <div style="display:flex;gap:14px;margin-bottom:16px;align-items:flex-start">
+                <div style="flex-shrink:0;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.06);
+                            border:2px solid <?= $ev['color'] ?>;display:flex;align-items:center;justify-content:center">
+                    <i class="fa <?= $ev['icon'] ?>" style="font-size:.75rem;color:<?= $ev['color'] ?>"></i>
+                </div>
+                <div style="flex:1;padding-top:4px">
+                    <div style="font-weight:600;font-size:.875rem"><?= $ev['texto'] ?></div>
+                    <div style="font-size:.78rem;color:var(--text-muted);margin-top:1px"><?= $ev['sub'] ?></div>
+                    <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px;opacity:.7">
+                        <i class="fa fa-clock"></i> <?= date('d/m/Y H:i', strtotime($ev['fecha'])) ?>
+                    </div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
     </div>
 </div>
 <?php endif; ?>

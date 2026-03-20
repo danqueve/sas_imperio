@@ -12,8 +12,10 @@ $pdo = obtener_conexion();
 $cliente_id = (int) ($_GET['cliente_id'] ?? 0);
 
 $clientes = $pdo->query("
-    SELECT c.id, c.nombres, c.apellidos, c.cobrador_id, c.zona,
-           CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre
+    SELECT c.id, c.nombres, c.apellidos, c.cobrador_id, c.zona, c.puntaje_pago,
+           CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre,
+           (SELECT COUNT(*) FROM ic_creditos cr
+            WHERE cr.cliente_id = c.id AND cr.estado IN ('EN_CURSO','MOROSO')) AS creditos_activos
     FROM ic_clientes c
     LEFT JOIN ic_usuarios u ON c.cobrador_id = u.id AND u.activo = 1
     WHERE c.estado='ACTIVO'
@@ -46,9 +48,11 @@ foreach ($articulos_raw as $art) {
 $clientes_cob_map = [];
 foreach ($clientes as $cl) {
     $clientes_cob_map[(int)$cl['id']] = [
-        'cob_id'     => $cl['cobrador_id'] ? (int)$cl['cobrador_id'] : null,
-        'cob_nombre' => $cl['cobrador_nombre'] ?? null,
-        'zona'       => $cl['zona'] ?? '',
+        'cob_id'          => $cl['cobrador_id'] ? (int)$cl['cobrador_id'] : null,
+        'cob_nombre'      => $cl['cobrador_nombre'] ?? null,
+        'zona'            => $cl['zona'] ?? '',
+        'puntaje'         => $cl['puntaje_pago'] ? (int)$cl['puntaje_pago'] : null,
+        'creditos_activos'=> (int)($cl['creditos_activos'] ?? 0),
     ];
 }
 
@@ -196,7 +200,7 @@ require_once __DIR__ . '/../views/layout.php';
 
                 <div class="form-group" style="grid-column:span 2">
                     <label>Cliente *</label>
-                    <select name="cliente_id" required>
+                    <select name="cliente_id" id="cliente_id_sel" required>
                         <option value="">— Seleccionar cliente —</option>
                         <?php foreach ($clientes as $cl): ?>
                             <option value="<?= $cl['id'] ?>" <?= ($v['cliente_id'] == $cl['id']) ? 'selected' : '' ?>>
@@ -204,6 +208,7 @@ require_once __DIR__ . '/../views/layout.php';
                             </option>
                         <?php endforeach; ?>
                     </select>
+                    <div id="cliente-info" style="margin-top:6px;min-height:20px"></div>
                 </div>
 
                 <!-- Selector de artículo desde catálogo o texto libre -->
@@ -351,8 +356,10 @@ require_once __DIR__ . '/../views/layout.php';
 
                 <div class="form-group">
                     <label>Primer Vencimiento *</label>
-                    <input type="date" name="primer_vencimiento"
-                           value="<?= $v['primer_vencimiento'] ?? '' ?>" required>
+                    <input type="date" name="primer_vencimiento" id="primer_vencimiento"
+                           value="<?= $v['primer_vencimiento'] ?? '' ?>" required
+                           onchange="previsualizarFechas()">
+                    <small id="preview_fechas" style="color:var(--text-muted);font-size:.76rem"></small>
                 </div>
 
             </div>
@@ -437,14 +444,22 @@ document.getElementById('articulo_search').addEventListener('change', function()
     }
 });
 
-// ── Cobrador / Zona ──────────────────────────────────────
+// ── Cobrador / Zona / Puntaje ────────────────────────────
+const puntajeMap = {
+    1: { label: '⭐⭐⭐ Excelente', color: 'var(--success)' },
+    2: { label: '⭐⭐ Bueno',      color: 'var(--primary)' },
+    3: { label: '⭐ Regular',      color: 'var(--warning)' },
+    4: { label: '✗ Sin mora',      color: 'var(--danger)'  },
+};
+
 function actualizarCobrador() {
-    const sel    = document.querySelector('[name=cliente_id]');
+    const sel    = document.getElementById('cliente_id_sel');
     const cid    = parseInt(sel.value) || 0;
     const info   = clientesCob[cid];
     const disp   = document.getElementById('cobrador_display');
     const hidden = document.getElementById('cobrador_id');
     const zdis   = document.getElementById('zona_display');
+    const clinf  = document.getElementById('cliente-info');
 
     if (cid && info && info.cob_id) {
         disp.innerHTML = '<span style="color:var(--primary-light)">' + info.cob_nombre + '</span>';
@@ -462,9 +477,25 @@ function actualizarCobrador() {
     } else {
         zdis.innerHTML = '<span style="color:var(--text-muted)">— Seleccioná un cliente —</span>';
     }
+
+    // Puntaje + alerta créditos activos
+    if (cid && info) {
+        let html = '';
+        if (info.puntaje && puntajeMap[info.puntaje]) {
+            const p = puntajeMap[info.puntaje];
+            html += '<span style="display:inline-flex;align-items:center;gap:4px;font-size:.78rem;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.07);border:1px solid ' + p.color + ';color:' + p.color + '">' + p.label + '</span> ';
+        }
+        if (info.creditos_activos > 0) {
+            html += '<span style="font-size:.78rem;color:var(--warning)"><i class="fa fa-exclamation-triangle"></i> ' +
+                    'Este cliente tiene <strong>' + info.creditos_activos + ' crédito' + (info.creditos_activos > 1 ? 's' : '') + ' activo' + (info.creditos_activos > 1 ? 's' : '') + '</strong>. Verificar antes de continuar.</span>';
+        }
+        clinf.innerHTML = html;
+    } else {
+        clinf.innerHTML = '';
+    }
 }
 
-document.querySelector('[name=cliente_id]').addEventListener('change', actualizarCobrador);
+document.getElementById('cliente_id_sel').addEventListener('change', actualizarCobrador);
 
 // ── Calculador de cuotas ─────────────────────────────────
 function fmt(n) {
@@ -489,10 +520,34 @@ function toggleDiaCobro() {
     document.getElementById('grupo_dia_cobro').style.display = frec === 'semanal' ? '' : 'none';
 }
 
+function previsualizarFechas() {
+    const venc = document.getElementById('primer_vencimiento').value;
+    const frec = document.getElementById('frecuencia').value;
+    const cant = parseInt(document.getElementById('cant_cuotas').value) || 0;
+    const prev = document.getElementById('preview_fechas');
+    if (!venc || !cant) { prev.textContent = ''; return; }
+    const fechas = [];
+    const cur = new Date(venc + 'T00:00:00');
+    const n = Math.min(3, cant);
+    for (let i = 0; i < n; i++) {
+        fechas.push(cur.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }));
+        if (frec === 'mensual')   cur.setMonth(cur.getMonth() + 1);
+        else if (frec === 'quincenal') cur.setDate(cur.getDate() + 14);
+        else                      cur.setDate(cur.getDate() + 7);
+    }
+    const extra = cant > 3 ? ` y ${cant - 3} más…` : '';
+    prev.textContent = 'Vencimientos: ' + fechas.join(', ') + extra;
+}
+
+document.getElementById('frecuencia').addEventListener('change', function() {
+    toggleDiaCobro(); calcularCuotas(); previsualizarFechas();
+});
+
 document.addEventListener('DOMContentLoaded', function(){
     actualizarCobrador();
     toggleDiaCobro();
     calcularCuotas();
+    previsualizarFechas();
 });
 </script>
 JS;

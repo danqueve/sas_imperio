@@ -119,7 +119,8 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   `dia_cobro` TINYINT COMMENT 'Solo para frecuencia semanal: 1=Lun…6=Sab',
   `primer_vencimiento` DATE NOT NULL,
   `estado` ENUM('EN_CURSO','FINALIZADO','MOROSO','CANCELADO') DEFAULT 'EN_CURSO',
-  `motivo_finalizacion` ENUM('PAGO_COMPLETO', 'RETIRO_PRODUCTO') DEFAULT NULL,
+  `motivo_finalizacion` ENUM('PAGO_COMPLETO','PAGO_COMPLETO_CON_MORA','RETIRO_PRODUCTO','INCOBRABILIDAD','ACUERDO_EXTRAJUDICIAL') DEFAULT NULL,
+  `fecha_finalizacion` DATE NULL DEFAULT NULL COMMENT 'Fecha en que se finalizó el crédito',
   `articulo_desc` VARCHAR(255) COMMENT 'Snapshot descripción al momento del crédito',
   `observaciones` TEXT,
   `veces_refinanciado` TINYINT UNSIGNED NOT NULL DEFAULT 0,
@@ -143,7 +144,7 @@ CREATE TABLE IF NOT EXISTS `ic_cuotas` (
   `fecha_vencimiento` DATE NOT NULL,
   `monto_cuota` DECIMAL(12,2) NOT NULL,
   `monto_mora` DECIMAL(12,2) DEFAULT 0.00,
-  `dias_atraso` INT DEFAULT 0,
+  `dias_atraso` INT DEFAULT 0 COMMENT 'Campo legacy — no se actualiza automáticamente. Calcular con DATEDIFF(CURDATE(), fecha_vencimiento)',
   `saldo_pagado` DECIMAL(12,2) DEFAULT 0.00,
   `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA') DEFAULT 'PENDIENTE',
   `fecha_pago` DATE DEFAULT NULL,
@@ -228,5 +229,26 @@ CREATE TABLE IF NOT EXISTS `ic_ventas` (
   FOREIGN KEY (`vendedor_id`) REFERENCES `ic_vendedores`(`id`),
   FOREIGN KEY (`created_by`)  REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- ------------------------------------------------------------
+-- Tabla ic_historial_refinanciaciones (v1.2)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_historial_refinanciaciones` (
+  `id`                   INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `credito_id`           INT NOT NULL,
+  `usuario_id`           INT NOT NULL,
+  `fecha`                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `cuotas_anteriores`    INT NOT NULL,
+  `monto_cuota_anterior` DECIMAL(12,2) NOT NULL,
+  `cuotas_nuevas`        INT NOT NULL,
+  `monto_cuota_nueva`    DECIMAL(12,2) NOT NULL,
+  `deuda_capital`        DECIMAL(12,2) NOT NULL,
+  `frecuencia_nueva`     ENUM('semanal','quincenal','mensual') NOT NULL,
+  `observaciones`        TEXT NULL,
+  FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`usuario_id`) REFERENCES `ic_usuarios`(`id`),
+  INDEX `idx_histref_credito` (`credito_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci
+  COMMENT='Auditoría de cada refinanciación realizada sobre un crédito';
 
 SET FOREIGN_KEY_CHECKS = 1;
