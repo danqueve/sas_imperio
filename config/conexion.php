@@ -3,8 +3,9 @@
 // Sistema Imperio Comercial — Configuración y Conexión PDO
 // ============================================================
 
-define('BASE_URL', '/creditos/');
-define('APP_URL',  'https://imperiocomercial.com.ar/creditos/');
+// BASE_URL: '/creditos/' en local (WAMP), '/' en VPS (dominio raíz)
+define('BASE_URL', ($_SERVER['HTTP_HOST'] ?? '') === 'localhost' ? '/creditos/' : '/');
+define('APP_URL',  'https://imperiocomercial.com.ar/');
 
 
 define('DB_HOST', 'localhost');
