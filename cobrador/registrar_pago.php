@@ -15,6 +15,7 @@ $pdo = obtener_conexion();
 $cuota_id      = (int) ($_POST['cuota_id'] ?? 0);
 $ef            = (float) ($_POST['monto_efectivo'] ?? 0);
 $tr            = (float) ($_POST['monto_transferencia'] ?? 0);
+$obs           = substr(trim($_POST['observaciones'] ?? ''), 0, 500);
 $total         = $ef + $tr;
 $es_cuota_pura = (int) ($_POST['es_cuota_pura'] ?? 0);
 
@@ -111,9 +112,9 @@ foreach ($cuotas_pendientes as $cuota) {
 
     $pdo->prepare("
         INSERT INTO ic_pagos_temporales
-          (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, es_cuota_pura, fecha_jornada)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $es_cuota_pura, $fecha_jornada_sel]);
+          (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, es_cuota_pura, fecha_jornada, observaciones)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $es_cuota_pura, $fecha_jornada_sel, $obs]);
 
     registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota['id'],
         'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));

@@ -19,17 +19,29 @@ if (!$credito_id) {
 }
 
 // Verificar acceso: cobrador solo ve sus créditos
-$cond_cob = $is_cob ? "AND cr.cobrador_id = {$uid}" : '';
-$cr_stmt  = $pdo->prepare("
-    SELECT cr.cant_cuotas, cr.frecuencia, cr.monto_cuota, cr.fecha_alta,
-           COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
-           cl.nombres, cl.apellidos
-    FROM ic_creditos cr
-    LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-    JOIN ic_clientes cl ON cr.cliente_id = cl.id
-    WHERE cr.id = ? {$cond_cob}
-");
-$cr_stmt->execute([$credito_id]);
+if ($is_cob) {
+    $cr_stmt = $pdo->prepare("
+        SELECT cr.cant_cuotas, cr.frecuencia, cr.monto_cuota, cr.fecha_alta,
+               COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
+               cl.nombres, cl.apellidos
+        FROM ic_creditos cr
+        LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
+        JOIN ic_clientes cl ON cr.cliente_id = cl.id
+        WHERE cr.id = ? AND cr.cobrador_id = ?
+    ");
+    $cr_stmt->execute([$credito_id, $uid]);
+} else {
+    $cr_stmt = $pdo->prepare("
+        SELECT cr.cant_cuotas, cr.frecuencia, cr.monto_cuota, cr.fecha_alta,
+               COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
+               cl.nombres, cl.apellidos
+        FROM ic_creditos cr
+        LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
+        JOIN ic_clientes cl ON cr.cliente_id = cl.id
+        WHERE cr.id = ?
+    ");
+    $cr_stmt->execute([$credito_id]);
+}
 $credito = $cr_stmt->fetch();
 
 if (!$credito) {
@@ -77,6 +89,36 @@ foreach ($cuotas_raw as $c) {
     ];
 }
 
+// Historial de pagos confirmados
+$hist_stmt = $pdo->prepare("
+    SELECT cu.numero_cuota, pt.fecha_jornada,
+           pt.monto_efectivo, pt.monto_transferencia, pt.monto_mora_cobrada, pt.monto_total,
+           CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre
+    FROM ic_pagos_confirmados pc
+    JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
+    JOIN ic_cuotas cu           ON cu.id = pc.cuota_id
+    JOIN ic_usuarios u          ON u.id  = pt.cobrador_id
+    WHERE cu.credito_id = ?
+    ORDER BY pt.fecha_jornada ASC, pc.id ASC
+");
+$hist_stmt->execute([$credito_id]);
+$hist_rows = $hist_stmt->fetchAll();
+
+$pagos = [];
+$hist_total = 0;
+foreach ($hist_rows as $p) {
+    $hist_total += (float) $p['monto_total'];
+    $pagos[] = [
+        'numero_cuota' => (int) $p['numero_cuota'],
+        'fecha_fmt'    => date('d/m/Y', strtotime($p['fecha_jornada'])),
+        'ef_fmt'       => (float)$p['monto_efectivo'] > 0 ? '$' . number_format((float)$p['monto_efectivo'], 0, ',', '.') : null,
+        'tr_fmt'       => (float)$p['monto_transferencia'] > 0 ? '$' . number_format((float)$p['monto_transferencia'], 0, ',', '.') : null,
+        'mora_fmt'     => (float)$p['monto_mora_cobrada'] > 0 ? '$' . number_format((float)$p['monto_mora_cobrada'], 0, ',', '.') : null,
+        'total_fmt'    => '$' . number_format((float)$p['monto_total'], 0, ',', '.'),
+        'cobrador'     => $p['cobrador_nombre'],
+    ];
+}
+
 echo json_encode([
     'credito' => [
         'articulo'    => $credito['articulo'],
@@ -84,6 +126,8 @@ echo json_encode([
         'frecuencia'  => $credito['frecuencia'],
         'monto_cuota' => number_format((float) $credito['monto_cuota'], 0, ',', '.'),
     ],
-    'cuotas'  => $cuotas,
-    'resumen' => $resumen,
+    'cuotas'      => $cuotas,
+    'resumen'     => $resumen,
+    'pagos'       => $pagos,
+    'hist_total'  => '$' . number_format($hist_total, 0, ',', '.'),
 ]);

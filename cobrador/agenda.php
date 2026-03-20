@@ -33,7 +33,7 @@ $condCobrador = 'AND cr.cobrador_id = ?';
 
 $sql = "
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
-           cr.cant_cuotas, cr.dia_cobro,
+           cr.cant_cuotas, cr.dia_cobro, cr.veces_refinanciado,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
@@ -98,7 +98,8 @@ $_ph_ingresos = implode(',', array_fill(0, count($jornadas_disp), '?'));
 $stmt_ingresos = $pdo->prepare("
     SELECT SUM(monto_total) AS total,
            SUM(monto_efectivo) AS efectivo,
-           SUM(monto_transferencia) AS transferencia
+           SUM(monto_transferencia) AS transferencia,
+           SUM(monto_mora_cobrada) AS mora_cobrada
     FROM ic_pagos_temporales
     WHERE cobrador_id = ? AND fecha_jornada IN ($_ph_ingresos) AND estado = 'PENDIENTE'
 ");
@@ -107,6 +108,7 @@ $row_ingresos = $stmt_ingresos->fetch();
 $kpi_ingresos_hoy = (float) $row_ingresos['total'];
 $kpi_ingresos_efectivo = (float) $row_ingresos['efectivo'];
 $kpi_ingresos_transferencia = (float) $row_ingresos['transferencia'];
+$kpi_mora_cobrada_hoy = (float) $row_ingresos['mora_cobrada'];
 
 // KPI POR RENDIR: todos los PENDIENTE del cobrador (cualquier jornada)
 $stmt_por_rendir = $pdo->prepare("
@@ -197,7 +199,7 @@ $semana_stmt = $pdo->prepare("
            cl.id AS cliente_id,
            cl.nombres, cl.apellidos, cl.telefono, cl.zona,
            cl.coordenadas,
-           cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas, cr.dia_cobro,
+           cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas, cr.dia_cobro, cr.veces_refinanciado,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado, cu.monto_mora, cu.saldo_pagado,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
@@ -233,7 +235,10 @@ foreach ($semana_rows_raw as $r) {
 }
 
 // Extraer solo 1 cuota por crédito para la vista semanal
+// Excluir créditos que ya aparecen en "del día" para evitar duplicados
 foreach ($semana_por_credito as $cid => $cuotas_cl) {
+    if (isset($del_dia_dedup[$cid])) continue;
+
     $row = $cuotas_cl[0]; // La primera es la más antigua según el ORDER BY
     $row['cuotas_atrasadas'] = count($cuotas_cl);
 
@@ -255,7 +260,7 @@ $nombres_dia = [1=>'Lunes',2=>'Martes',3=>'Miércoles',4=>'Jueves',5=>'Viernes',
 // ── Cuotas quincenales y mensuales ────────────────────────────
 $mensual_stmt = $pdo->prepare("
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
-           cr.cant_cuotas,
+           cr.cant_cuotas, cr.veces_refinanciado,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
@@ -387,8 +392,8 @@ require_once __DIR__ . '/../views/layout.php';
 
 <!-- BARRA DE PROGRESO DEL DÍA -->
 <?php
-$prog_total    = count($del_dia) + count($cobrados_hoy);
-$prog_cobrados = count($cobrados_hoy);
+$prog_total    = count($del_dia);
+$prog_cobrados = count(array_filter($del_dia, fn($c) => (int)$c['pago_pen'] > 0));
 $prog_pct      = $prog_total > 0 ? round(($prog_cobrados / $prog_total) * 100) : 0;
 ?>
 <div class="card-ic mb-4" style="padding:14px 16px">
@@ -442,7 +447,12 @@ $prog_pct      = $prog_total > 0 ? round(($prog_cobrados / $prog_total) * 100) :
         <div class="kpi-value">
             <?= $kpi_vencidas ?>
         </div>
-        <div class="kpi-sub">cuotas sin cobrar acumuladas</div>
+        <div class="kpi-sub">
+            cuotas sin cobrar acumuladas
+            <?php if ($kpi_mora_venc > 0): ?>
+            <br><span style="color:var(--danger)">Mora: <?= formato_pesos($kpi_mora_venc) ?></span>
+            <?php endif; ?>
+        </div>
     </div>
     <div class="kpi-card" style="--kpi-color:var(--primary-light)">
         <i class="fa fa-clock-rotate-left kpi-icon"></i>
@@ -522,6 +532,11 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         <i class="fa fa-forward"></i> Adelantado
                     </span>
                 <?php endif; ?>
+                <?php if (!empty($c['veces_refinanciado']) && (int)$c['veces_refinanciado'] > 0): ?>
+                    <span class="badge-ic badge-warning" style="margin-left:4px;font-size:.75rem">
+                        <i class="fa fa-sync-alt"></i> Ref. ×<?= (int)$c['veces_refinanciado'] ?>
+                    </span>
+                <?php endif; ?>
                 <div class="agenda-articulo" id="art-<?= $c['id'] ?>" style="display:none">
                     <i class="fa fa-box-open"></i> <?= e($c['articulo']) ?>
                 </div>
@@ -593,6 +608,10 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                    class="btn-ic btn-ghost btn-icon" title="WhatsApp" style="width: 44px; height: 44px; border-radius: 8px; font-size: 1.2rem; color: #25D366; background: rgba(37,211,102,.1); display: flex; align-items: center; justify-content: center;">
                     <i class="fa-brands fa-whatsapp"></i>
                 </a>
+                <button type="button" onclick="toggleArticulo(<?= $c['id'] ?>)"
+                        class="btn-ic btn-ghost btn-icon" title="Ver artículo" style="width:44px;height:44px;border-radius:8px;font-size:1rem;display:flex;align-items:center;justify-content:center;">
+                    <i class="fa fa-box-open"></i>
+                </button>
             </div>
         </div>
 
@@ -878,6 +897,14 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             </div>
             <input type="hidden" name="monto_mora_cobrada" id="inp_mora_cobrada" value="0">
             <input type="hidden" name="es_cuota_pura" id="inp_cuota_pura" value="0">
+            <div class="form-group" style="margin-bottom:12px">
+                <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:4px">
+                    <i class="fa fa-comment-alt"></i> Observaciones (opcional)
+                </label>
+                <textarea name="observaciones" id="inp_observaciones" rows="2"
+                    style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.88rem;resize:none"
+                    placeholder="Ej: pagó con billete, prometió el resto mañana..."></textarea>
+            </div>
             <div class="d-flex gap-3">
                 <button type="submit" class="btn-ic btn-success w-100" style="justify-content:center">
                     <i class="fa fa-save"></i> Confirmar Pago
@@ -885,6 +912,50 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <button type="button" onclick="closeModal('modal-pago')" class="btn-ic btn-ghost">Cancelar</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- RESUMEN DE CIERRE DEL DÍA -->
+<?php $pendientes_hoy = $prog_total - $prog_cobrados; ?>
+<div class="card-ic mt-4" id="sec-resumen-cierre">
+    <div class="card-ic-header" style="cursor:pointer" onclick="toggleCollapse('col-resumen-cierre','icon-resumen-cierre')">
+        <span class="card-title"><i class="fa fa-flag-checkered"></i> Resumen de Cierre del Día</span>
+        <i class="fa fa-chevron-down" id="icon-resumen-cierre"></i>
+    </div>
+    <div id="col-resumen-cierre">
+        <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:12px 0">
+            <div class="kpi-card" style="--kpi-color:var(--success)">
+                <i class="fa fa-check-circle kpi-icon"></i>
+                <div class="kpi-label">Cobrados</div>
+                <div class="kpi-value" style="color:var(--success)"><?= $prog_cobrados ?> / <?= $prog_total ?></div>
+                <div class="kpi-sub"><?= $prog_pct ?>% del día</div>
+            </div>
+            <div class="kpi-card" style="--kpi-color:var(--success)">
+                <i class="fa fa-hand-holding-dollar kpi-icon"></i>
+                <div class="kpi-label">Cobrado Hoy</div>
+                <div class="kpi-value" style="font-size:1.1rem;color:var(--success)"><?= formato_pesos($kpi_ingresos_hoy) ?></div>
+                <div class="kpi-sub" style="font-size:.72rem">
+                    Efc: <?= formato_pesos($kpi_ingresos_efectivo) ?><br>
+                    Trf: <?= formato_pesos($kpi_ingresos_transferencia) ?>
+                </div>
+            </div>
+            <?php if ($kpi_mora_cobrada_hoy > 0): ?>
+            <div class="kpi-card" style="--kpi-color:var(--warning)">
+                <i class="fa fa-exclamation-triangle kpi-icon"></i>
+                <div class="kpi-label">Mora Cobrada</div>
+                <div class="kpi-value" style="font-size:1.1rem;color:var(--warning)"><?= formato_pesos($kpi_mora_cobrada_hoy) ?></div>
+                <div class="kpi-sub">incluida en cobrado hoy</div>
+            </div>
+            <?php endif; ?>
+            <?php if ($pendientes_hoy > 0): ?>
+            <div class="kpi-card" style="--kpi-color:var(--danger)">
+                <i class="fa fa-clock kpi-icon"></i>
+                <div class="kpi-label">Sin Cobrar</div>
+                <div class="kpi-value" style="color:var(--danger)"><?= $pendientes_hoy ?></div>
+                <div class="kpi-sub">clientes pendientes</div>
+            </div>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
@@ -1149,7 +1220,11 @@ function verEstadoCuenta(creditoId, nombre) {
                 '<i class="fa fa-box-open" style="color:var(--warning)"></i> ' + cr.articulo +
                 ' &nbsp;·&nbsp; ' + cr.cant_cuotas + ' cuotas ' + cr.frecuencia + 's' +
                 ' &nbsp;·&nbsp; $' + cr.monto_cuota + ' c/u';
-            document.getElementById('esc-body').innerHTML = renderCronograma(data.cuotas);
+            let bodyHtml = renderCronograma(data.cuotas);
+            if (data.pagos && data.pagos.length > 0) {
+                bodyHtml += renderHistorial(data.pagos, data.hist_total);
+            }
+            document.getElementById('esc-body').innerHTML = bodyHtml;
             const r = data.resumen;
             document.getElementById('esc-resumen').innerHTML =
                 '<span style="color:var(--success)">✅ ' + r.pagadas + ' pagada' + (r.pagadas !== 1 ? 's' : '') + '</span>' +
@@ -1160,6 +1235,33 @@ function verEstadoCuenta(creditoId, nombre) {
         .catch(() => {
             document.getElementById('esc-body').innerHTML = '<p style="color:var(--danger);text-align:center">Error al cargar.</p>';
         });
+}
+
+function renderHistorial(pagos, hist_total) {
+    let html = '<div style="margin-top:18px;border-top:1px solid rgba(255,255,255,.1);padding-top:14px">';
+    html += '<div style="font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px"><i class="fa fa-history"></i> Historial de Pagos Confirmados</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:.8rem">';
+    html += '<thead><tr style="color:var(--text-muted);font-size:.7rem;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.1)">' +
+        '<th style="padding:5px 4px">#</th>' +
+        '<th style="padding:5px 4px">Fecha</th>' +
+        '<th style="padding:5px 4px;text-align:right">Efectivo</th>' +
+        '<th style="padding:5px 4px;text-align:right">Transf.</th>' +
+        '<th style="padding:5px 4px;text-align:right">Total</th>' +
+        '</tr></thead><tbody>';
+    pagos.forEach(p => {
+        html += `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+            <td style="padding:6px 4px;color:var(--text-muted)">#${p.numero_cuota}</td>
+            <td style="padding:6px 4px">${p.fecha_fmt}</td>
+            <td style="padding:6px 4px;text-align:right">${p.ef_fmt || '—'}</td>
+            <td style="padding:6px 4px;text-align:right">${p.tr_fmt || '—'}</td>
+            <td style="padding:6px 4px;text-align:right;font-weight:700;color:var(--success)">${p.total_fmt}</td>
+        </tr>`;
+    });
+    html += `</tbody><tfoot><tr style="border-top:1px solid rgba(255,255,255,.15)">
+        <td colspan="4" style="padding:6px 4px;font-weight:700;color:var(--text-muted)">TOTAL COBRADO</td>
+        <td style="padding:6px 4px;text-align:right;font-weight:800;color:var(--success)">${hist_total}</td>
+    </tr></tfoot></table></div>`;
+    return html;
 }
 
 function renderCronograma(cuotas) {
