@@ -535,7 +535,7 @@ function previsualizarFechas() {
         else if (frec === 'quincenal') cur.setDate(cur.getDate() + 14);
         else                      cur.setDate(cur.getDate() + 7);
     }
-    const extra = cant > 3 ? ` y ${cant - 3} más…` : '';
+    const extra = cant > 3 ? ' y ' + (cant - 3) + ' m\u00e1s\u2026' : '';
     prev.textContent = 'Vencimientos: ' + fechas.join(', ') + extra;
 }
 

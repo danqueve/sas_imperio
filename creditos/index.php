@@ -172,7 +172,13 @@ if (es_admin() || es_supervisor()) {
 
 $page_title = 'Créditos';
 $page_current = 'creditos';
-$csv_url = '?' . http_build_query(array_merge(array_filter(['q' => $q, 'estado' => $estado, 'frecuencia' => $frec, 'cobrador_id' => $cobrador_f ?: '', 'desde' => $desde, 'hasta' => $hasta, 'refinanciado' => $refinanciado ? '1' : '', 'proximo_vencer' => $proximo_vencer ? '1' : '', 'orden' => $orden !== 'fecha' ? $orden : '']), fn($v) => $v !== ''), ['export' => 'csv']);
+$csv_url = '?' . http_build_query(array_merge(
+    array_filter(['q' => $q, 'estado' => $estado, 'frecuencia' => $frec, 'cobrador_id' => $cobrador_f ?: '',
+                  'desde' => $desde, 'hasta' => $hasta,
+                  'refinanciado' => $refinanciado ? '1' : '', 'proximo_vencer' => $proximo_vencer ? '1' : '',
+                  'orden' => $orden !== 'fecha' ? $orden : '']),
+    ['export' => 'csv']
+));
 $topbar_actions = '<a href="' . $csv_url . '" class="btn-ic btn-ghost btn-sm" title="Exportar a CSV"><i class="fa fa-file-csv"></i> CSV</a> ';
 $topbar_actions .= '<a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Crédito</a>';
 require_once __DIR__ . '/../views/layout.php';
