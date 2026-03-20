@@ -48,6 +48,14 @@ $stmt = $pdo->prepare("
     JOIN ic_cuotas  cu   ON cu.credito_id = cr.id
                         AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
+    JOIN (
+        SELECT credito_id, COUNT(*) AS cuotas_atrasadas
+        FROM ic_cuotas
+        WHERE fecha_vencimiento < CURDATE()
+          AND estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+        GROUP BY credito_id
+        HAVING COUNT(*) < 5
+    ) filtro ON filtro.credito_id = cr.id
     WHERE cr.dia_cobro IN ($placeholders)
     ORDER BY cr.dia_cobro ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
@@ -315,6 +323,14 @@ $stmt_qm = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
+    JOIN (
+        SELECT credito_id, COUNT(*) AS cuotas_atrasadas
+        FROM ic_cuotas
+        WHERE fecha_vencimiento < CURDATE()
+          AND estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+        GROUP BY credito_id
+        HAVING COUNT(*) < 5
+    ) filtro ON filtro.credito_id = cr.id
     WHERE cr.cobrador_id = ?
       AND cr.estado IN ('EN_CURSO','MOROSO')
       AND cr.frecuencia IN ('quincenal', 'mensual')
@@ -488,6 +504,181 @@ if (!empty($resumen)) {
     $pdf->Cell(100, 7, lat('TOTAL GENERAL'), 1, 0, 'R');
     $pdf->Cell(45,  7, (string)$total_gral_cant, 1, 0, 'C');
     $pdf->Cell(45,  7, fmt($total_gral_monto), 1, 1, 'R');
+}
+
+// ── Sección: Clientes con 5+ cuotas atrasadas ───────────────────
+$stmt_atr = $pdo->prepare("
+    SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono,
+           COALESCE(cl.zona,'') AS zona,
+           cr.id AS credito_id, cr.cant_cuotas, cr.frecuencia,
+           cr.estado AS credito_estado, cr.interes_moratorio_pct,
+           COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
+           COUNT(cu.id)        AS cuotas_atrasadas,
+           MIN(cu.monto_cuota) AS valor_cuota,
+           SUM(cu.monto_cuota) AS monto_base,
+           (SELECT MAX(pt.fecha_jornada)
+            FROM ic_pagos_confirmados pc
+            JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
+            JOIN ic_cuotas cu2          ON cu2.id = pc.cuota_id
+            WHERE cu2.credito_id = cr.id) AS ultimo_pago
+    FROM ic_creditos cr
+    JOIN ic_clientes cl  ON cl.id  = cr.cliente_id
+    JOIN ic_cuotas   cu  ON cu.credito_id = cr.id
+                        AND cu.fecha_vencimiento < CURDATE()
+                        AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+    LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
+    WHERE cr.cobrador_id = ?
+      AND cr.estado IN ('EN_CURSO','MOROSO')
+    GROUP BY cr.id, cl.id, cl.nombres, cl.apellidos, cl.telefono, cl.zona,
+             cr.cant_cuotas, cr.frecuencia, cr.estado, cr.interes_moratorio_pct, articulo
+    HAVING COUNT(cu.id) >= 5
+    ORDER BY COALESCE(cl.zona,'') ASC, cl.apellidos ASC
+");
+$stmt_atr->execute([$cobrador_id]);
+$rows_atr = $stmt_atr->fetchAll();
+
+if (!empty($rows_atr)) {
+    // Agrupar por zona
+    $atr_por_zona = [];
+    foreach ($rows_atr as $r) {
+        $atr_por_zona[$r['zona']][] = $r;
+    }
+
+    $pdf->AddPage();
+
+    // Encabezado sección
+    $pdf->SetFont('Helvetica', 'B', 13);
+    $pdf->Cell(190, 7, lat('Clientes con 5 o mas cuotas atrasadas'), 0, 1, 'L');
+    $pdf->SetFont('Helvetica', '', 8);
+    $pdf->Cell(95, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
+    $pdf->Cell(95, 5, lat('Emision: ' . date('d/m/Y')), 0, 1, 'R');
+    $pdf->SetLineWidth(0.4);
+    $pdf->Line(10, $pdf->GetY() + 1, 200, $pdf->GetY() + 1);
+    $pdf->Ln(5);
+
+    // Columnas: Cliente(48) + Artículo(40) + Adeud.(18) + Valor cuota(28) + Total(30) + Ult.Pago(26) = 190
+    $CA = [48, 40, 18, 28, 30, 26];
+    $LA = ['Cliente / Tel.', 'Articulo', 'Adeud.', 'Valor cuota', 'Total', 'Ult. Pago'];
+
+    $zona_actual = null;
+
+    foreach ($atr_por_zona as $zona => $lista) {
+        // Encabezado de zona
+        $pdf->SetFont('Helvetica', 'BI', 8);
+        $pdf->SetFillColor(240, 240, 240);
+        $zona_txt = !empty($zona) ? strtoupper($zona) : 'SIN ZONA';
+        $pdf->Cell(190, 6, lat('  Zona: ' . $zona_txt . '  (' . count($lista) . ' credito(s))'), 1, 1, 'L', true);
+        $pdf->SetFillColor(255, 255, 255);
+
+        // Encabezado columnas
+        $pdf->SetFont('Helvetica', 'B', 7);
+        foreach ($CA as $i => $w) {
+            $pdf->Cell($w, 5, lat($LA[$i]), 1, 0, 'L');
+        }
+        $pdf->Ln();
+
+        $pdf->SetFont('Helvetica', '', 7);
+        $total_zona = 0.0;
+
+        foreach ($lista as $r) {
+            // Salto de página si hace falta
+            if ($pdf->GetY() + 11 > $pdf->GetPageHeight() - 18) {
+                $pdf->AddPage();
+                $pdf->SetFont('Helvetica', 'B', 9);
+                $pdf->Cell(190, 6, lat('Clientes con 5+ cuotas atrasadas (continuacion)'), 0, 1, 'L');
+                $pdf->SetFont('Helvetica', 'B', 7);
+                foreach ($CA as $i => $w) {
+                    $pdf->Cell($w, 5, lat($LA[$i]), 1, 0, 'L');
+                }
+                $pdf->Ln();
+                $pdf->SetFont('Helvetica', '', 7);
+            }
+
+            $has_phone = !empty(trim($r['telefono'] ?? ''));
+            $row_h     = 9; // siempre 9mm: dos líneas en cuotas y posible teléfono
+            $x0 = $pdf->GetX();
+            $y0 = $pdf->GetY();
+
+            $es_moroso    = $r['credito_estado'] === 'MOROSO';
+            $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 33, '..');
+            if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
+            $articulo    = mb_strimwidth($r['articulo'] ?? '-', 0, 30, '..');
+            $valor_cuota = (float)$r['valor_cuota'];
+            $monto_total = (float)$r['monto_base'];
+            $total_zona += $monto_total;
+
+            // Celdas con borde
+            $pdf->Cell($CA[0], $row_h, '', 1, 0, 'L', false);              // cliente (borde)
+            $pdf->Cell($CA[1], $row_h, lat($articulo), 1, 0, 'L', false);
+            $pdf->Cell($CA[2], $row_h, '', 1, 0, 'C', false);              // cuotas (borde)
+            $pdf->Cell($CA[3], $row_h, lat(fmt($valor_cuota)), 1, 0, 'R', false);
+            $pdf->Cell($CA[4], $row_h, '', 1, 0, 'R', false);              // total (borde)
+            $pdf->Cell($CA[5], $row_h, '', 1, 0, 'L', false);              // ult. pago (borde)
+            $pdf->Ln();
+
+            // Texto cliente — línea 1
+            $pdf->SetFont('Helvetica', $es_moroso ? 'B' : '', 7);
+            $pdf->SetXY($x0 + 0.8, $y0 + 0.8);
+            $pdf->Cell($CA[0] - 1, 4, lat($cliente_name), 0, 0, 'L', false);
+
+            // Texto cliente — línea 2 (teléfono)
+            if ($has_phone) {
+                $pdf->SetFont('Helvetica', 'I', 6);
+                $pdf->SetTextColor(80, 80, 80);
+                $pdf->SetXY($x0 + 0.8, $y0 + 4.5);
+                $pdf->Cell($CA[0] - 1, 3.5, lat('Tel: ' . mb_strimwidth($r['telefono'], 0, 22, '')), 0, 0, 'L', false);
+                $pdf->SetTextColor(0, 0, 0);
+            }
+
+            // Cuotas adeudadas — línea 1: número destacado
+            $cx = $x0 + $CA[0] + $CA[1];
+            $pdf->SetFont('Helvetica', 'B', 8);
+            $pdf->SetXY($cx + 0.5, $y0 + 0.8);
+            $pdf->Cell($CA[2] - 1, 4, (string)$r['cuotas_atrasadas'], 0, 0, 'C', false);
+
+            // Cuotas adeudadas — línea 2: "de N" en pequeño gris
+            $pdf->SetFont('Helvetica', 'I', 6);
+            $pdf->SetTextColor(80, 80, 80);
+            $pdf->SetXY($cx + 0.5, $y0 + 4.5);
+            $pdf->Cell($CA[2] - 1, 3.5, lat('de ' . $r['cant_cuotas']), 0, 0, 'C', false);
+            $pdf->SetTextColor(0, 0, 0);
+
+            // Total — columna 5
+            $pdf->SetFont('Helvetica', '', 7);
+            $mx = $x0 + $CA[0] + $CA[1] + $CA[2] + $CA[3];
+            $pdf->SetXY($mx + 0.5, $y0 + 1.5);
+            $pdf->Cell($CA[4] - 1, 4, lat(fmt($monto_total)), 0, 0, 'R', false);
+
+            // Último pago — columna 6
+            $ult_txt = !empty($r['ultimo_pago'])
+                ? date('d/m/y', strtotime($r['ultimo_pago']))
+                : 'Sin pagos';
+            $ux = $x0 + $CA[0] + $CA[1] + $CA[2] + $CA[3] + $CA[4];
+            $pdf->SetFont('Helvetica', empty($r['ultimo_pago']) ? 'I' : '', 6.5);
+            if (empty($r['ultimo_pago'])) $pdf->SetTextColor(150, 80, 80);
+            $pdf->SetXY($ux + 0.5, $y0 + 2.5);
+            $pdf->Cell($CA[5] - 1, 4, lat($ult_txt), 0, 0, 'C', false);
+            $pdf->SetTextColor(0, 0, 0);
+
+            $pdf->SetXY(10, $y0 + $row_h);
+            $pdf->SetFont('Helvetica', '', 7);
+        }
+
+        // Total zona
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->Cell($CA[0] + $CA[1] + $CA[2] + $CA[3], 5, lat('Total zona'), 1, 0, 'R');
+        $pdf->Cell($CA[4], 5, lat(fmt($total_zona)), 1, 0, 'R');
+        $pdf->Cell($CA[5], 5, '', 1, 1, 'L');
+        $pdf->Ln(3);
+    }
+
+    // Total general sección
+    $total_atr = array_sum(array_map(fn($r) => (float)$r['monto_base'], $rows_atr));
+    $pdf->SetFont('Helvetica', 'B', 8);
+    $ancho_atr = $CA[0] + $CA[1] + $CA[2] + $CA[3];
+    $pdf->Cell($ancho_atr, 6, lat('TOTAL GENERAL — ' . count($rows_atr) . ' credito(s)'), 1, 0, 'R');
+    $pdf->Cell($CA[4], 6, lat(fmt($total_atr)), 1, 0, 'R');
+    $pdf->Cell($CA[5], 6, '', 1, 1, 'L');
 }
 
 $nombre = 'agenda_semanal_' . $cobrador_id . '_' . date('Ymd') . '.pdf';
