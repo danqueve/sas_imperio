@@ -12,6 +12,7 @@ verificar_permiso('aprobar_rendiciones');
 $pdo         = obtener_conexion();
 $fecha_sel   = $_GET['fecha']       ?? '';
 $cobrador_id = (int)($_GET['cobrador_id'] ?? 0);
+$origen_sel  = in_array($_GET['origen'] ?? '', ['cobrador', 'manual']) ? $_GET['origen'] : 'cobrador';
 
 if (!$fecha_sel || !$cobrador_id) die('Faltan parametros de busqueda (fecha o cobrador).');
 
@@ -31,10 +32,12 @@ $dstmt = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id   = cr.id
     JOIN ic_clientes cl ON cr.cliente_id   = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
+    LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
     WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?
+      AND IFNULL(pt.origen, 'cobrador') = ?
     ORDER BY cl.apellidos ASC, cl.nombres ASC, pc.fecha_pago ASC
 ");
-$dstmt->execute([$cobrador_id, $fecha_sel]);
+$dstmt->execute([$cobrador_id, $fecha_sel, $origen_sel]);
 $pagos = $dstmt->fetchAll();
 
 if (empty($pagos)) die('No hay pagos confirmados en la rendicion de esta fecha.');

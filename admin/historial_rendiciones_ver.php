@@ -12,6 +12,7 @@ $pdo = obtener_conexion();
 
 $fecha_rendicion = $_GET['fecha'] ?? '';
 $cobrador_id     = (int) ($_GET['cobrador_id'] ?? 0);
+$origen_sel      = in_array($_GET['origen'] ?? '', ['cobrador', 'manual']) ? $_GET['origen'] : 'cobrador';
 
 if (!$fecha_rendicion || !$cobrador_id) {
     header('Location: historial_rendiciones');
@@ -27,7 +28,7 @@ if (!$cobrador) {
     die("Cobrador no encontrado.");
 }
 
-// Obtener el detalle individual de pagos de esa fecha y cobrador
+// Obtener el detalle individual de pagos de esa fecha, cobrador y origen
 $dstmt = $pdo->prepare("
     SELECT pc.*,
            cl.nombres, cl.apellidos,
@@ -40,10 +41,12 @@ $dstmt = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
     LEFT JOIN ic_usuarios u ON pc.aprobador_id = u.id
+    LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
     WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?
+      AND IFNULL(pt.origen, 'cobrador') = ?
     ORDER BY pc.fecha_pago ASC
 ");
-$dstmt->execute([$cobrador_id, $fecha_rendicion]);
+$dstmt->execute([$cobrador_id, $fecha_rendicion, $origen_sel]);
 $detalle_pagos = $dstmt->fetchAll();
 
 $total_efectivo = 0;
@@ -58,7 +61,8 @@ $aprobador_apellido = $detalle_pagos[0]['apr_apellido'] ?? '';
 
 $page_title = 'Detalle de Rendición';
 $page_current = 'rendiciones';
-$topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-arrow-left"></i> Volver al Historial</a>';
+$topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-arrow-left"></i> Volver al Historial</a>'
+    . ' <a href="historial_rendiciones_pdf?fecha=' . urlencode($fecha_rendicion) . '&cobrador_id=' . $cobrador_id . '&origen=' . urlencode($origen_sel) . '" target="_blank" class="btn-ic btn-danger btn-sm"><i class="fa fa-file-pdf"></i> PDF</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -72,6 +76,11 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-calendar-check kpi-icon"></i>
         <div class="kpi-label">Fecha de Aprobación</div>
         <div class="kpi-value text-primary"><?= date('d/m/Y', strtotime($fecha_rendicion)) ?></div>
+    </div>
+    <div class="kpi-card" style="var(--kpi-color:var(--text-main))">
+        <i class="fa fa-<?= $origen_sel === 'manual' ? 'keyboard' : 'motorcycle' ?> kpi-icon"></i>
+        <div class="kpi-label">Origen</div>
+        <div class="kpi-value"><?= $origen_sel === 'manual' ? '<span style="color:#f59e0b">Manual (Admin)</span>' : '<span style="color:#3b82f6">Cobrador</span>' ?></div>
     </div>
     <div class="kpi-card" style="var(--kpi-color:var(--text-main))">
         <i class="fa fa-user-shield kpi-icon"></i>
