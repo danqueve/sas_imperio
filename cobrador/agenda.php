@@ -36,7 +36,8 @@ $sql = "
            cr.cant_cuotas, cr.dia_cobro, cr.veces_refinanciado,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
-           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen,
+           (SELECT pt2.id FROM ic_pagos_temporales pt2 WHERE pt2.cuota_id=cu.id AND pt2.estado='PENDIENTE' LIMIT 1) AS pt_id
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
@@ -204,7 +205,8 @@ $semana_stmt = $pdo->prepare("
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado, cu.monto_mora, cu.saldo_pagado,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
-           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen,
+           (SELECT pt2.id FROM ic_pagos_temporales pt2 WHERE pt2.cuota_id=cu.id AND pt2.estado='PENDIENTE' LIMIT 1) AS pt_id
     FROM ic_clientes cl
     JOIN ic_creditos cr ON cr.cliente_id  = cl.id AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
                        AND cr.frecuencia = 'semanal'
@@ -264,7 +266,8 @@ $mensual_stmt = $pdo->prepare("
            cr.cant_cuotas, cr.veces_refinanciado,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
-           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen,
+           (SELECT pt2.id FROM ic_pagos_temporales pt2 WHERE pt2.cuota_id=cu.id AND pt2.estado='PENDIENTE' LIMIT 1) AS pt_id
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
