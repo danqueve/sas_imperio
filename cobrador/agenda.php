@@ -133,6 +133,7 @@ $stmt_cobrados = $pdo->prepare("
            cr.cant_cuotas,
            cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
+           pt.id AS pt_id,
            pt.fecha_jornada AS jornada_pago,
            1 AS pago_pen
     FROM ic_pagos_temporales pt
@@ -616,9 +617,46 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                             <i class="fa fa-check"></i> <span style="margin-left:4px;">Cobrar</span>
                         </button>
                     </div>
+                    <?php
+                    $remaining_ad = max(0, (int)$c['cant_cuotas'] - (int)$c['numero_cuota']);
+                    $max_ad       = min(3, $remaining_ad);
+                    $base_total   = number_format((float)$c['total_a_cobrar'], 2, '.', '');
+                    $monto_base   = number_format((float)$c['monto_cuota'],    2, '.', '');
+                    if ($max_ad > 0):
+                    ?>
+                    <div style="margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        <span style="font-size:.72rem;color:var(--text-muted);white-space:nowrap">
+                            <i class="fa fa-forward"></i> Adelantar:
+                        </span>
+                        <button id="ad-btn-<?= $c['id'] ?>-0" type="button"
+                            onclick="selAd(<?= $c['id'] ?>,<?= $base_total ?>,<?= $monto_base ?>,0,<?= $max_ad ?>)"
+                            class="btn-ic btn-sm btn-primary" style="font-size:.72rem;padding:3px 8px;min-height:28px">
+                            Solo esta
+                        </button>
+                        <?php for ($i = 1; $i <= $max_ad; $i++): ?>
+                        <button id="ad-btn-<?= $c['id'] ?>-<?= $i ?>" type="button"
+                            onclick="selAd(<?= $c['id'] ?>,<?= $base_total ?>,<?= $monto_base ?>,<?= $i ?>,<?= $max_ad ?>)"
+                            class="btn-ic btn-sm btn-ghost" style="font-size:.72rem;padding:3px 8px;min-height:28px">
+                            +<?= $i ?>
+                        </button>
+                        <?php endfor; ?>
+                        <span id="ad-lbl-<?= $c['id'] ?>" style="font-size:.72rem;color:var(--text-muted)">
+                            Solo esta cuota
+                        </span>
+                    </div>
+                    <?php endif; ?>
                 <?php else: ?>
-                    <div style="width: 100%; text-align: center; padding: 12px 0; background: rgba(255,193,7,.1); border-radius: 8px;">
-                        <span style="color: var(--warning); font-weight: 700;"><i class="fa fa-clock"></i> Pago Registrado</span>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <div style="flex:1;text-align:center;padding:12px 0;background:rgba(255,193,7,.1);border-radius:8px">
+                            <span style="color:var(--warning);font-weight:700"><i class="fa fa-clock"></i> Pago Registrado</span>
+                        </div>
+                        <?php if (!empty($c['pt_id'])): ?>
+                        <button type="button"
+                            onclick="anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)"
+                            style="padding:12px 14px;background:rgba(220,53,69,.15);color:var(--danger);border:1px solid rgba(220,53,69,.3);border-radius:8px;font-size:.82rem;cursor:pointer;font-weight:600;white-space:nowrap">
+                            <i class="fa fa-trash"></i> Anular
+                        </button>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -1181,7 +1219,7 @@ function _rellenarModal(c, montoInicial, cardCbChecked = false) {
       (cuota_mora > 0 ? ' + Mora: ' + formatPesos(cuota_mora) : '');
   }
   infoHtml += (c.articulo ? '<br><small style="color:var(--warning)">📦 ' + c.articulo + '</small>' : '') +
-    '<br><strong>Total sugerido: ' + formatPesos(c.total_a_cobrar) + '</strong>';
+    '<br><strong>Total sugerido: ' + formatPesos(montoInicial) + '</strong>';
 
   document.getElementById('modal-info').innerHTML = infoHtml;
   document.getElementById('inp_efectivo').value   = montoInicial.toFixed(2);
@@ -1295,6 +1333,38 @@ function renderHistorial(pagos, hist_total) {
         <td style="padding:6px 4px;text-align:right;font-weight:800;color:var(--success)">${hist_total}</td>
     </tr></tfoot></table></div>`;
     return html;
+}
+
+// ── Anular pago pendiente ────────────────────────────────────
+function anularPago(ptId, nombre) {
+  if (!confirm('¿Anular el pago de ' + nombre + '?\nEl cobro volverá a la agenda para registrarlo nuevamente.')) return;
+  fetch('anular_pago', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'pt_id=' + ptId
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) window.location.reload();
+    else alert('Error: ' + (d.error || 'No se pudo anular.'));
+  })
+  .catch(() => alert('Error de conexión.'));
+}
+
+// ── Seleccionar cuotas adelantadas ───────────────────────────
+function selAd(cuotaId, baseTotal, montoBase, n, maxAd) {
+  const inp = document.getElementById('inp-' + cuotaId);
+  if (inp) inp.value = (baseTotal + n * montoBase).toFixed(2);
+  for (let i = 0; i <= maxAd; i++) {
+    const btn = document.getElementById('ad-btn-' + cuotaId + '-' + i);
+    if (!btn) continue;
+    btn.classList.toggle('btn-primary', i === n);
+    btn.classList.toggle('btn-ghost',   i !== n);
+  }
+  const lbl = document.getElementById('ad-lbl-' + cuotaId);
+  if (lbl) lbl.textContent = n === 0
+    ? 'Solo esta cuota'
+    : 'Esta cuota + ' + n + ' adelantada' + (n > 1 ? 's' : '');
 }
 
 function renderCronograma(cuotas) {
