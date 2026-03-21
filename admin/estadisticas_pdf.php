@@ -16,7 +16,7 @@ $hoy = new DateTimeImmutable('today');
 $dow = (int) $hoy->format('N');
 $lunes_actual = $hoy->modify('-' . ($dow - 1) . ' days');
 
-if (!empty($_GET['semana'])) {
+if (!empty($_GET['semana']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['semana'])) {
     try {
         $lunes_sel = new DateTimeImmutable($_GET['semana']);
         $dow_sel   = (int) $lunes_sel->format('N');

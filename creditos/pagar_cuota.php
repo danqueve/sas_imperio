@@ -95,8 +95,8 @@ try {
         $pago_ef = min($pago_en_esta, $ef_remaining);
         $pago_tr = $pago_en_esta - $pago_ef;
 
-        $nuevo_saldo  = $saldo_prev + $pago_en_esta;
-        $nuevo_estado = ($nuevo_saldo >= $cuota['monto_cuota'] + $mora_frozen - 0.005) ? 'PAGADA' : 'PARCIAL';
+        $nuevo_saldo  = round($saldo_prev + $pago_en_esta, 2);
+        $nuevo_estado = ($nuevo_saldo >= round($cuota['monto_cuota'] + $mora_frozen, 2) - 0.01) ? 'PAGADA' : 'PARCIAL';
         $fecha_pago_v = ($nuevo_estado === 'PAGADA') ? $fecha_hoy : null;
         $mora_en_esta = ($nuevo_estado === 'PAGADA') ? $mora_frozen : 0.0;
         

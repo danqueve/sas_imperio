@@ -26,8 +26,9 @@ function obtener_conexion(): PDO
         try {
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $opciones);
         } catch (PDOException $e) {
+            error_log('PDO Connection Error: ' . $e->getMessage());
             http_response_code(500);
-            die(json_encode(['error' => $e->getMessage()]));
+            die('Error de conexion a la base de datos. Contacte al administrador.');
         }
     }
     return $pdo;

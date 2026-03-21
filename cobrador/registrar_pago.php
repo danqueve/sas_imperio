@@ -32,18 +32,18 @@ if (!$cuota_id || $total <= 0) {
     exit;
 }
 
-// Obtener credito_id e interes_moratorio de la cuota seleccionada
+// Obtener credito_id e interes_moratorio; validar que pertenece al cobrador logueado
 $stmt = $pdo->prepare("
     SELECT cu.credito_id, cr.interes_moratorio_pct
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cu.credito_id = cr.id
-    WHERE cu.id = ?
+    WHERE cu.id = ? AND cr.cobrador_id = ?
 ");
-$stmt->execute([$cuota_id]);
+$stmt->execute([$cuota_id, $_SESSION['user_id']]);
 $row = $stmt->fetch();
 
 if (!$row) {
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Cuota no encontrada.'];
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Cuota no encontrada o no pertenece a tus creditos.'];
     header('Location: agenda');
     exit;
 }

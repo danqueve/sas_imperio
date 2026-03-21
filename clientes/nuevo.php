@@ -32,6 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validación básica
     if (empty($v['nombres']) || empty($v['apellidos']) || empty($v['telefono'])) {
         $error = 'Los campos Nombres, Apellidos y Teléfono son obligatorios.';
+    } elseif (!empty($v['tiene_garante']) && (empty($v['g_nombres']) || empty($v['g_apellidos']))) {
+        $error = 'Si el cliente tiene garante, debe completar Nombres y Apellidos del garante.';
     } else {
         // Insertar cliente
         $token = generar_token();

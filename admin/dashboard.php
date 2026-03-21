@@ -89,11 +89,11 @@ $cartera = $pdo->query("
     SELECT
         COUNT(CASE WHEN cu.estado='PAGADA' THEN 1 END) AS pagadas,
         COUNT(CASE WHEN cu.estado IN('PENDIENTE','PARCIAL') AND cu.fecha_vencimiento>=CURDATE() THEN 1 END) AS vigentes,
-        COUNT(CASE WHEN cu.estado IN('PENDIENTE','VENCIDA') AND cu.fecha_vencimiento<CURDATE() THEN 1 END)  AS vencidas,
+        COUNT(CASE WHEN cu.estado IN('VENCIDA','CAP_PAGADA') OR (cu.estado IN('PENDIENTE','PARCIAL') AND cu.fecha_vencimiento<CURDATE()) THEN 1 END) AS vencidas,
         COALESCE(SUM(CASE WHEN cu.estado!='PAGADA' THEN cu.monto_cuota END),0) AS deuda_total
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cu.credito_id=cr.id
-    WHERE cr.estado='EN_CURSO'
+    WHERE cr.estado IN('EN_CURSO','MOROSO')
 ")->fetch();
 
 // ── Gauges (porcentaje para los indicadores circulares) ───────

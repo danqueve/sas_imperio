@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS `ic_clientes` (
   `token_acceso` VARCHAR(64) UNIQUE,
   `tiene_garante` TINYINT(1) DEFAULT 0,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL
+  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL,
+  INDEX `idx_clientes_cobrador` (`cobrador_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 -- ------------------------------------------------------------
@@ -131,7 +132,8 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   FOREIGN KEY (`articulo_id`) REFERENCES `ic_articulos`(`id`),
   FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
   FOREIGN KEY (`vendedor_id`) REFERENCES `ic_vendedores`(`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`created_by`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL
+  FOREIGN KEY (`created_by`) REFERENCES `ic_usuarios`(`id`) ON DELETE SET NULL,
+  INDEX `idx_creditos_cliente_estado` (`cliente_id`, `estado`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 -- ------------------------------------------------------------
@@ -148,7 +150,8 @@ CREATE TABLE IF NOT EXISTS `ic_cuotas` (
   `saldo_pagado` DECIMAL(12,2) DEFAULT 0.00,
   `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA') DEFAULT 'PENDIENTE',
   `fecha_pago` DATE DEFAULT NULL,
-  FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE
+  FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE,
+  INDEX `idx_cuotas_credito_estado` (`credito_id`, `estado`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 -- ------------------------------------------------------------
@@ -168,8 +171,11 @@ CREATE TABLE IF NOT EXISTS `ic_pagos_temporales` (
   `estado` ENUM('PENDIENTE','APROBADO','RECHAZADO') DEFAULT 'PENDIENTE',
   `solicitud_baja` TINYINT(1) DEFAULT 0,
   `motivo_baja` TEXT NULL,
+  `fecha_jornada` DATE NULL COMMENT 'Fecha de la jornada de cobranza',
+  `origen` ENUM('cobrador','manual') DEFAULT 'cobrador' COMMENT 'Origen del pago: cobrador en campo o manual por admin',
   FOREIGN KEY (`cuota_id`) REFERENCES `ic_cuotas`(`id`),
-  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`)
+  FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
+  INDEX `idx_pt_cobrador_jornada` (`cobrador_id`, `fecha_jornada`, `estado`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 -- ------------------------------------------------------------

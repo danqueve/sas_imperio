@@ -29,9 +29,13 @@ if (empty($articulo_desc_actual) && !empty($cr['articulo_id'])) {
     $articulo_desc_actual = $art->fetchColumn() ?: '';
 }
 
-$clientes   = $pdo->query("SELECT id,nombres,apellidos FROM ic_clientes WHERE estado='ACTIVO' OR id={$cr['cliente_id']} ORDER BY apellidos,nombres")->fetchAll();
+$stmtCl = $pdo->prepare("SELECT id,nombres,apellidos FROM ic_clientes WHERE estado='ACTIVO' OR id=? ORDER BY apellidos,nombres");
+$stmtCl->execute([$cr['cliente_id']]);
+$clientes = $stmtCl->fetchAll();
 $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
-$vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE activo=1 OR id=".($cr['vendedor_id'] ?? 0)." ORDER BY nombre")->fetchAll();
+$stmtVe = $pdo->prepare("SELECT id,nombre,apellido FROM ic_vendedores WHERE activo=1 OR id=? ORDER BY nombre");
+$stmtVe->execute([$cr['vendedor_id'] ?? 0]);
+$vendedores = $stmtVe->fetchAll();
 
 // Catálogo de artículos para selector
 $articulos_raw = $pdo->query("SELECT id, descripcion, precio_venta, sku, stock FROM ic_articulos WHERE activo=1 ORDER BY descripcion")->fetchAll();
