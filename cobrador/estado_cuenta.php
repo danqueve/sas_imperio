@@ -119,6 +119,41 @@ foreach ($hist_rows as $p) {
     ];
 }
 
+// Cuotas pagables — para selección interactiva en la agenda
+$pag_stmt = $pdo->prepare("
+    SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
+           cu.estado, cu.monto_mora, cu.saldo_pagado,
+           cr.interes_moratorio_pct,
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt
+            WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen
+    FROM ic_cuotas cu
+    JOIN ic_creditos cr ON cu.credito_id = cr.id
+    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE','VENCIDA','PARCIAL','CAP_PAGADA')
+    ORDER BY cu.numero_cuota ASC
+");
+$pag_stmt->execute([$credito_id]);
+$cuotas_pagables = [];
+foreach ($pag_stmt->fetchAll() as $cp) {
+    $dias   = dias_atraso_habiles($cp['fecha_vencimiento']);
+    $mora   = ($cp['estado'] === 'CAP_PAGADA')
+                ? (float) $cp['monto_mora']
+                : calcular_mora((float)$cp['monto_cuota'], $dias, (float)$cp['interes_moratorio_pct']);
+    $saldo  = (float)($cp['saldo_pagado'] ?? 0);
+    $total  = ($cp['estado'] === 'CAP_PAGADA')
+                ? $mora
+                : max(0, (float)$cp['monto_cuota'] + $mora - $saldo);
+    $cuotas_pagables[] = [
+        'id'           => (int)  $cp['id'],
+        'numero_cuota' => (int)  $cp['numero_cuota'],
+        'monto_cuota'  => (float)$cp['monto_cuota'],
+        'mora'         => round($mora, 2),
+        'total'        => round($total, 2),
+        'estado'       => $cp['estado'],
+        'fecha_venc'   => date('d/m/Y', strtotime($cp['fecha_vencimiento'])),
+        'pago_pen'     => (int)  $cp['pago_pen'],
+    ];
+}
+
 echo json_encode([
     'credito' => [
         'articulo'    => $credito['articulo'],
@@ -126,8 +161,9 @@ echo json_encode([
         'frecuencia'  => $credito['frecuencia'],
         'monto_cuota' => number_format((float) $credito['monto_cuota'], 0, ',', '.'),
     ],
-    'cuotas'      => $cuotas,
-    'resumen'     => $resumen,
-    'pagos'       => $pagos,
-    'hist_total'  => '$' . number_format($hist_total, 0, ',', '.'),
+    'cuotas'          => $cuotas,
+    'cuotas_pagables' => $cuotas_pagables,
+    'resumen'         => $resumen,
+    'pagos'           => $pagos,
+    'hist_total'      => '$' . number_format($hist_total, 0, ',', '.'),
 ]);

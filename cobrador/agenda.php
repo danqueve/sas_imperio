@@ -617,46 +617,9 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                             <i class="fa fa-check"></i> <span style="margin-left:4px;">Cobrar</span>
                         </button>
                     </div>
-                    <?php
-                    $remaining_ad = max(0, (int)$c['cant_cuotas'] - (int)$c['numero_cuota']);
-                    $max_ad       = min(3, $remaining_ad);
-                    $base_total   = number_format((float)$c['total_a_cobrar'], 2, '.', '');
-                    $monto_base   = number_format((float)$c['monto_cuota'],    2, '.', '');
-                    if ($max_ad > 0):
-                    ?>
-                    <div style="margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                        <span style="font-size:.72rem;color:var(--text-muted);white-space:nowrap">
-                            <i class="fa fa-forward"></i> Adelantar:
-                        </span>
-                        <button id="ad-btn-<?= $c['id'] ?>-0" type="button"
-                            onclick="selAd(<?= $c['id'] ?>,<?= $base_total ?>,<?= $monto_base ?>,0,<?= $max_ad ?>)"
-                            class="btn-ic btn-sm btn-primary" style="font-size:.72rem;padding:3px 8px;min-height:28px">
-                            Solo esta
-                        </button>
-                        <?php for ($i = 1; $i <= $max_ad; $i++): ?>
-                        <button id="ad-btn-<?= $c['id'] ?>-<?= $i ?>" type="button"
-                            onclick="selAd(<?= $c['id'] ?>,<?= $base_total ?>,<?= $monto_base ?>,<?= $i ?>,<?= $max_ad ?>)"
-                            class="btn-ic btn-sm btn-ghost" style="font-size:.72rem;padding:3px 8px;min-height:28px">
-                            +<?= $i ?>
-                        </button>
-                        <?php endfor; ?>
-                        <span id="ad-lbl-<?= $c['id'] ?>" style="font-size:.72rem;color:var(--text-muted)">
-                            Solo esta cuota
-                        </span>
-                    </div>
-                    <?php endif; ?>
                 <?php else: ?>
-                    <div style="display:flex;gap:8px;align-items:center">
-                        <div style="flex:1;text-align:center;padding:12px 0;background:rgba(255,193,7,.1);border-radius:8px">
-                            <span style="color:var(--warning);font-weight:700"><i class="fa fa-clock"></i> Pago Registrado</span>
-                        </div>
-                        <?php if (!empty($c['pt_id'])): ?>
-                        <button type="button"
-                            onclick="anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)"
-                            style="padding:12px 14px;background:rgba(220,53,69,.15);color:var(--danger);border:1px solid rgba(220,53,69,.3);border-radius:8px;font-size:.82rem;cursor:pointer;font-weight:600;white-space:nowrap">
-                            <i class="fa fa-trash"></i> Anular
-                        </button>
-                        <?php endif; ?>
+                    <div style="width:100%;text-align:center;padding:12px 0;background:rgba(255,193,7,.1);border-radius:8px">
+                        <span style="color:var(--warning);font-weight:700"><i class="fa fa-clock"></i> Pago Registrado</span>
                     </div>
                 <?php endif; ?>
             </div>
@@ -683,6 +646,14 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         class="btn-ic btn-ghost btn-icon" title="Ver artículo" style="width:44px;height:44px;border-radius:8px;font-size:1rem;display:flex;align-items:center;justify-content:center;">
                     <i class="fa fa-box-open"></i>
                 </button>
+                <?php if (!empty($c['pt_id'])): ?>
+                <button type="button"
+                    onclick="anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)"
+                    class="btn-ic btn-ghost btn-icon" title="Anular pago"
+                    style="width:44px;height:44px;border-radius:8px;font-size:1rem;display:flex;align-items:center;justify-content:center;color:var(--danger);background:rgba(220,53,69,.1)">
+                    <i class="fa fa-rotate-left"></i>
+                </button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -893,7 +864,32 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <button class="modal-close" onclick="closeModal('modal-estado-cuenta')">✕</button>
         </div>
         <div id="esc-subtitulo" style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px;padding:8px 12px;background:rgba(255,255,255,.04);border-radius:6px"></div>
-        <div id="esc-body" style="max-height:60vh;overflow-y:auto"></div>
+
+        <!-- COBRAR CUOTAS — sección interactiva -->
+        <div id="esc-seleccion" style="display:none;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.12)">
+            <div style="font-size:.73rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
+                <i class="fa fa-money-bill-wave"></i> Cobrar cuotas
+            </div>
+            <div id="esc-cuotas-list"></div>
+            <div id="esc-cuota-pura-wrap" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(245,158,11,.1);border-radius:8px;border:1px solid rgba(245,158,11,.25)">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;user-select:none">
+                    <input type="checkbox" id="esc-pura-cb" onchange="escRecalcular()"
+                        style="width:16px;height:16px;cursor:pointer;accent-color:var(--warning);flex-shrink:0">
+                    <span>Cuota pura — cobrar solo capital (sin mora)</span>
+                </label>
+            </div>
+            <div id="esc-total-wrap" style="display:none;margin-top:12px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                <div>
+                    <div style="font-size:.73rem;color:var(--text-muted)">Total a pagar:</div>
+                    <div id="esc-total-val" style="font-size:1.25rem;font-weight:800;color:var(--success)">$ 0</div>
+                </div>
+                <button class="btn-ic btn-success" onclick="escCobrarSeleccionadas()" style="gap:6px">
+                    <i class="fa fa-check"></i> Cobrar seleccionadas
+                </button>
+            </div>
+        </div>
+
+        <div id="esc-body" style="max-height:50vh;overflow-y:auto"></div>
         <div id="esc-resumen" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem"></div>
     </div>
 </div>
@@ -1101,6 +1097,11 @@ $page_scripts = <<<'JS'
 let cuota_mora    = 0;
 let cuota_capital = 0;
 
+// ── Estado de Cuenta — vars de módulo ────────────────────────
+let escCuotasPagables = [];
+let escClienteNombre  = '';
+let escCreditoData    = null;
+
 // ── Búsqueda en tiempo real ──────────────────────────────────
 function filtrarAgenda(q) {
     const term = q.trim().toLowerCase();
@@ -1209,8 +1210,9 @@ function _rellenarModal(c, montoInicial, cardCbChecked = false) {
   document.getElementById('inp_cuota_pura').value   = esPura;
   document.getElementById('inp_mora_cobrada').value = esPura ? '0' : cuota_mora.toFixed(2);
 
-  let infoHtml = '<strong>' + c.apellidos + ', ' + c.nombres + '</strong><br>' +
-    'Cuota #' + c.numero_cuota + (c.cant_cuotas ? '/' + c.cant_cuotas : '');
+  const clienteLabel = c.nombres ? c.apellidos + ', ' + c.nombres : c.apellidos;
+  let infoHtml = '<strong>' + clienteLabel + '</strong><br>' +
+    'Cuota ' + (String(c.numero_cuota).startsWith('#') ? '' : '#') + c.numero_cuota + (c.cant_cuotas ? '/' + c.cant_cuotas : '');
   if (esCapPagada) {
     infoHtml += ' — <span style="color:var(--warning)">Capital pagado</span>' +
       '<br>Mora pendiente (congelada): <strong>' + formatPesos(cuota_mora) + '</strong>';
@@ -1273,10 +1275,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Estado de Cuenta del cliente ─────────────────────────────
 function verEstadoCuenta(creditoId, nombre) {
+    escClienteNombre  = nombre;
+    escCuotasPagables = [];
+    escCreditoData    = null;
+
     document.getElementById('esc-titulo').textContent = nombre.toUpperCase();
     document.getElementById('esc-subtitulo').textContent = 'Cargando cronograma...';
     document.getElementById('esc-body').innerHTML = '<div class="text-center py-4"><i class="fa fa-spinner fa-spin fa-2x" style="color:var(--primary)"></i></div>';
     document.getElementById('esc-resumen').innerHTML = '';
+    document.getElementById('esc-seleccion').style.display = 'none';
     openModal('modal-estado-cuenta');
 
     fetch('estado_cuenta?credito_id=' + creditoId)
@@ -1287,10 +1294,16 @@ function verEstadoCuenta(creditoId, nombre) {
                 return;
             }
             const cr = data.credito;
+            escCreditoData    = cr;
+            escCuotasPagables = data.cuotas_pagables || [];
+
             document.getElementById('esc-subtitulo').innerHTML =
                 '<i class="fa fa-box-open" style="color:var(--warning)"></i> ' + cr.articulo +
                 ' &nbsp;·&nbsp; ' + cr.cant_cuotas + ' cuotas ' + cr.frecuencia + 's' +
                 ' &nbsp;·&nbsp; $' + cr.monto_cuota + ' c/u';
+
+            renderSeleccionCuotas(escCuotasPagables);
+
             let bodyHtml = renderCronograma(data.cuotas);
             if (data.pagos && data.pagos.length > 0) {
                 bodyHtml += renderHistorial(data.pagos, data.hist_total);
@@ -1351,20 +1364,140 @@ function anularPago(ptId, nombre) {
   .catch(() => alert('Error de conexión.'));
 }
 
-// ── Seleccionar cuotas adelantadas ───────────────────────────
-function selAd(cuotaId, baseTotal, montoBase, n, maxAd) {
-  const inp = document.getElementById('inp-' + cuotaId);
-  if (inp) inp.value = (baseTotal + n * montoBase).toFixed(2);
-  for (let i = 0; i <= maxAd; i++) {
-    const btn = document.getElementById('ad-btn-' + cuotaId + '-' + i);
-    if (!btn) continue;
-    btn.classList.toggle('btn-primary', i === n);
-    btn.classList.toggle('btn-ghost',   i !== n);
-  }
-  const lbl = document.getElementById('ad-lbl-' + cuotaId);
-  if (lbl) lbl.textContent = n === 0
-    ? 'Solo esta cuota'
-    : 'Esta cuota + ' + n + ' adelantada' + (n > 1 ? 's' : '');
+// ── Sección "Cobrar cuotas" en Estado de Cuenta ──────────────
+
+function renderSeleccionCuotas(cuotas) {
+    const secEl = document.getElementById('esc-seleccion');
+    const listEl = document.getElementById('esc-cuotas-list');
+
+    if (!cuotas || cuotas.length === 0) {
+        secEl.style.display = 'none';
+        return;
+    }
+
+    let html = '<div style="display:flex;flex-direction:column;gap:6px">';
+    cuotas.forEach((c, idx) => {
+        const bloqueado = c.pago_pen > 0;
+        const labelEst  = c.estado === 'VENCIDA' ? '🔴' : c.estado === 'CAP_PAGADA' ? '🔵' : c.estado === 'PARCIAL' ? '🟠' : '🟡';
+        const montoStr  = formatPesos(c.total);
+        const moraStr   = c.mora > 0 && c.estado !== 'CAP_PAGADA' ? ' <span style="color:var(--danger);font-size:.72rem">+' + formatPesos(c.mora) + ' mora</span>' : '';
+        const bloqStr   = bloqueado ? ' <span style="color:var(--warning);font-size:.7rem">(pago pendiente)</span>' : '';
+        html += `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:${bloqueado ? 'not-allowed' : 'pointer'};background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);opacity:${bloqueado ? '.55' : '1'}">
+            <input type="checkbox" data-esc-idx="${idx}" onchange="escToggleCuota(${idx})"
+                style="width:16px;height:16px;cursor:${bloqueado ? 'not-allowed' : 'pointer'};accent-color:var(--success);flex-shrink:0"
+                ${bloqueado ? 'disabled' : ''}>
+            <span style="flex:1;font-size:.85rem">
+                <strong>#${c.numero_cuota}</strong>
+                <span style="color:var(--text-muted);font-size:.78rem"> · ${c.fecha_venc}</span>
+                ${labelEst}${moraStr}${bloqStr}
+            </span>
+            <span style="font-weight:700;color:var(--success);white-space:nowrap">${montoStr}</span>
+        </label>`;
+    });
+    html += '</div>';
+    listEl.innerHTML = html;
+    secEl.style.display = 'block';
+
+    // Reset estado
+    document.getElementById('esc-pura-cb').checked = false;
+    document.getElementById('esc-cuota-pura-wrap').style.display = 'none';
+    document.getElementById('esc-total-wrap').style.display = 'none';
+    document.getElementById('esc-total-val').textContent = '$ 0';
+}
+
+function escToggleCuota(idx) {
+    const checkboxes = document.querySelectorAll('[data-esc-idx]');
+    const checked = checkboxes[idx] && checkboxes[idx].checked;
+
+    if (checked) {
+        // Al marcar idx → marcar todos 0..idx
+        checkboxes.forEach((cb, i) => {
+            if (i <= idx && !cb.disabled) cb.checked = true;
+        });
+    } else {
+        // Al desmarcar idx → desmarcar todos idx..end
+        checkboxes.forEach((cb, i) => {
+            if (i >= idx) cb.checked = false;
+        });
+    }
+    escRecalcular();
+}
+
+function escRecalcular() {
+    const checkboxes = document.querySelectorAll('[data-esc-idx]');
+    const esPura     = document.getElementById('esc-pura-cb').checked;
+    let total        = 0;
+    let alguna       = false;
+    let tieneMora    = false;
+
+    checkboxes.forEach((cb, i) => {
+        if (!cb.checked) return;
+        alguna = true;
+        const c = escCuotasPagables[i];
+        if (!c) return;
+        if (c.estado === 'CAP_PAGADA') {
+            total += c.mora;                     // solo mora congelada
+        } else if (esPura) {
+            total += c.total - c.mora;           // c.total ya tiene saldo descontado; quitar mora
+        } else {
+            total += c.total;                    // capital + mora - saldo
+        }
+        if (c.mora > 0 && c.estado !== 'CAP_PAGADA') tieneMora = true;
+    });
+
+    document.getElementById('esc-cuota-pura-wrap').style.display = (alguna && tieneMora) ? 'block' : 'none';
+    document.getElementById('esc-total-wrap').style.display = alguna ? 'flex' : 'none';
+    document.getElementById('esc-total-val').textContent = formatPesos(total);
+}
+
+function escCobrarSeleccionadas() {
+    const checkboxes  = document.querySelectorAll('[data-esc-idx]');
+    const esPuraBool  = document.getElementById('esc-pura-cb').checked;
+    let seleccionadas = [];
+    let total         = 0;
+    let totalMora     = 0;
+
+    checkboxes.forEach((cb, i) => {
+        if (!cb.checked) return;
+        const c = escCuotasPagables[i];
+        if (!c) return;
+        seleccionadas.push(c);
+        totalMora += c.mora;
+        if (c.estado === 'CAP_PAGADA') {
+            total += c.mora;
+        } else if (esPuraBool) {
+            total += c.total - c.mora;
+        } else {
+            total += c.total;
+        }
+    });
+
+    if (seleccionadas.length === 0) {
+        alert('Seleccioná al menos una cuota.');
+        return;
+    }
+
+    const primeraCuota = seleccionadas[0];
+    const numLabel = seleccionadas.length > 1
+        ? '#' + primeraCuota.numero_cuota + '–' + seleccionadas[seleccionadas.length - 1].numero_cuota
+        : '#' + primeraCuota.numero_cuota;
+
+    // Construir objeto compatible con _rellenarModal
+    const cObj = {
+        id:            primeraCuota.id,
+        numero_cuota:  numLabel,
+        cant_cuotas:   null,
+        monto_cuota:   esPuraBool ? (total) : (total - totalMora),  // capital para display
+        mora_calc:     esPuraBool ? 0 : totalMora,
+        estado:        primeraCuota.estado,
+        apellidos:     escClienteNombre,
+        nombres:       '',
+        articulo:      escCreditoData ? escCreditoData.articulo : '',
+        pago_pen:      0,
+    };
+
+    closeModal('modal-estado-cuenta');
+    _rellenarModal(cObj, total, esPuraBool);
 }
 
 function renderCronograma(cuotas) {
