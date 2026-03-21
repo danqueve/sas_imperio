@@ -16,20 +16,32 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $pdo   = obtener_conexion();
 $pt_id = (int) ($_POST['pt_id'] ?? 0);
 $uid   = (int) $_SESSION['user_id'];
+$rol   = $_SESSION['rol'] ?? '';
 
 if (!$pt_id) {
     echo json_encode(['error' => 'ID inválido.']);
     exit;
 }
 
-// Verificar que pertenece al cobrador y está PENDIENTE (no aprobado)
-$stmt = $pdo->prepare("
-    SELECT pt.id, cu.numero_cuota
-    FROM ic_pagos_temporales pt
-    JOIN ic_cuotas cu ON pt.cuota_id = cu.id
-    WHERE pt.id = ? AND pt.cobrador_id = ? AND pt.estado = 'PENDIENTE'
-");
-$stmt->execute([$pt_id, $uid]);
+// Admin y supervisor pueden anular cualquier pago PENDIENTE;
+// cobrador solo puede anular los propios.
+if (in_array($rol, ['admin', 'supervisor'], true)) {
+    $stmt = $pdo->prepare("
+        SELECT pt.id, pt.cobrador_id, cu.numero_cuota
+        FROM ic_pagos_temporales pt
+        JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+        WHERE pt.id = ? AND pt.estado = 'PENDIENTE'
+    ");
+    $stmt->execute([$pt_id]);
+} else {
+    $stmt = $pdo->prepare("
+        SELECT pt.id, pt.cobrador_id, cu.numero_cuota
+        FROM ic_pagos_temporales pt
+        JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+        WHERE pt.id = ? AND pt.cobrador_id = ? AND pt.estado = 'PENDIENTE'
+    ");
+    $stmt->execute([$pt_id, $uid]);
+}
 $row = $stmt->fetch();
 
 if (!$row) {
@@ -39,10 +51,10 @@ if (!$row) {
 
 $pdo->prepare("
     DELETE FROM ic_pagos_temporales
-    WHERE id = ? AND cobrador_id = ? AND estado = 'PENDIENTE'
-")->execute([$pt_id, $uid]);
+    WHERE id = ? AND estado = 'PENDIENTE'
+")->execute([$pt_id]);
 
 registrar_log($pdo, $uid, 'PAGO_ANULADO', 'pago_temporal', $pt_id,
-    'Cuota #' . $row['numero_cuota'] . ' — pago anulado por el cobrador');
+    'Cuota #' . $row['numero_cuota'] . ' — pago anulado por ' . $rol);
 
 echo json_encode(['ok' => true]);
