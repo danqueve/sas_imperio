@@ -48,15 +48,16 @@ $stmt = $pdo->prepare("
     JOIN ic_cuotas  cu   ON cu.credito_id = cr.id
                         AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
-    JOIN (
-        SELECT credito_id, COUNT(*) AS cuotas_atrasadas
+    LEFT JOIN (
+        SELECT credito_id
         FROM ic_cuotas
         WHERE fecha_vencimiento < CURDATE()
           AND estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
         GROUP BY credito_id
-        HAVING COUNT(*) < 5
+        HAVING COUNT(*) >= 5
     ) filtro ON filtro.credito_id = cr.id
     WHERE cr.dia_cobro IN ($placeholders)
+      AND filtro.credito_id IS NULL
     ORDER BY cr.dia_cobro ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
 $stmt->execute($params);
@@ -323,18 +324,19 @@ $stmt_qm = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
-    JOIN (
-        SELECT credito_id, COUNT(*) AS cuotas_atrasadas
+    LEFT JOIN (
+        SELECT credito_id
         FROM ic_cuotas
         WHERE fecha_vencimiento < CURDATE()
           AND estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
         GROUP BY credito_id
-        HAVING COUNT(*) < 5
+        HAVING COUNT(*) >= 5
     ) filtro ON filtro.credito_id = cr.id
     WHERE cr.cobrador_id = ?
       AND cr.estado IN ('EN_CURSO','MOROSO')
       AND cr.frecuencia IN ('quincenal', 'mensual')
       AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
+      AND filtro.credito_id IS NULL
     ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cu.fecha_vencimiento ASC, cl.apellidos ASC
 ");
 $stmt_qm->execute([$cobrador_id]);
