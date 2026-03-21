@@ -169,7 +169,7 @@ $bw2 = 38;
 $resumen = [
     ['Efectivo cobrado',  fmt($total_efectivo)],
     ['Transferencias',    fmt($total_transferencia)],
-    ['Mora cobrada',      fmt($total_mora)],
+    ['Mora NO cobrada',   fmt($total_mora)],
     ['TOTAL GENERAL',     fmt($total_general)],
 ];
 
