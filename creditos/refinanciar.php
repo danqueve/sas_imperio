@@ -425,13 +425,68 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
 
         <div class="d-flex gap-3 mb-5">
-            <button type="submit" class="btn-ic btn-primary"
-                    <?= $tiene_pagos_pendientes ? 'disabled' : '' ?>>
+            <button type="button" class="btn-ic btn-primary"
+                    <?= $tiene_pagos_pendientes ? 'disabled' : '' ?>
+                    onclick="abrirModalConfirmar()">
                 <i class="fa fa-sync-alt"></i> Confirmar Refinanciación
             </button>
             <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>
+</div>
+
+<!-- ── Modal confirmación con cuenta regresiva ─────────────────── -->
+<div id="modal-refin" style="
+        display:none;position:fixed;inset:0;z-index:9999;
+        background:rgba(0,0,0,.65);backdrop-filter:blur(3px);
+        align-items:center;justify-content:center">
+    <div style="
+            background:var(--dark-card,#1e2130);border:1px solid var(--dark-border,#2d3250);
+            border-radius:14px;padding:32px 36px;max-width:440px;width:90%;
+            box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center">
+
+        <!-- Icono advertencia -->
+        <div style="width:64px;height:64px;border-radius:50%;background:rgba(245,158,11,.15);
+                    display:flex;align-items:center;justify-content:center;margin:0 auto 18px">
+            <i class="fa fa-triangle-exclamation" style="font-size:1.8rem;color:#f59e0b"></i>
+        </div>
+
+        <div style="font-size:1.15rem;font-weight:800;margin-bottom:8px">¿Confirmar refinanciación?</div>
+        <div style="font-size:.875rem;color:var(--text-muted,#94a3b8);margin-bottom:24px;line-height:1.5">
+            Esta acción eliminará las cuotas pendientes y generará nuevas cuotas.<br>
+            <strong>No se puede deshacer.</strong>
+        </div>
+
+        <!-- Cuenta regresiva -->
+        <div id="modal-countdown-wrap" style="margin-bottom:20px">
+            <div style="font-size:.78rem;color:var(--text-muted,#94a3b8);margin-bottom:8px">
+                Podés confirmar en
+            </div>
+            <div style="
+                    width:60px;height:60px;border-radius:50%;margin:0 auto;
+                    border:3px solid var(--dark-border,#2d3250);
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:1.6rem;font-weight:900;color:#f59e0b;
+                    position:relative">
+                <svg style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)" viewBox="0 0 60 60">
+                    <circle cx="30" cy="30" r="27" fill="none" stroke="var(--dark-border,#2d3250)" stroke-width="3"/>
+                    <circle id="modal-arc" cx="30" cy="30" r="27" fill="none" stroke="#f59e0b" stroke-width="3"
+                            stroke-dasharray="169.6" stroke-dashoffset="0"
+                            style="transition:stroke-dashoffset .9s linear"/>
+                </svg>
+                <span id="modal-num">10</span>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:12px;justify-content:center">
+            <button id="btn-confirmar-refin" class="btn-ic btn-primary" disabled
+                    onclick="submitRefinanciar()"
+                    style="min-width:160px;opacity:.45;cursor:not-allowed;transition:opacity .3s">
+                <i class="fa fa-sync-alt"></i> Confirmar
+            </button>
+            <button class="btn-ic btn-ghost" onclick="cerrarModalConfirmar()">Cancelar</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -460,6 +515,58 @@ function recalcular() {
 }
 
 document.addEventListener('DOMContentLoaded', recalcular);
+
+// ── Modal cuenta regresiva ────────────────────────────────────
+let _cdTimer = null;
+
+function abrirModalConfirmar() {
+    const modal  = document.getElementById('modal-refin');
+    const num    = document.getElementById('modal-num');
+    const arc    = document.getElementById('modal-arc');
+    const btnOk  = document.getElementById('btn-confirmar-refin');
+    const TOTAL  = 169.6; // circunferencia (2π×27)
+    let   seg    = 10;
+
+    // Reset
+    num.textContent      = seg;
+    arc.style.strokeDashoffset = 0;
+    btnOk.disabled       = true;
+    btnOk.style.opacity  = '.45';
+    btnOk.style.cursor   = 'not-allowed';
+
+    modal.style.display  = 'flex';
+    clearInterval(_cdTimer);
+
+    _cdTimer = setInterval(() => {
+        seg--;
+        num.textContent = seg;
+        arc.style.strokeDashoffset = TOTAL * (1 - seg / 10);
+
+        if (seg <= 0) {
+            clearInterval(_cdTimer);
+            num.textContent      = '✓';
+            arc.style.stroke     = '#10b981';
+            btnOk.disabled       = false;
+            btnOk.style.opacity  = '1';
+            btnOk.style.cursor   = 'pointer';
+        }
+    }, 1000);
+}
+
+function cerrarModalConfirmar() {
+    clearInterval(_cdTimer);
+    document.getElementById('modal-refin').style.display = 'none';
+}
+
+function submitRefinanciar() {
+    cerrarModalConfirmar();
+    document.querySelector('form.form-ic').submit();
+}
+
+// Cerrar con Escape
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') cerrarModalConfirmar();
+});
 </script>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>
