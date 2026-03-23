@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS `ic_pagos_temporales` (
   `monto_transferencia` DECIMAL(12,2) DEFAULT 0.00,
   `monto_total` DECIMAL(12,2) NOT NULL,
   `monto_mora_cobrada` DECIMAL(12,2) DEFAULT 0.00,
+  `mora_congelada` DECIMAL(12,2) DEFAULT 0.00 COMMENT 'Mora calculada al momento del registro (se usa en aprobación)',
   `es_cuota_pura` TINYINT(1) DEFAULT 0,
   `observaciones` TEXT,
   `estado` ENUM('PENDIENTE','APROBADO','RECHAZADO') DEFAULT 'PENDIENTE',
@@ -175,7 +176,8 @@ CREATE TABLE IF NOT EXISTS `ic_pagos_temporales` (
   `origen` ENUM('cobrador','manual') DEFAULT 'cobrador' COMMENT 'Origen del pago: cobrador en campo o manual por admin',
   FOREIGN KEY (`cuota_id`) REFERENCES `ic_cuotas`(`id`),
   FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
-  INDEX `idx_pt_cobrador_jornada` (`cobrador_id`, `fecha_jornada`, `estado`)
+  INDEX `idx_pt_cobrador_jornada` (`cobrador_id`, `fecha_jornada`, `estado`),
+  INDEX `idx_pt_cuota_estado` (`cuota_id`, `estado`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 -- ------------------------------------------------------------

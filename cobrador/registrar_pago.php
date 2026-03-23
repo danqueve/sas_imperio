@@ -64,19 +64,37 @@ $cuotas_stmt = $pdo->prepare("
 $cuotas_stmt->execute([$credito_id]);
 $cuotas_pendientes = $cuotas_stmt->fetchAll();
 
-// Verificar si hay pagos pendientes en el crédito para evitar saltos y desincronización
-foreach ($cuotas_pendientes as $c) {
-    if ((int) $c['pago_pen'] > 0) {
-        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Este crédito tiene pagos pendientes de aprobación. No se pueden registrar nuevos pagos hasta que el supervisor los apruebe.'];
-        header('Location: agenda');
-        exit;
-    }
-}
-
 $remaining    = $total;
 $ef_remaining = $ef;
 $tr_remaining = $tr;
 $cuotas_ok    = 0;
+
+// Fase 2: transacción con FOR UPDATE para bloqueo atómico
+$pdo->beginTransaction();
+
+// Re-leer cuotas con bloqueo dentro de la transacción
+$cuotas_lock = $pdo->prepare("
+    SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
+           cu.saldo_pagado, cu.monto_mora, cu.estado,
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt
+            WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen
+    FROM ic_cuotas cu
+    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')
+    ORDER BY cu.numero_cuota ASC
+    FOR UPDATE
+");
+$cuotas_lock->execute([$credito_id]);
+$cuotas_pendientes = $cuotas_lock->fetchAll();
+
+// Re-verificar pagos pendientes dentro de la transacción (atómico)
+foreach ($cuotas_pendientes as $c) {
+    if ((int) $c['pago_pen'] > 0) {
+        $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Este crédito tiene pagos pendientes de aprobación.'];
+        header('Location: agenda');
+        exit;
+    }
+}
 
 foreach ($cuotas_pendientes as $cuota) {
     if ($remaining <= 0.005) break;
@@ -112,9 +130,9 @@ foreach ($cuotas_pendientes as $cuota) {
 
     $pdo->prepare("
         INSERT INTO ic_pagos_temporales
-          (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, es_cuota_pura, fecha_jornada, observaciones)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $es_cuota_pura, $fecha_jornada_sel, $obs]);
+          (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, mora_congelada, es_cuota_pura, fecha_jornada, observaciones)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $mora_frozen, $es_cuota_pura, $fecha_jornada_sel, $obs]);
 
     registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota['id'],
         'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));
@@ -124,6 +142,8 @@ foreach ($cuotas_pendientes as $cuota) {
     $remaining    -= $pago_en_esta;
     $cuotas_ok++;
 }
+
+$pdo->commit();
 
 if ($cuotas_ok > 0) {
     $msg = $cuotas_ok > 1

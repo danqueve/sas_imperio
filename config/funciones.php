@@ -175,9 +175,13 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
             // 2. Calcular nuevo saldo y estado de la cuota
             $monto_base  = (float) $pago['monto_cuota'];
             $saldo_prev  = (float) ($pago['saldo_pagado'] ?? 0);
-            $mora_frozen = (float) $pago['monto_mora'];
 
-            // Congelar mora si aún no está fijada
+            // Fase 1: usar mora congelada al momento del registro del cobrador
+            // Fallback: cuota.monto_mora → recálculo (pagos legacy sin mora_congelada)
+            $mora_frozen = (float) ($pago['mora_congelada'] ?? 0);
+            if ($mora_frozen <= 0) {
+                $mora_frozen = (float) $pago['monto_mora'];
+            }
             if ($mora_frozen <= 0) {
                 $mora_frozen = calcular_mora(
                     $monto_base,
@@ -201,10 +205,8 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
 
             $fecha_pago_v = ($nuevo_estado === 'PAGADA') ? $fecha : null;
 
-            // CAP_PAGADA y PAGADA congelan la mora calculada; PARCIAL mantiene la mora previa
-            $monto_mora_guardar = ($nuevo_estado === 'PAGADA' || $nuevo_estado === 'CAP_PAGADA')
-                ? $mora_frozen
-                : (float) $pago['monto_mora'];
+            // Siempre congelar mora calculada en la cuota (Fase 3: evita recálculo con más días)
+            $monto_mora_guardar = $mora_frozen;
 
             $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
                 ->execute([$nuevo_estado, $nuevo_saldo, $monto_mora_guardar, $fecha_pago_v, $pago['cuota_id']]);

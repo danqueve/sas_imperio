@@ -61,7 +61,7 @@ if ($accion === 'revertir_confirmado') {
         $saldo_restante = (float) $saldo_stmt->fetchColumn();
 
         // 4. Obtener datos de la cuota para determinar nuevo estado
-        $venc = $pdo->prepare("SELECT fecha_vencimiento, monto_cuota FROM ic_cuotas WHERE id = ?");
+        $venc = $pdo->prepare("SELECT fecha_vencimiento, monto_cuota, monto_mora FROM ic_cuotas WHERE id = ?");
         $venc->execute([$cuota_id_rev]);
         $cuota_row = $venc->fetch();
 
@@ -78,10 +78,15 @@ if ($accion === 'revertir_confirmado') {
                 ? 'VENCIDA' : 'PENDIENTE';
         }
 
+        // Fase 5: Mantener mora congelada si hay saldo parcial; recalcular si queda sin pago
+        $mora_guardar = ($nuevo_estado_cuota === 'PAGADA')
+            ? (float) $cuota_row['monto_mora']                  // mantener congelada
+            : ($saldo_restante > 0 ? (float) $cuota_row['monto_mora'] : 0.0); // parcial: mantener; sin saldo: reset
+
         // 5. Actualizar cuota con el saldo real recalculado
         $fecha_pago_v = ($nuevo_estado_cuota === 'PAGADA') ? date('Y-m-d') : null;
-        $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=0, fecha_pago=? WHERE id=?")
-            ->execute([$nuevo_estado_cuota, $saldo_restante, $fecha_pago_v, $cuota_id_rev]);
+        $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
+            ->execute([$nuevo_estado_cuota, $saldo_restante, $mora_guardar, $fecha_pago_v, $cuota_id_rev]);
 
         // 6. Recalcular estado del crédito (puede pasar FINALIZADO→EN_CURSO/MOROSO, o EN_CURSO→MOROSO)
         $cr_stmt = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");

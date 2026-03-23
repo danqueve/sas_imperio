@@ -53,16 +53,6 @@ $pct_mora     = (float) $cr['interes_moratorio_pct'];
 $aprobador_id = (int) $_SESSION['user_id'];
 $fecha_hoy    = $fecha_pago_input; // usa la fecha elegida (puede ser retroactiva)
 
-// Cuotas pendientes/vencidas/parciales del crédito, de más antigua a más nueva
-$cuotas_stmt = $pdo->prepare("
-    SELECT id, numero_cuota, monto_cuota, fecha_vencimiento, saldo_pagado, monto_mora
-    FROM ic_cuotas
-    WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL')
-    ORDER BY numero_cuota ASC
-");
-$cuotas_stmt->execute([$credito_id]);
-$cuotas_pendientes = $cuotas_stmt->fetchAll();
-
 $remaining    = $total;
 $ef_remaining = $ef;
 $tr_remaining = $tr;
@@ -70,6 +60,31 @@ $cuotas_ok    = 0;
 
 try {
     $pdo->beginTransaction();
+
+    // Fase 2: SELECT FOR UPDATE para bloqueo atómico — evita race condition
+    $cuotas_stmt = $pdo->prepare("
+        SELECT id, numero_cuota, monto_cuota, fecha_vencimiento, saldo_pagado, monto_mora, estado
+        FROM ic_cuotas
+        WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')
+        ORDER BY numero_cuota ASC
+        FOR UPDATE
+    ");
+    $cuotas_stmt->execute([$credito_id]);
+    $cuotas_pendientes = $cuotas_stmt->fetchAll();
+
+    // Fase 2: Validar que no haya pagos PENDIENTE del cobrador sin aprobar
+    $pen_check = $pdo->prepare("
+        SELECT COUNT(*) FROM ic_pagos_temporales
+        WHERE cuota_id IN (SELECT id FROM ic_cuotas WHERE credito_id = ?)
+          AND estado = 'PENDIENTE'
+    ");
+    $pen_check->execute([$credito_id]);
+    if ((int) $pen_check->fetchColumn() > 0) {
+        $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Este crédito tiene pagos pendientes de aprobación. Aprobá o rechazá primero.'];
+        header('Location: ver?id=' . $credito_id);
+        exit;
+    }
 
     foreach ($cuotas_pendientes as $cuota) {
         if ($remaining <= 0.005) break;
@@ -97,19 +112,29 @@ try {
 
         $nuevo_saldo  = round($saldo_prev + $pago_en_esta, 2);
         $nuevo_estado = ($nuevo_saldo >= round($cuota['monto_cuota'] + $mora_frozen, 2) - 0.01) ? 'PAGADA' : 'PARCIAL';
+
+        // Fase 4: CAP_PAGADA en pago manual (consistente con flujo cobrador)
+        if ($nuevo_estado === 'PARCIAL') {
+            $capital_cubierto = ($nuevo_saldo >= $cuota['monto_cuota'] - 0.005);
+            $era_cap_pagada   = ($cuota['estado'] === 'CAP_PAGADA');
+            if ($capital_cubierto && $era_cap_pagada) {
+                $nuevo_estado = 'CAP_PAGADA';
+            }
+        }
+
         $fecha_pago_v = ($nuevo_estado === 'PAGADA') ? $fecha_hoy : null;
         $mora_en_esta = ($nuevo_estado === 'PAGADA') ? $mora_frozen : 0.0;
-        
-        // Si no está pagada totalmente, mantenemos la mora de la BD (así no congelamos si el pago es parcial)
-        $monto_mora_guardar = ($nuevo_estado === 'PAGADA') ? $mora_frozen : (float) $cuota['monto_mora'];
+
+        // Fase 3: siempre congelar mora (evita recálculo con más días en siguiente pago)
+        $monto_mora_guardar = $mora_frozen;
 
         // 1. Insertar pago_temporal ya aprobado (para mantener integridad referencial)
         $pdo->prepare("
             INSERT INTO ic_pagos_temporales
               (cuota_id, cobrador_id, monto_efectivo, monto_transferencia,
-               monto_total, monto_mora_cobrada, estado, fecha_jornada, origen)
-            VALUES (?, ?, ?, ?, ?, ?, 'APROBADO', ?, 'manual')
-        ")->execute([$cuota['id'], $cobrador_id, $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, fecha_jornada()]);
+               monto_total, monto_mora_cobrada, mora_congelada, estado, fecha_jornada, origen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'APROBADO', ?, 'manual')
+        ")->execute([$cuota['id'], $cobrador_id, $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $mora_frozen, fecha_jornada()]);
         $pago_temp_id = (int) $pdo->lastInsertId();
 
         // 2. Insertar pago confirmado
