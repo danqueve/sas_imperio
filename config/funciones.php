@@ -139,11 +139,13 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
         SELECT pt.*, cu.credito_id, cu.monto_cuota, cu.saldo_pagado, cu.monto_mora,
                cu.fecha_vencimiento, cu.estado AS cuota_estado, cu.numero_cuota,
                cr.interes_moratorio_pct,
+               COALESCE(cr.articulo_desc, a.descripcion, '') AS articulo_snap,
                cl.telefono AS cliente_tel, cl.nombres AS cliente_nombres
         FROM ic_pagos_temporales pt
-        JOIN ic_cuotas cu  ON pt.cuota_id    = cu.id
+        JOIN ic_cuotas cu   ON pt.cuota_id    = cu.id
         JOIN ic_creditos cr ON cu.credito_id  = cr.id
         JOIN ic_clientes cl ON cr.cliente_id  = cl.id
+        LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
         WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
     ");
     $stmt->execute([$cobrador_id, $fecha]);
@@ -153,12 +155,14 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
         try {
             $pdo->beginTransaction();
 
-            // 1. Insertar en pagos_confirmados
+            // 1. Insertar en pagos_confirmados con snapshot completo
             $ins = $pdo->prepare("
                 INSERT INTO ic_pagos_confirmados
                     (pago_temp_id, cuota_id, cobrador_id, aprobador_id, fecha_pago,
-                     monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada,
+                     es_cuota_pura, observaciones, fecha_jornada, origen,
+                     monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $ins->execute([
                 $pago['id'],
@@ -169,7 +173,16 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 $pago['monto_efectivo'],
                 $pago['monto_transferencia'],
                 $pago['monto_total'],
-                $pago['monto_mora_cobrada']
+                $pago['monto_mora_cobrada'],
+                // Snapshot
+                (int)($pago['es_cuota_pura'] ?? 0),
+                $pago['observaciones'] ?? null,
+                $pago['fecha_jornada'],
+                $pago['origen'] ?? 'cobrador',
+                $pago['monto_cuota'],
+                $pago['numero_cuota'],
+                $pago['fecha_vencimiento'],
+                $pago['articulo_snap'],
             ]);
 
             // 2. Calcular nuevo saldo y estado de la cuota

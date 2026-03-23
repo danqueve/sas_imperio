@@ -22,13 +22,16 @@ $cobrador = $cob_stmt->fetch();
 if (!$cobrador) die('Cobrador no encontrado.');
 
 // Extraer los pagos ya confirmados en esa fecha, filtrados por origen
+// Usa columnas snapshot (inmutables) con fallback a JOIN vivo para registros legacy (NULL)
 $dstmt = $pdo->prepare("
     SELECT pc.*,
            cr.id AS credito_id,
            cl.nombres, cl.apellidos,
-           cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
-           COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
-           COALESCE(pt.es_cuota_pura, 0) AS es_cuota_pura
+           COALESCE(pc.numero_cuota,    cu.numero_cuota)          AS numero_cuota,
+           COALESCE(pc.fecha_vcto_orig, cu.fecha_vencimiento)     AS fecha_vencimiento,
+           COALESCE(pc.monto_cuota_orig, cu.monto_cuota)          AS monto_cuota,
+           COALESCE(pc.articulo_snap, cr.articulo_desc, a.descripcion) AS articulo,
+           COALESCE(pc.es_cuota_pura, pt.es_cuota_pura, 0)        AS es_cuota_pura
     FROM ic_pagos_confirmados pc
     JOIN ic_cuotas cu   ON pc.cuota_id     = cu.id
     JOIN ic_creditos cr ON cu.credito_id   = cr.id
@@ -36,8 +39,8 @@ $dstmt = $pdo->prepare("
     LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
     LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
     WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?
-      AND IFNULL(pt.origen, 'cobrador') = ?
-    ORDER BY cl.apellidos ASC, cl.nombres ASC, cu.numero_cuota ASC
+      AND COALESCE(pc.origen, IFNULL(pt.origen, 'cobrador')) = ?
+    ORDER BY cl.apellidos ASC, cl.nombres ASC, numero_cuota ASC
 ");
 $dstmt->execute([$cobrador_id, $fecha_sel, $origen_sel]);
 $pagos_raw = $dstmt->fetchAll();
@@ -81,6 +84,78 @@ foreach ($pagos as $p) {
         $total_mora_cobrada += (float) $p['monto_mora_cobrada'];
     }
 }
+
+// ── Exportación CSV ──────────────────────────────────────────────
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    $nombre_cobrador = $cobrador['apellido'] . '_' . $cobrador['nombre'];
+    $filename = 'rendicion_historica_' . $origen_sel . '_' . str_replace('-', '', $fecha_sel)
+              . '_' . preg_replace('/[^a-zA-Z0-9_]/', '', $nombre_cobrador) . '.csv';
+
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+
+    $out = fopen('php://output', 'w');
+    // BOM para que Excel abra correctamente con tildes
+    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+
+    // Encabezado del reporte
+    fputcsv($out, ['Imperio Comercial - Rendición Histórica'], ';');
+    fputcsv($out, ['Cobrador:', $cobrador['apellido'] . ' ' . $cobrador['nombre']], ';');
+    fputcsv($out, ['Fecha Aprobación:', date('d/m/Y', strtotime($fecha_sel))], ';');
+    fputcsv($out, ['Tipo:', $origen_sel === 'manual' ? 'Manual (Admin)' : 'Cobrador'], ';');
+    fputcsv($out, ['Cantidad de Pagos:', count($pagos)], ';');
+    fputcsv($out, [], ';'); // línea en blanco
+
+    // Cabeceras de columnas
+    fputcsv($out, ['#', 'Cliente', 'Artículo', 'Cuota(s)', 'Valor Cuota', 'Efectivo', 'Transferencia', 'Mora', 'Total'], ';');
+
+    // Filas de datos
+    $index = 1;
+    foreach ($pagos as $p) {
+        $es_pura    = (int)($p['es_cuota_pura'] ?? 0);
+        $mora_val   = (float) $p['monto_mora_cobrada'];
+        $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
+
+        if ($es_pura && $mora_val > 0) {
+            $mora_str = number_format($mora_val, 2, ',', '.') . ' (Pend.)';
+        } elseif ($mora_val > 0) {
+            $mora_str = number_format($mora_val, 2, ',', '.');
+        } else {
+            $mora_str = '';
+        }
+
+        fputcsv($out, [
+            $index,
+            $p['apellidos'] . ', ' . $p['nombres'],
+            $p['articulo'],
+            $cuotas_str,
+            number_format((float)$p['monto_cuota_sum'], 2, ',', '.'),
+            number_format((float)$p['monto_efectivo'], 2, ',', '.'),
+            number_format((float)$p['monto_transferencia'], 2, ',', '.'),
+            $mora_str,
+            number_format((float)$p['monto_total'], 2, ',', '.'),
+        ], ';');
+        $index++;
+    }
+
+    // Fila de totales
+    fputcsv($out, [], ';'); // línea en blanco
+    $total_efectivo_csv      = array_sum(array_column($pagos, 'monto_efectivo'));
+    $total_transferencia_csv = array_sum(array_column($pagos, 'monto_transferencia'));
+    $total_general_csv       = array_sum(array_column($pagos, 'monto_total'));
+    fputcsv($out, [
+        '', '', '', '', 'TOTALES',
+        number_format((float)$total_efectivo_csv, 2, ',', '.'),
+        number_format((float)$total_transferencia_csv, 2, ',', '.'),
+        '',
+        number_format((float)$total_general_csv, 2, ',', '.'),
+    ], ';');
+
+    fclose($out);
+    exit;
+}
+// ─────────────────────────────────────────────────────────────────
 
 function lat(string $s): string {
     return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);

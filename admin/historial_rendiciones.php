@@ -185,6 +185,10 @@ require_once __DIR__ . '/../views/layout.php';
                                    target="_blank" class="btn-ic btn-danger btn-sm btn-icon" title="Exportar PDF">
                                     <i class="fa fa-file-pdf"></i>
                                 </a>
+                                <a href="historial_rendiciones_pdf?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= urlencode($r['origen']) ?>&export=csv"
+                                   class="btn-ic btn-success btn-sm btn-icon" title="Exportar CSV">
+                                    <i class="fa fa-file-csv"></i>
+                                </a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

@@ -37,8 +37,14 @@ if (!$cuota_id || !$credito_id || $total <= 0) {
     exit;
 }
 
-// Obtener cobrador e interes_moratorio del crédito
-$stmt = $pdo->prepare("SELECT cobrador_id, interes_moratorio_pct, estado FROM ic_creditos WHERE id = ?");
+// Obtener cobrador, interes_moratorio y artículo del crédito
+$stmt = $pdo->prepare("
+    SELECT cr.cobrador_id, cr.interes_moratorio_pct, cr.estado,
+           COALESCE(cr.articulo_desc, a.descripcion, '') AS articulo_snap
+    FROM ic_creditos cr
+    LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
+    WHERE cr.id = ?
+");
 $stmt->execute([$credito_id]);
 $cr = $stmt->fetch();
 
@@ -137,15 +143,21 @@ try {
         ")->execute([$cuota['id'], $cobrador_id, $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $mora_frozen, fecha_jornada()]);
         $pago_temp_id = (int) $pdo->lastInsertId();
 
-        // 2. Insertar pago confirmado
+        // 2. Insertar pago confirmado con snapshot
         $pdo->prepare("
             INSERT INTO ic_pagos_confirmados
               (pago_temp_id, cuota_id, cobrador_id, aprobador_id, fecha_pago,
-               monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada,
+               es_cuota_pura, fecha_jornada, origen,
+               monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ")->execute([
             $pago_temp_id, $cuota['id'], $cobrador_id, $aprobador_id, $fecha_hoy,
             $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta,
+            // Snapshot
+            0, $fecha_hoy, 'manual',
+            $cuota['monto_cuota'], $cuota['numero_cuota'], $cuota['fecha_vencimiento'],
+            $cr['articulo_snap'],
         ]);
 
         // 3. Actualizar cuota: PAGADA o PARCIAL según saldo acumulado
