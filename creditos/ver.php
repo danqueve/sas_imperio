@@ -241,6 +241,9 @@ $page_title   = 'Crédito #' . $id;
 $page_current = 'creditos';
 
 $topbar_actions = '<a href="resumen_pdf.php?id=' . $id . '" target="_blank" class="btn-ic btn-ghost btn-sm"><i class="fa fa-file-pdf"></i> PDF Resumen</a> ';
+if ((es_admin() || es_supervisor()) && $cr['estado'] === 'FINALIZADO') {
+    $topbar_actions .= '<a href="libre_deuda_pdf.php?id=' . $id . '" target="_blank" class="btn-ic btn-success btn-sm"><i class="fa fa-stamp"></i> Libre Deuda</a> ';
+}
 if (es_admin()) {
     $topbar_actions .= '<a href="editar?id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar</a> ';
 }

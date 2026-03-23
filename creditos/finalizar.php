@@ -133,6 +133,13 @@ require_once __DIR__ . '/../views/layout.php';
                     Generar nuevo crédito para este cliente
                 </a>
 
+                <a href="libre_deuda_pdf.php?id=<?= $id ?>" target="_blank"
+                   class="btn-ic btn-success"
+                   style="display:inline-flex;align-items:center;gap:8px;min-width:240px;justify-content:center">
+                    <i class="fa fa-stamp"></i>
+                    Descargar Libre Deuda
+                </a>
+
                 <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost"
                    style="min-width:240px;text-align:center">
                     <i class="fa fa-arrow-left"></i>
