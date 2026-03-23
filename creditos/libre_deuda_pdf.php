@@ -53,23 +53,6 @@ if ((int)$cr['tiene_garante']) {
     $garante = $g->fetch() ?: null;
 }
 
-// ── Totales de pagos confirmados ──────────────────────────────
-$tot = $pdo->prepare("
-    SELECT
-        COUNT(*)                              AS cant_pagos,
-        COALESCE(SUM(pc.monto_total), 0)      AS total_pagado,
-        COALESCE(SUM(pc.monto_mora_cobrada), 0) AS total_mora,
-        COALESCE(SUM(pc.monto_efectivo), 0)   AS total_efectivo,
-        COALESCE(SUM(pc.monto_transferencia), 0) AS total_transf,
-        MIN(pc.fecha_pago)                    AS primer_pago,
-        MAX(pc.fecha_pago)                    AS ultimo_pago
-    FROM ic_pagos_confirmados pc
-    JOIN ic_cuotas cu ON pc.cuota_id = cu.id
-    WHERE cu.credito_id = ?
-");
-$tot->execute([$id]);
-$totales = $tot->fetch();
-
 // ── Tipo de documento y texto por motivo ─────────────────────
 $motivo = $cr['motivo_finalizacion'] ?? 'PAGO_COMPLETO';
 
@@ -236,27 +219,7 @@ $pdf->MultiCell($ancho, 6, lat($texto_declaracion), 'LR', 'J');
 $pdf->Cell($ancho, 1, '', 'LBR', 1);
 $pdf->Ln(4);
 
-// ── SECCIÓN 5 — RESUMEN FINANCIERO ───────────────────────────
-$pdf->SetFont('Arial', 'B', 10);
-$pdf->SetFillColor(240, 240, 240);
-$pdf->Cell($ancho, 7, lat('  RESUMEN FINANCIERO'), 'LTR', 1, 'L', true);
-$pdf->SetFont('Arial', '', 9);
-
-$filas_fin = [
-    ['Total capital pagado', pesos((float)$totales['total_pagado'] - (float)$totales['total_mora'])],
-    ['Total mora cobrada',   (float)$totales['total_mora'] > 0 ? pesos((float)$totales['total_mora']) : '$ 0,00 (sin mora)'],
-    ['Total abonado',        pesos((float)$totales['total_pagado'])],
-    ['Primer pago',          fdate($totales['primer_pago'])],
-    ['Último pago',          fdate($totales['ultimo_pago'])],
-];
-foreach ($filas_fin as [$lbl, $val]) {
-    $pdf->Cell(60, 6, lat($lbl . ':'), 'L', 0, 'L');
-    $pdf->Cell($ancho - 60, 6, lat($val), 'R', 1, 'L');
-}
-$pdf->Cell($ancho, 1, '', 'LBR', 1);
-$pdf->Ln(10);
-
-// ── SECCIÓN 6 — FIRMA ─────────────────────────────────────────
+// ── SECCIÓN 5 — FIRMA ─────────────────────────────────────────
 $mitad = $ancho / 2 - 10;
 // Firma empresa
 $pdf->SetX(20);
