@@ -151,6 +151,22 @@ class RendicionHistorialPDF extends FPDF
         $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' / {nb}'), 0, 0, 'C');
         $this->SetTextColor(0, 0, 0);
     }
+
+    function fitText(string $text, float $maxW, string $suffix = '..'): string
+    {
+        $encoded = lat($text);
+        if ($this->GetStringWidth($encoded) <= $maxW) {
+            return $encoded;
+        }
+        while (mb_strlen($text) > 1) {
+            $text = mb_substr($text, 0, -1);
+            $encoded = lat($text);
+            if ($this->GetStringWidth($encoded . $suffix) <= $maxW) {
+                return $encoded . $suffix;
+            }
+        }
+        return $suffix;
+    }
 }
 
 $pdf = new RendicionHistorialPDF('L', 'mm', 'A4');
@@ -176,8 +192,8 @@ $index = 1;
 foreach ($pagos as $p) {
     $es_pura = (int)($p['es_cuota_pura'] ?? 0);
 
-    $cliente    = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 36, '..');
-    $articulo   = mb_strimwidth($p['articulo'], 0, 30, '..');
+    $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
+    $articulo_raw = $p['articulo'];
     $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
     $vlr_cuota  = (float) $p['monto_cuota_sum'];
 
@@ -192,10 +208,10 @@ foreach ($pagos as $p) {
     }
 
     $pdf->SetFont('Helvetica', '', 10);
-    $pdf->Cell($COLS[0], 7, $index,                          1, 0, 'C', false);
-    $pdf->Cell($COLS[1], 7, lat($cliente),                   1, 0, 'L', false);
-    $pdf->Cell($COLS[2], 7, lat($articulo),                  1, 0, 'L', false);
-    $pdf->Cell($COLS[3], 7, lat($cuotas_str),                1, 0, 'C', false);
+    $pdf->Cell($COLS[0], 7, $index,                                      1, 0, 'C', false);
+    $pdf->Cell($COLS[1], 7, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
+    $pdf->Cell($COLS[2], 7, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
+    $pdf->Cell($COLS[3], 7, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
     $pdf->Cell($COLS[4], 7, fmt($vlr_cuota),                 1, 0, 'R', false);
     $pdf->Cell($COLS[5], 7, fmt((float)$p['monto_efectivo']),       1, 0, 'R', false);
     $pdf->Cell($COLS[6], 7, fmt((float)$p['monto_transferencia']),  1, 0, 'R', false);

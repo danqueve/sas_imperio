@@ -118,11 +118,12 @@ function fmt(float $v): string {
 
 require_once __DIR__ . '/../fpdf/fpdf.php';
 
-// Anchos columnas: suma = 257mm
-$COLS   = [10, 55, 48, 18, 25, 25, 25, 30, 21];
+// Anchos columnas: suma = 190mm (portrait A4)
+// #(7) + Cliente(38) + Articulo(30) + Cuota(s)(13) + Vlr.Cuota(20) + Efectivo(22) + Transfer.(22) + Mora(20) + Total(18)
+$COLS   = [7, 38, 30, 13, 20, 22, 22, 20, 18];
 $LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Mora', 'Total'];
 $ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
-$ANCHO_TOTAL = array_sum($COLS); // 257
+$ANCHO_TOTAL = array_sum($COLS); // 190
 
 class RendicionPDF extends FPDF
 {
@@ -140,34 +141,37 @@ class RendicionPDF extends FPDF
         $this->SetDrawColor(0, 0, 0);
         $this->SetFillColor(255, 255, 255);
 
+        $aw = array_sum($this->cols); // ancho total
+
         // Título
-        $this->SetFont('Helvetica', 'B', 16);
+        $this->SetFont('Helvetica', 'B', 14);
         $this->SetXY(10, 8);
-        $this->Cell(257, 8, lat('Imperio Comercial - Rendicion de Cobranza'), 0, 1, 'L');
+        $this->Cell($aw, 7, lat('Imperio Comercial - Rendicion de Cobranza'), 0, 1, 'L');
 
         // Subtítulo explicativo
-        $this->SetFont('Helvetica', 'I', 9);
+        $this->SetFont('Helvetica', 'I', 8);
         $this->SetX(10);
-        $this->Cell(257, 5, lat('Detalle de pagos registrados por el cobrador, pendientes de aprobacion'), 0, 1, 'L');
+        $this->Cell($aw, 4, lat('Detalle de pagos registrados por el cobrador, pendientes de aprobacion'), 0, 1, 'L');
 
         // Datos del cobrador y fecha
-        $this->SetFont('Helvetica', '', 9);
+        $this->SetFont('Helvetica', '', 8);
         $this->SetX(10);
-        $this->Cell(128, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
-        $this->Cell(129, 5, lat($this->fecha_label . '   |   Pagos: ' . $this->num_pagos . '   |   Impreso: ' . $this->fecha_impresion), 0, 1, 'R');
+        $hw = intval($aw / 2);
+        $this->Cell($hw, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
+        $this->Cell($aw - $hw, 5, lat($this->fecha_label . '  |  Pagos: ' . $this->num_pagos . '  |  ' . $this->fecha_impresion), 0, 1, 'R');
 
         // Línea separadora
         $this->SetLineWidth(0.4);
-        $this->Line(10, $this->GetY() + 2, 267, $this->GetY() + 2);
+        $this->Line(10, $this->GetY() + 2, 10 + $aw, $this->GetY() + 2);
         $this->Ln(5);
 
         // Encabezado de tabla
-        $this->SetFont('Helvetica', 'B', 9);
+        $this->SetFont('Helvetica', 'B', 8);
         foreach ($this->cols as $i => $w) {
-            $this->Cell($w, 7, lat($this->labels[$i]), 1, 0, $this->aligns[$i], false);
+            $this->Cell($w, 6, lat($this->labels[$i]), 1, 0, $this->aligns[$i], false);
         }
         $this->Ln();
-        $this->SetFont('Helvetica', '', 9);
+        $this->SetFont('Helvetica', '', 8);
     }
 
     function Footer()
@@ -178,6 +182,23 @@ class RendicionPDF extends FPDF
         $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' / {nb}'), 0, 0, 'C');
         $this->SetTextColor(0, 0, 0);
     }
+
+    function fitText(string $text, float $maxW, string $suffix = '..'): string
+    {
+        $encoded = lat($text);
+        if ($this->GetStringWidth($encoded) <= $maxW) {
+            return $encoded;
+        }
+        $suffixW = $this->GetStringWidth($suffix);
+        while (mb_strlen($text) > 1) {
+            $text = mb_substr($text, 0, -1);
+            $encoded = lat($text);
+            if ($this->GetStringWidth($encoded . $suffix) <= $maxW) {
+                return $encoded . $suffix;
+            }
+        }
+        return $suffix;
+    }
 }
 
 // ── Preparar label de fecha para el header ──────────────────
@@ -187,7 +208,7 @@ if ($es_multi) {
     $fecha_label = 'Fecha: ' . date('d/m/Y', strtotime($fechas_jornada[0]));
 }
 
-$pdf = new RendicionPDF('L', 'mm', 'A4');
+$pdf = new RendicionPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->cobrador_nombre  = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
 $pdf->fecha_label      = $fecha_label;
@@ -212,9 +233,9 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
     if ($es_multi) {
         $dow = (int) date('N', strtotime($fecha_j));
         $dia_nombre = $dias_es[$dow] ?? '';
-        $pdf->SetFont('Helvetica', 'B', 10);
+        $pdf->SetFont('Helvetica', 'B', 9);
         $pdf->SetFillColor(230, 230, 230);
-        $pdf->Cell($ANCHO_TOTAL, 8, lat('Jornada: ' . $dia_nombre . ' ' . date('d/m/Y', strtotime($fecha_j))), 1, 1, 'L', true);
+        $pdf->Cell($ANCHO_TOTAL, 7, lat('Jornada: ' . $dia_nombre . ' ' . date('d/m/Y', strtotime($fecha_j))), 1, 1, 'L', true);
         $pdf->SetFillColor(255, 255, 255);
     }
 
@@ -229,8 +250,8 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
         $es_pura = (int)($p['es_cuota_pura'] ?? 0);
         $es_baja = (int)($p['solicitud_baja'] ?? 0);
 
-        $cliente    = mb_strimwidth($p['apellidos'] . ', ' . $p['nombres'], 0, 36, '..');
-        $articulo   = mb_strimwidth($p['articulo'], 0, 30, '..');
+        $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
+        $articulo_raw = $p['articulo'];
         $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
         $vlr_cuota  = (float) $p['monto_cuota_sum'];
 
@@ -252,48 +273,48 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
         $j_mora     += $es_pura ? 0.0 : $mora_val;
         $j_total    += $tt;
 
-        $pdf->SetFont('Helvetica', '', 10);
-        $pdf->Cell($COLS[0], 7, $index,              1, 0, 'C', false);
-        $pdf->Cell($COLS[1], 7, lat($cliente),        1, 0, 'L', false);
-        $pdf->Cell($COLS[2], 7, lat($articulo),       1, 0, 'L', false);
-        $pdf->Cell($COLS[3], 7, lat($cuotas_str),     1, 0, 'C', false);
-        $pdf->Cell($COLS[4], 7, fmt($vlr_cuota),      1, 0, 'R', false);
-        $pdf->Cell($COLS[5], 7, fmt($ef),             1, 0, 'R', false);
-        $pdf->Cell($COLS[6], 7, fmt($tr),             1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', '', 8);
+        $pdf->Cell($COLS[0], 6, $index,                                    1, 0, 'C', false);
+        $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1), 1, 0, 'L', false);
+        $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),1, 0, 'L', false);
+        $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1), 1, 0, 'C', false);
+        $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($vlr_cuota), $COLS[4] - 1), 1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($ef), $COLS[5] - 1),     1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($tr), $COLS[6] - 1),     1, 0, 'R', false);
 
         if ($es_pura && $mora_val > 0) {
-            $pdf->SetFont('Helvetica', 'I', 9);
+            $pdf->SetFont('Helvetica', 'I', 7);
         }
-        $pdf->Cell($COLS[7], 7, lat($mora_str),       1, 0, 'R', false);
-        $pdf->SetFont('Helvetica', '', 10);
+        $pdf->Cell($COLS[7], 6, $pdf->fitText($mora_str, $COLS[7] - 1),  1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', '', 8);
 
-        $pdf->Cell($COLS[8], 7, fmt($tt),             1, 0, 'R', false);
+        $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1), 1, 0, 'R', false);
         $pdf->Ln();
 
         // Solicitud de baja inline
         if ($es_baja) {
             $motivo = trim($p['motivo_baja'] ?? '');
-            $baja_txt = 'Solicitud de baja' . ($motivo ? ': ' . mb_strimwidth($motivo, 0, 80, '..') : '');
-            $pdf->SetFont('Helvetica', 'I', 8);
+            $baja_txt = 'Solicitud de baja' . ($motivo ? ': ' . mb_strimwidth($motivo, 0, 60, '..') : '');
+            $pdf->SetFont('Helvetica', 'I', 7);
             $pdf->SetTextColor(100, 100, 100);
-            $pdf->Cell($COLS[0], 5, '', 0, 0);
-            $pdf->Cell($ANCHO_TOTAL - $COLS[0], 5, lat($baja_txt), 0, 1, 'L');
+            $pdf->Cell($COLS[0], 4, '', 0, 0);
+            $pdf->Cell($ANCHO_TOTAL - $COLS[0], 4, lat($baja_txt), 0, 1, 'L');
             $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetFont('Helvetica', '', 10);
+            $pdf->SetFont('Helvetica', '', 8);
         }
 
         $index++;
     }
 
     // Fila subtotal/total de jornada
-    $pdf->SetFont('Helvetica', 'B', 10);
+    $pdf->SetFont('Helvetica', 'B', 8);
     $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
     $label_total = $es_multi ? 'SUBTOTAL' : 'TOTALES';
-    $pdf->Cell($ancho_label, 8, lat($label_total), 1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 8, fmt($j_efectivo),  1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 8, fmt($j_transfer),  1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 8, fmt($j_mora),      1, 0, 'R', false);
-    $pdf->Cell($COLS[8], 8, fmt($j_total),     1, 0, 'R', false);
+    $pdf->Cell($ancho_label, 7, lat($label_total), 1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 7, $pdf->fitText(fmt($j_efectivo), $COLS[5] - 1),  1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 7, $pdf->fitText(fmt($j_transfer), $COLS[6] - 1),  1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 7, $pdf->fitText(fmt($j_mora), $COLS[7] - 1),      1, 0, 'R', false);
+    $pdf->Cell($COLS[8], 7, $pdf->fitText(fmt($j_total), $COLS[8] - 1),     1, 0, 'R', false);
     $pdf->Ln();
 
     // Espacio entre jornadas
@@ -305,13 +326,13 @@ endforeach;
 
 // ── Fila TOTAL GLOBAL (solo si multi-jornada) ───────────────
 if ($es_multi) {
-    $pdf->SetFont('Helvetica', 'B', 11);
+    $pdf->SetFont('Helvetica', 'B', 9);
     $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
-    $pdf->Cell($ancho_label, 9, lat('TOTAL GENERAL'), 1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 9, fmt($total_efectivo),      1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 9, fmt($total_transferencia), 1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 9, fmt($total_mora_cobrada),  1, 0, 'R', false);
-    $pdf->Cell($COLS[8], 9, fmt($total_general),       1, 0, 'R', false);
+    $pdf->Cell($ancho_label, 8, lat('TOTAL GENERAL'), 1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 8, $pdf->fitText(fmt($total_efectivo), $COLS[5] - 1),      1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 8, $pdf->fitText(fmt($total_transferencia), $COLS[6] - 1), 1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 8, $pdf->fitText(fmt($total_mora_cobrada), $COLS[7] - 1),  1, 0, 'R', false);
+    $pdf->Cell($COLS[8], 8, $pdf->fitText(fmt($total_general), $COLS[8] - 1),       1, 0, 'R', false);
     $pdf->Ln();
 }
 
@@ -320,9 +341,9 @@ $pdf->Ln(10);
 $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
 
-$bx  = 160;
+$bx  = 95;
 $bw1 = 55;
-$bw2 = 42;
+$bw2 = 40;
 
 $resumen = [
     ['Total Efectivo',               fmt($total_efectivo)],
@@ -338,11 +359,11 @@ $resumen[] = ['TOTAL RENDIDO', fmt($total_general)];
 
 foreach ($resumen as $i => [$label, $valor]) {
     $es_total = ($i === count($resumen) - 1);
-    $pdf->SetFont('Helvetica', $es_total ? 'B' : '', 11);
+    $pdf->SetFont('Helvetica', $es_total ? 'B' : '', 9);
     $pdf->SetX($bx);
-    $pdf->Cell($bw1, 8, lat($label), 1, 0, 'L', false);
-    $pdf->SetFont('Helvetica', 'B', 11);
-    $pdf->Cell($bw2, 8, lat($valor), 1, 1, 'R', false);
+    $pdf->Cell($bw1, 7, lat($label), 1, 0, 'L', false);
+    $pdf->SetFont('Helvetica', 'B', 9);
+    $pdf->Cell($bw2, 7, $pdf->fitText($valor, $bw2 - 1), 1, 1, 'R', false);
 }
 
 // ── Nota al pie sobre mora pendiente ─────────────────────────
