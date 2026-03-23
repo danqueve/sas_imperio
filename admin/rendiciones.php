@@ -383,15 +383,26 @@ require_once __DIR__ . '/../views/layout.php';
                     </span>
                 </div>
                 <?php if (count($pagos_por_jornada) > 1): ?>
-                <form method="POST">
-                    <input type="hidden" name="accion" value="aprobar_todas_jornadas">
-                    <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
-                    <button type="submit" class="btn-ic btn-success"
-                        data-confirm="¿Aprobar TODOS los <?= count($detalle_pagos) ?> pagos de <?= count($pagos_por_jornada) ?> jornadas?">
-                        <i class="fa fa-check-double"></i>
-                        Aprobar Todas (<?= count($pagos_por_jornada) ?> jornadas — <?= count($detalle_pagos) ?> pagos)
-                    </button>
-                </form>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <a href="rendicion_pdf.php?cobrador_id=<?= $cobrador_id ?>"
+                       class="btn-ic btn-ghost" target="_blank"
+                       style="display:inline-flex;align-items:center;gap:7px;padding:8px 14px;font-size:.88rem;border:1.5px solid rgba(239,68,68,.4);color:#ef4444">
+                        <i class="fa fa-file-pdf" style="font-size:1.1rem"></i>
+                        <span style="font-weight:600">PDF Completo</span>
+                        <span style="font-size:.75rem;opacity:.75;border-left:1px solid rgba(239,68,68,.3);padding-left:7px">
+                            <?= count($pagos_por_jornada) ?> jornadas · <?= formato_pesos($total_general_global) ?>
+                        </span>
+                    </a>
+                    <form method="POST">
+                        <input type="hidden" name="accion" value="aprobar_todas_jornadas">
+                        <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+                        <button type="submit" class="btn-ic btn-success"
+                            data-confirm="¿Aprobar TODOS los <?= count($detalle_pagos) ?> pagos de <?= count($pagos_por_jornada) ?> jornadas?">
+                            <i class="fa fa-check-double"></i>
+                            Aprobar Todas (<?= count($pagos_por_jornada) ?> jornadas — <?= count($detalle_pagos) ?> pagos)
+                        </button>
+                    </form>
+                </div>
                 <?php endif; ?>
             </div>
         </div>

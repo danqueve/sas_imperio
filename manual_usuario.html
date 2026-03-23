@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual de Usuario — Imperio Comercial</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            color: #1f2937;
+            line-height: 1.7;
+            background: #fff;
+            font-size: 14px;
+        }
+
+        /* Portada */
+        .cover {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: #fff;
+            padding: 60px 40px;
+            page-break-after: always;
+        }
+        .cover h1 { font-size: 42px; font-weight: 800; margin-bottom: 12px; }
+        .cover h2 { font-size: 22px; font-weight: 400; opacity: .85; margin-bottom: 40px; }
+        .cover .version { font-size: 14px; opacity: .6; margin-top: 40px; }
+        .cover .logo-circle {
+            width: 120px; height: 120px; border-radius: 50%;
+            background: rgba(255,255,255,.15); display: flex;
+            align-items: center; justify-content: center;
+            font-size: 48px; font-weight: 800; margin-bottom: 30px;
+        }
+
+        /* Contenido */
+        .content { max-width: 800px; margin: 0 auto; padding: 40px 30px; }
+
+        /* TOC */
+        .toc { page-break-after: always; }
+        .toc h2 { font-size: 24px; margin-bottom: 20px; color: #4f46e5; }
+        .toc ul { list-style: none; }
+        .toc li { padding: 6px 0; border-bottom: 1px solid #f3f4f6; }
+        .toc li a { text-decoration: none; color: #1f2937; display: flex; justify-content: space-between; }
+        .toc li a:hover { color: #4f46e5; }
+        .toc .toc-section { font-weight: 700; font-size: 15px; margin-top: 14px; color: #4f46e5; }
+        .toc .toc-sub { padding-left: 20px; font-size: 13px; }
+
+        /* Secciones */
+        .section { page-break-before: always; margin-top: 40px; }
+        .section:first-of-type { page-break-before: avoid; }
+
+        h2 {
+            font-size: 26px; font-weight: 800; color: #4f46e5;
+            border-bottom: 3px solid #4f46e5; padding-bottom: 8px; margin-bottom: 20px;
+        }
+        h3 {
+            font-size: 18px; font-weight: 700; color: #1f2937;
+            margin: 28px 0 10px; padding-left: 12px;
+            border-left: 4px solid #4f46e5;
+        }
+        h4 { font-size: 15px; font-weight: 700; margin: 16px 0 8px; color: #374151; }
+
+        p { margin-bottom: 12px; }
+
+        .tip {
+            background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6;
+            padding: 12px 16px; border-radius: 6px; margin: 14px 0; font-size: 13px;
+        }
+        .tip strong { color: #1d4ed8; }
+
+        .warning {
+            background: #fef3c7; border: 1px solid #fde68a; border-left: 4px solid #f59e0b;
+            padding: 12px 16px; border-radius: 6px; margin: 14px 0; font-size: 13px;
+        }
+        .warning strong { color: #b45309; }
+
+        .danger {
+            background: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #ef4444;
+            padding: 12px 16px; border-radius: 6px; margin: 14px 0; font-size: 13px;
+        }
+        .danger strong { color: #dc2626; }
+
+        ol, ul { margin: 8px 0 16px 24px; }
+        li { margin-bottom: 6px; }
+
+        .badge {
+            display: inline-block; padding: 2px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 700; color: #fff;
+        }
+        .badge-admin { background: #ef4444; }
+        .badge-supervisor { background: #3b82f6; }
+        .badge-cobrador { background: #10b981; }
+        .badge-vendedor { background: #f59e0b; color: #000; }
+        .badge-todos { background: #6b7280; }
+
+        .role-tag { margin-bottom: 8px; }
+
+        table {
+            width: 100%; border-collapse: collapse; margin: 12px 0 20px;
+            font-size: 13px;
+        }
+        th {
+            background: #f3f4f6; text-align: left; padding: 8px 12px;
+            font-weight: 700; border: 1px solid #e5e7eb;
+        }
+        td { padding: 8px 12px; border: 1px solid #e5e7eb; vertical-align: top; }
+
+        .steps { counter-reset: step; list-style: none; margin-left: 0; }
+        .steps li {
+            counter-increment: step; padding: 10px 0 10px 50px; position: relative;
+            border-left: 2px solid #e5e7eb; margin-left: 16px;
+        }
+        .steps li::before {
+            content: counter(step);
+            position: absolute; left: -16px; top: 8px;
+            width: 30px; height: 30px; border-radius: 50%;
+            background: #4f46e5; color: #fff; font-weight: 800;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+        }
+        .steps li:last-child { border-left-color: transparent; }
+
+        .key {
+            display: inline-block; padding: 1px 6px; background: #f3f4f6;
+            border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px;
+            font-family: monospace;
+        }
+
+        .screenshot-placeholder {
+            background: #f9fafb; border: 2px dashed #d1d5db; border-radius: 8px;
+            padding: 30px; text-align: center; color: #9ca3af; font-size: 13px;
+            margin: 12px 0;
+        }
+
+        @media print {
+            body { font-size: 12px; }
+            .cover { min-height: auto; padding: 100px 40px; }
+            .section { page-break-before: always; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ PORTADA ═══════════ -->
+<div class="cover">
+    <div class="logo-circle">IC</div>
+    <h1>Manual de Usuario</h1>
+    <h2>Sistema de Gestión de Créditos<br>Imperio Comercial</h2>
+    <p style="opacity:.7;max-width:500px">Guía completa para administradores, supervisores, cobradores y vendedores</p>
+    <div class="version">Versión 1.0 — Marzo 2026</div>
+</div>
+
+<!-- ═══════════════════════════════════════════ ÍNDICE ════════════ -->
+<div class="content toc">
+    <h2>Índice</h2>
+    <ul>
+        <li class="toc-section">1. Introducción</li>
+        <li class="toc-sub"><a href="#intro-que-es">1.1 ¿Qué es el sistema?</a></li>
+        <li class="toc-sub"><a href="#intro-roles">1.2 Roles de usuario</a></li>
+        <li class="toc-sub"><a href="#intro-acceso">1.3 Cómo acceder</a></li>
+        <li class="toc-sub"><a href="#intro-navegacion">1.4 Navegación general</a></li>
+
+        <li class="toc-section">2. Guía para el Cobrador</li>
+        <li class="toc-sub"><a href="#cob-agenda">2.1 Agenda del Día</a></li>
+        <li class="toc-sub"><a href="#cob-cobrar">2.2 Cómo cobrar una cuota</a></li>
+        <li class="toc-sub"><a href="#cob-estado">2.3 Estado de cuenta del cliente</a></li>
+        <li class="toc-sub"><a href="#cob-adelantadas">2.4 Cobrar cuotas adelantadas</a></li>
+        <li class="toc-sub"><a href="#cob-anular">2.5 Anular un pago</a></li>
+        <li class="toc-sub"><a href="#cob-metas">2.6 Metas y gamificación</a></li>
+        <li class="toc-sub"><a href="#cob-semanal">2.7 Vista semanal y mensual</a></li>
+
+        <li class="toc-section">3. Guía para el Vendedor</li>
+        <li class="toc-sub"><a href="#ven-nueva">3.1 Registrar una venta</a></li>
+        <li class="toc-sub"><a href="#ven-historial">3.2 Ver mis ventas</a></li>
+
+        <li class="toc-section">4. Guía para el Supervisor</li>
+        <li class="toc-sub"><a href="#sup-rendiciones">4.1 Aprobar rendiciones</a></li>
+        <li class="toc-sub"><a href="#sup-estadisticas">4.2 Estadísticas de cobranza</a></li>
+        <li class="toc-sub"><a href="#sup-ranking">4.3 Ranking de cobradores</a></li>
+
+        <li class="toc-section">5. Guía para el Administrador</li>
+        <li class="toc-sub"><a href="#adm-dashboard">5.1 Dashboard principal</a></li>
+        <li class="toc-sub"><a href="#adm-clientes">5.2 Gestión de clientes</a></li>
+        <li class="toc-sub"><a href="#adm-creditos">5.3 Gestión de créditos</a></li>
+        <li class="toc-sub"><a href="#adm-usuarios">5.4 Gestión de usuarios</a></li>
+        <li class="toc-sub"><a href="#adm-metas">5.5 Configurar metas semanales</a></li>
+        <li class="toc-sub"><a href="#adm-reportes">5.6 Reportes y exportación</a></li>
+        <li class="toc-sub"><a href="#adm-riesgo">5.7 Riesgo de cartera</a></li>
+        <li class="toc-sub"><a href="#adm-aging">5.8 Antigüedad de deuda</a></li>
+        <li class="toc-sub"><a href="#adm-liquidaciones">5.9 Liquidaciones</a></li>
+        <li class="toc-sub"><a href="#adm-ventas">5.10 Gestión de ventas y vendedores</a></li>
+
+        <li class="toc-section">6. Tickets de Soporte</li>
+        <li class="toc-sub"><a href="#tickets">6.1 Crear y gestionar tickets</a></li>
+
+        <li class="toc-section">7. Preguntas Frecuentes</li>
+    </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--                    1. INTRODUCCIÓN                            -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="content">
+
+<div class="section" id="intro-que-es">
+    <h2>1. Introducción</h2>
+
+    <h3>1.1 ¿Qué es el sistema?</h3>
+    <p>El sistema de <strong>Imperio Comercial</strong> es una aplicación web para gestionar créditos de artículos del hogar. Permite:</p>
+    <ul>
+        <li>Registrar clientes y otorgarles créditos con cuotas (semanales, quincenales o mensuales)</li>
+        <li>Que los cobradores registren los pagos desde su celular cuando visitan a los clientes</li>
+        <li>Que los supervisores aprueben las rendiciones y controlen la efectividad</li>
+        <li>Que el administrador tenga visibilidad total del negocio</li>
+    </ul>
+</div>
+
+<div id="intro-roles">
+    <h3>1.2 Roles de usuario</h3>
+    <p>Cada persona que usa el sistema tiene un <strong>rol</strong> que determina qué puede ver y hacer:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Rol</th>
+                <th>¿Quién es?</th>
+                <th>¿Qué puede hacer?</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="badge badge-admin">Admin</span></td>
+                <td>El dueño o encargado principal</td>
+                <td>Todo: crear usuarios, gestionar créditos, ver reportes, aprobar pagos, configurar metas</td>
+            </tr>
+            <tr>
+                <td><span class="badge badge-supervisor">Supervisor</span></td>
+                <td>Encargado de cobranzas</td>
+                <td>Aprobar rendiciones, ver estadísticas, gestionar clientes y créditos</td>
+            </tr>
+            <tr>
+                <td><span class="badge badge-cobrador">Cobrador</span></td>
+                <td>Quien sale a cobrar a los clientes</td>
+                <td>Ver su agenda diaria, registrar pagos, ver estado de cuenta</td>
+            </tr>
+            <tr>
+                <td><span class="badge badge-vendedor">Vendedor</span></td>
+                <td>Quien realiza las ventas</td>
+                <td>Registrar ventas, ver sus ventas realizadas</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div id="intro-acceso">
+    <h3>1.3 Cómo acceder al sistema</h3>
+    <ol class="steps">
+        <li>Abrir el navegador (Chrome, Firefox o Safari) en su celular o computadora</li>
+        <li>Ingresar la dirección web del sistema que le proporcionó el administrador</li>
+        <li>Escribir su <strong>usuario</strong> y <strong>contraseña</strong></li>
+        <li>Presionar el botón <strong>"Ingresar"</strong></li>
+    </ol>
+    <div class="tip">
+        <strong>Consejo:</strong> En el celular, puede agregar la página a la pantalla de inicio para acceder más rápido, como si fuera una aplicación.
+    </div>
+    <div class="warning">
+        <strong>Importante:</strong> No comparta su usuario y contraseña con nadie. Cada acción que realice queda registrada con su nombre.
+    </div>
+</div>
+
+<div id="intro-navegacion">
+    <h3>1.4 Navegación general</h3>
+    <p>El sistema tiene dos zonas principales:</p>
+    <ul>
+        <li><strong>Barra lateral (sidebar):</strong> A la izquierda, muestra el menú con todas las secciones disponibles según su rol. En celulares, se abre tocando el ícono ☰ arriba a la izquierda.</li>
+        <li><strong>Área principal:</strong> En el centro, muestra el contenido de la página actual.</li>
+    </ul>
+    <p>En la parte superior verá:</p>
+    <ul>
+        <li>El nombre de la página actual</li>
+        <li>Botones de acción (exportar PDF, CSV, filtros, etc.)</li>
+        <li>Su nombre de usuario y rol</li>
+    </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--                    2. GUÍA DEL COBRADOR                       -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div class="section" id="cob-agenda">
+    <h2>2. Guía para el Cobrador</h2>
+    <div class="role-tag"><span class="badge badge-cobrador">Cobrador</span></div>
+
+    <h3>2.1 Agenda del Día</h3>
+    <p>Al ingresar, verá automáticamente su <strong>Agenda del Día</strong>. Esta es la pantalla principal donde trabaja el cobrador.</p>
+
+    <h4>¿Qué muestra la agenda?</h4>
+    <p>La agenda se divide en secciones:</p>
+    <table>
+        <thead>
+            <tr><th>Sección</th><th>¿Qué contiene?</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Meta Semanal</strong></td>
+                <td>Barra de progreso que muestra cuánto lleva cobrado en la semana vs. su meta asignada</td>
+            </tr>
+            <tr>
+                <td><strong>Racha / Posición / Tendencia</strong></td>
+                <td>Indicadores de rendimiento: días consecutivos cumpliendo meta, su posición en el ranking y comparación con semanas anteriores</td>
+            </tr>
+            <tr>
+                <td><strong>Progreso del día</strong></td>
+                <td>Cuántas cuotas ya cobró de las programadas para hoy</td>
+            </tr>
+            <tr>
+                <td><strong>KPIs (tarjetas de resumen)</strong></td>
+                <td>Ingresos del día, monto a cobrar, cuotas del día, cuotas vencidas, monto por rendir</td>
+            </tr>
+            <tr>
+                <td><strong>Cuotas del Día</strong></td>
+                <td>Tarjetas con cada cliente que debe cobrar hoy</td>
+            </tr>
+            <tr>
+                <td><strong>Cuotas Vencidas</strong></td>
+                <td>Clientes con cuotas atrasadas que todavía no pagaron</td>
+            </tr>
+            <tr>
+                <td><strong>Cobrados Hoy</strong></td>
+                <td>Pagos ya registrados hoy (pendientes de aprobación)</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h4>Tarjeta de cliente</h4>
+    <p>Cada tarjeta muestra:</p>
+    <ul>
+        <li><strong>Nombre del cliente</strong> (en mayúsculas) — tocarlo abre el estado de cuenta</li>
+        <li><strong>Zona</strong> donde vive el cliente</li>
+        <li><strong>Monto de la cuota</strong> y número de cuota (ej: Cuota 5/12)</li>
+        <li><strong>Mora</strong> (si tiene cuotas vencidas)</li>
+        <li><strong>Badge de riesgo</strong> (si el crédito tiene riesgo moderado, alto o crítico)</li>
+        <li><strong>Campo de monto</strong> y botón <strong>"Cobrar"</strong></li>
+    </ul>
+
+    <h4>Buscador</h4>
+    <p>Arriba hay un campo de búsqueda. Escriba el nombre o apellido del cliente para encontrarlo rápidamente sin tener que desplazarse.</p>
+</div>
+
+<div id="cob-cobrar">
+    <h3>2.2 Cómo cobrar una cuota</h3>
+    <ol class="steps">
+        <li>Busque al cliente en la agenda o desplácese hasta su tarjeta</li>
+        <li>Verifique que el <strong>monto</strong> en el campo sea correcto. Si el cliente paga menos, puede modificarlo.</li>
+        <li>Presione el botón verde <strong>"Cobrar"</strong></li>
+        <li>Se abrirá una ventana (modal) con los detalles del pago:
+            <ul>
+                <li><strong>Efectivo:</strong> cuánto paga en efectivo</li>
+                <li><strong>Transferencia:</strong> cuánto paga por transferencia</li>
+                <li><strong>Jornada:</strong> la fecha del cobro</li>
+                <li><strong>Observaciones:</strong> notas opcionales</li>
+            </ul>
+        </li>
+        <li>Verifique los montos y presione <strong>"Registrar Pago"</strong></li>
+        <li>La tarjeta cambiará a <strong>"Pago Registrado"</strong> (amarillo) indicando que está pendiente de aprobación</li>
+    </ol>
+
+    <div class="tip">
+        <strong>Cuota Pura:</strong> Si el cliente tiene mora y solo quiere pagar el capital (sin la mora), marque la casilla "Cuota pura — solo capital" antes de presionar Cobrar.
+    </div>
+
+    <div class="warning">
+        <strong>Importante:</strong> El pago queda como "PENDIENTE" hasta que el supervisor o admin lo apruebe en la rendición. No significa que el cobro falló.
+    </div>
+</div>
+
+<div id="cob-estado">
+    <h3>2.3 Estado de cuenta del cliente</h3>
+    <p>Para ver todas las cuotas de un crédito:</p>
+    <ol class="steps">
+        <li>Toque el <strong>nombre del cliente</strong> en cualquier tarjeta de la agenda</li>
+        <li>Se abre una ventana con el cronograma completo del crédito:
+            <ul>
+                <li>Cuotas <span style="color:green">pagadas</span> en verde</li>
+                <li>Cuotas <span style="color:red">vencidas</span> en rojo</li>
+                <li>Cuotas <span style="color:orange">parciales</span> en naranja</li>
+                <li>Cuotas <span style="color:#38bdf8">con capital pagado</span> en celeste</li>
+                <li>Cuotas pendientes sin color especial</li>
+            </ul>
+        </li>
+        <li>Presione <strong>✕</strong> o fuera de la ventana para cerrarla</li>
+    </ol>
+</div>
+
+<div id="cob-adelantadas">
+    <h3>2.4 Cobrar cuotas adelantadas</h3>
+    <p>Si un cliente quiere pagar varias cuotas a la vez desde el estado de cuenta:</p>
+    <ol class="steps">
+        <li>Abra el <strong>estado de cuenta</strong> tocando el nombre del cliente</li>
+        <li>En la sección <strong>"Cobrar cuotas"</strong>, verá las cuotas pendientes con casillas de selección</li>
+        <li>Marque las cuotas que el cliente va a pagar. Las cuotas se seleccionan en orden consecutivo (no puede saltear cuotas)</li>
+        <li>El <strong>total</strong> se actualiza automáticamente abajo</li>
+        <li>Presione el botón <strong>"Cobrar seleccionadas"</strong></li>
+        <li>Complete los datos del pago en la ventana de cobro</li>
+    </ol>
+    <div class="tip">
+        <strong>Consejo:</strong> Si todas las cuotas pendientes ya tienen un pago registrado (pendiente de aprobación), verá un mensaje indicándolo. Espere a que se apruebe la rendición.
+    </div>
+</div>
+
+<div id="cob-anular">
+    <h3>2.5 Anular un pago</h3>
+    <p>Si registró un pago por error (monto incorrecto, cliente equivocado, etc.):</p>
+    <ol class="steps">
+        <li>Busque la tarjeta del cliente que muestra <strong>"Pago Registrado"</strong> (fondo amarillo)</li>
+        <li>Presione el botón rojo <strong>"Anular"</strong> a la derecha</li>
+        <li>Confirme en el mensaje que aparece</li>
+        <li>La página se recargará y la cuota volverá a estar disponible para cobrar</li>
+    </ol>
+    <div class="danger">
+        <strong>Atención:</strong> Solo puede anular pagos que estén en estado "PENDIENTE" (aún no aprobados). Una vez que el supervisor aprueba la rendición, debe solicitar la anulación al administrador.
+    </div>
+</div>
+
+<div id="cob-metas">
+    <h3>2.6 Metas y gamificación</h3>
+    <p>Arriba de los KPIs diarios encontrará indicadores de rendimiento:</p>
+    <table>
+        <thead><tr><th>Indicador</th><th>¿Qué significa?</th></tr></thead>
+        <tbody>
+            <tr>
+                <td><strong>Meta Semanal</strong></td>
+                <td>Muestra cuánto lleva cobrado vs. su meta de la semana. La barra cambia de color: rojo (menos del 40%), naranja (40-70%), verde (70-100%), dorado (meta alcanzada).</td>
+            </tr>
+            <tr>
+                <td><strong>Racha</strong></td>
+                <td>Cantidad de días consecutivos donde cobró más que la meta diaria (meta semanal ÷ 6). ¡Mantenga la racha!</td>
+            </tr>
+            <tr>
+                <td><strong>Tu Posición</strong></td>
+                <td>Su lugar en el ranking de cobradores de esta semana. "1 de 5" significa que es el que más cobró.</td>
+            </tr>
+            <tr>
+                <td><strong>Tendencia</strong></td>
+                <td>Compara lo cobrado esta semana con la semana anterior. Flecha verde = mejoró, flecha roja = bajó.</td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="tip">
+        <strong>Nota:</strong> Solo se cuentan los cobros que usted registra. Los pagos manuales cargados por el admin no afectan estos indicadores.
+    </div>
+</div>
+
+<div id="cob-semanal">
+    <h3>2.7 Vista semanal y mensual</h3>
+    <p>Debajo de las cuotas del día, encontrará:</p>
+    <ul>
+        <li><strong>Vista Semanal:</strong> Todos sus clientes organizados por día de cobro (Lunes a Sábado). Le ayuda a planificar la semana.</li>
+        <li><strong>Vista Mensual:</strong> Clientes con cuotas quincenales y mensuales próximas a vencer.</li>
+    </ul>
+    <p>Cada tarjeta funciona igual que las del día: puede cobrar directamente desde ahí.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--                    3. GUÍA DEL VENDEDOR                       -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div class="section" id="ven-nueva">
+    <h2>3. Guía para el Vendedor</h2>
+    <div class="role-tag"><span class="badge badge-vendedor">Vendedor</span></div>
+
+    <h3>3.1 Registrar una venta</h3>
+    <ol class="steps">
+        <li>En el menú lateral, toque <strong>"Nueva Venta"</strong></li>
+        <li>Seleccione el <strong>artículo</strong> de la lista disponible</li>
+        <li>Ingrese la <strong>cantidad</strong></li>
+        <li>Presione <strong>"Registrar Venta"</strong></li>
+    </ol>
+    <div class="tip">
+        <strong>Nota:</strong> El stock se descuenta automáticamente al registrar la venta.
+    </div>
+</div>
+
+<div id="ven-historial">
+    <h3>3.2 Ver mis ventas</h3>
+    <p>En el menú lateral, toque <strong>"Mis Ventas"</strong> para ver el listado de todas las ventas que realizó. Puede filtrar por fecha o artículo.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--                    4. GUÍA DEL SUPERVISOR                     -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div class="section" id="sup-rendiciones">
+    <h2>4. Guía para el Supervisor</h2>
+    <div class="role-tag"><span class="badge badge-supervisor">Supervisor</span></div>
+
+    <h3>4.1 Aprobar rendiciones</h3>
+    <p>Cuando los cobradores registran pagos, estos quedan en estado <strong>"PENDIENTE"</strong>. El supervisor debe aprobarlos:</p>
+    <ol class="steps">
+        <li>Vaya a <strong>"Rendiciones"</strong> en el menú lateral</li>
+        <li>Verá una lista de cobradores con pagos pendientes, agrupados por <strong>jornada</strong> (fecha)</li>
+        <li>Revise los pagos de cada jornada:
+            <ul>
+                <li>Montos en efectivo y transferencia</li>
+                <li>Cuotas cobradas</li>
+                <li>Observaciones del cobrador</li>
+            </ul>
+        </li>
+        <li>Si todo está correcto, presione <strong>"Aprobar Jornada"</strong> para aprobar todos los pagos de esa fecha</li>
+        <li>Si hay un error en un pago específico, puede <strong>editarlo</strong> o <strong>rechazarlo</strong> individualmente</li>
+    </ol>
+
+    <div class="warning">
+        <strong>Importante:</strong> Al aprobar una rendición, los pagos se confirman definitivamente y las cuotas se marcan como pagadas. Verifique bien antes de aprobar.
+    </div>
+
+    <h4>Solicitudes de anulación</h4>
+    <p>Si ve un badge con número en "Rendiciones", significa que hay solicitudes de anulación pendientes. Revise cada caso antes de proceder.</p>
+</div>
+
+<div id="sup-estadisticas">
+    <h3>4.2 Estadísticas de cobranza</h3>
+    <p>En <strong>"Estadísticas"</strong> puede ver el rendimiento de cada cobrador semana por semana:</p>
+    <ul>
+        <li><strong>KPIs globales:</strong> Total cobrado, estimado, efectividad, cantidad de cobradores</li>
+        <li><strong>Detalle por cobrador:</strong> Tabla desplegable con datos día por día (agenda vs. cobrado)</li>
+        <li><strong>Desglose por tipo:</strong> Efectividad separada por cuotas semanales, quincenales y mensuales</li>
+    </ul>
+    <p>Use las flechas ◀ ▶ para navegar entre semanas. Puede exportar a <strong>PDF</strong> o <strong>CSV</strong>.</p>
+</div>
+
+<div id="sup-ranking">
+    <h3>4.3 Ranking de cobradores</h3>
+    <p>En <strong>"Ranking Cob."</strong> puede comparar el rendimiento de todos los cobradores en un período:</p>
+    <ul>
+        <li>Filtrar por: mes actual, mes anterior, trimestre o fechas personalizadas</li>
+        <li>Ver: total cobrado, cantidad de pagos, mora cobrada, créditos activos, efectividad</li>
+    </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--                    5. GUÍA DEL ADMINISTRADOR                  -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div class="section" id="adm-dashboard">
+    <h2>5. Guía para el Administrador</h2>
+    <div class="role-tag"><span class="badge badge-admin">Admin</span></div>
+    <p>El administrador tiene acceso a todas las funciones del sistema. Además de todo lo que puede hacer el supervisor, tiene acceso a:</p>
+
+    <h3>5.1 Dashboard principal</h3>
+    <p>La pantalla inicial muestra un resumen del negocio:</p>
+    <table>
+        <thead><tr><th>Indicador</th><th>Significado</th></tr></thead>
+        <tbody>
+            <tr><td>Clientes activos</td><td>Cantidad de clientes en el sistema</td></tr>
+            <tr><td>Créditos en curso</td><td>Créditos que están siendo cobrados actualmente</td></tr>
+            <tr><td>Cobrado hoy</td><td>Total de pagos confirmados del día</td></tr>
+            <tr><td>Cobrado mes</td><td>Total acumulado del mes</td></tr>
+            <tr><td>Próximos a cerrar</td><td>Créditos con 1-2 cuotas restantes</td></tr>
+            <tr><td>Finalizados mes</td><td>Créditos completados este mes</td></tr>
+            <tr><td>Clientes dormidos</td><td>Clientes sin crédito activo hace más de 90 días</td></tr>
+        </tbody>
+    </table>
+    <p>También incluye:</p>
+    <ul>
+        <li><strong>Gráfico de cobros semanales</strong> por cobrador (barras apiladas)</li>
+        <li><strong>Gráfico de cartera</strong> (dona): cuotas pagadas vs. vigentes vs. vencidas</li>
+        <li><strong>Créditos en Riesgo:</strong> Los 8 créditos más críticos con badge de riesgo</li>
+        <li><strong>Últimos pagos:</strong> Pagos aprobados recientes</li>
+    </ul>
+</div>
+
+<div id="adm-clientes">
+    <h3>5.2 Gestión de clientes</h3>
+
+    <h4>Ver listado de clientes</h4>
+    <p>En <strong>"Clientes"</strong> del menú, verá todos los clientes registrados. Puede:</p>
+    <ul>
+        <li>Buscar por nombre o apellido</li>
+        <li>Filtrar por estado (activo/inactivo), zona o cobrador asignado</li>
+        <li>Hacer clic en un cliente para ver su perfil completo</li>
+    </ul>
+
+    <h4>Crear un cliente nuevo</h4>
+    <ol class="steps">
+        <li>Presione <strong>"Nuevo Cliente"</strong></li>
+        <li>Complete los datos: apellido, nombre, DNI, teléfono, dirección, zona</li>
+        <li>Opcionalmente agregue un <strong>garante</strong> con sus datos</li>
+        <li>Presione <strong>"Guardar"</strong></li>
+    </ol>
+
+    <h4>Importar clientes desde Excel</h4>
+    <p>Si tiene muchos clientes para cargar, puede usar la función de <strong>importación masiva</strong> desde un archivo CSV.</p>
+</div>
+
+<div id="adm-creditos">
+    <h3>5.3 Gestión de créditos</h3>
+
+    <h4>Crear un crédito nuevo</h4>
+    <ol class="steps">
+        <li>Vaya a <strong>"Créditos"</strong> → <strong>"Nuevo Crédito"</strong></li>
+        <li>Seleccione el <strong>cliente</strong></li>
+        <li>Complete los datos del crédito:
+            <ul>
+                <li>Artículo (del stock o descripción libre)</li>
+                <li>Monto total y anticipo</li>
+                <li>Cantidad de cuotas y frecuencia (semanal, quincenal, mensual)</li>
+                <li>Interés moratorio (%)</li>
+                <li>Cobrador asignado y día de cobro</li>
+            </ul>
+        </li>
+        <li>El sistema calculará automáticamente el cronograma de cuotas</li>
+        <li>Presione <strong>"Crear Crédito"</strong></li>
+    </ol>
+
+    <h4>Ver detalle de un crédito</h4>
+    <p>Al hacer clic en un crédito, verá:</p>
+    <ul>
+        <li>Datos generales (cliente, artículo, montos, fechas)</li>
+        <li>Cronograma completo de cuotas con estado de cada una</li>
+        <li>Historial de pagos realizados</li>
+        <li>Acciones: editar, refinanciar, finalizar, registrar pago directo</li>
+    </ul>
+
+    <h4>Refinanciar un crédito</h4>
+    <p>Si un cliente no puede pagar, puede reestructurar las cuotas pendientes en un nuevo cronograma más extenso.</p>
+
+    <h4>Registrar pago directo (manual)</h4>
+    <p>El admin puede registrar un pago directamente desde el detalle del crédito, sin pasar por el cobrador. Estos pagos se marcan como <strong>"Manual"</strong> y se confirman inmediatamente.</p>
+</div>
+
+<div id="adm-usuarios">
+    <h3>5.4 Gestión de usuarios</h3>
+    <p>En <strong>"Usuarios"</strong> (sección Administración) puede:</p>
+    <ul>
+        <li><strong>Crear</strong> nuevos usuarios (cobradores, supervisores, vendedores, admins)</li>
+        <li><strong>Editar</strong> datos de un usuario existente</li>
+        <li><strong>Activar/Desactivar</strong> un usuario sin eliminarlo</li>
+    </ul>
+
+    <h4>Crear un usuario nuevo</h4>
+    <ol class="steps">
+        <li>Presione <strong>"Nuevo Usuario"</strong></li>
+        <li>Complete: apellido, nombre, usuario de login, contraseña (mín. 8 caracteres), rol, teléfono y zona</li>
+        <li>Presione <strong>"Guardar"</strong></li>
+    </ol>
+
+    <div class="warning">
+        <strong>Contraseña:</strong> La contraseña debe tener al menos 8 caracteres. Al editar un usuario, puede dejar el campo de contraseña vacío para no cambiarla.
+    </div>
+</div>
+
+<div id="adm-metas">
+    <h3>5.5 Configurar metas semanales</h3>
+    <p>En <strong>"Metas"</strong> (sección Administración) puede definir el objetivo de cobranza semanal para cada cobrador:</p>
+    <ol class="steps">
+        <li>Vaya a <strong>"Metas"</strong> en el menú lateral</li>
+        <li>Verá la tabla con todos los cobradores activos</li>
+        <li>Modifique el monto de la <strong>"Meta Semanal"</strong> para cada cobrador según corresponda</li>
+        <li>Presione <strong>"Guardar Metas"</strong></li>
+    </ol>
+    <p>La tabla también muestra:</p>
+    <ul>
+        <li><strong>Cobrado Semana:</strong> Lo que lleva cobrado el cobrador en la semana actual</li>
+        <li><strong>Barra de cumplimiento:</strong> Porcentaje visual de avance</li>
+        <li><strong>Estado:</strong> Cumplida, En camino, Regular o Bajo</li>
+    </ul>
+    <div class="tip">
+        <strong>Nota:</strong> Las metas solo se comparan contra los cobros que registran los propios cobradores. Los pagos manuales del admin no se cuentan para la meta.
+    </div>
+</div>
+
+<div id="adm-reportes">
+    <h3>5.6 Reportes y exportación</h3>
+    <p>Varios reportes permiten exportar datos:</p>
+    <table>
+        <thead><tr><th>Reporte</th><th>Exporta a</th><th>¿Qué incluye?</th></tr></thead>
+        <tbody>
+            <tr>
+                <td><strong>Cuotas Atrasadas</strong></td>
+                <td>CSV y PDF</td>
+                <td>Todos los clientes con cuotas vencidas: cliente, artículo, monto, días de atraso, cobrador</td>
+            </tr>
+            <tr>
+                <td><strong>Estadísticas de Cobranza</strong></td>
+                <td>CSV y PDF</td>
+                <td>Rendimiento por cobrador y día: agenda, cobrados, efectividad, montos</td>
+            </tr>
+            <tr>
+                <td><strong>Antigüedad de Deuda</strong></td>
+                <td>CSV</td>
+                <td>Deuda agrupada por antigüedad: al día, 1-14 días, 15-30, 31-60, 60+ días</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h4>¿Cómo exportar a CSV?</h4>
+    <ol class="steps">
+        <li>Vaya al reporte que desea exportar</li>
+        <li>Aplique los filtros que necesite (cobrador, zona, fechas)</li>
+        <li>Presione el botón verde <strong>"Exportar CSV"</strong> o <strong>"CSV"</strong></li>
+        <li>Se descargará un archivo que puede abrir con <strong>Excel</strong></li>
+    </ol>
+    <div class="tip">
+        <strong>Para Excel en Argentina:</strong> Los archivos CSV usan punto y coma (;) como separador, que es el formato estándar de Excel en español.
+    </div>
+</div>
+
+<div id="adm-riesgo">
+    <h3>5.7 Riesgo de cartera</h3>
+    <p>En <strong>"Riesgo Cartera"</strong> puede identificar los créditos más problemáticos. El sistema calcula automáticamente un nivel de riesgo para cada crédito activo:</p>
+    <table>
+        <thead><tr><th>Nivel</th><th>Color</th><th>Criterio</th></tr></thead>
+        <tbody>
+            <tr>
+                <td><strong>Bajo</strong></td>
+                <td style="color:#10b981">Verde</td>
+                <td>Sin cuotas vencidas ni mora</td>
+            </tr>
+            <tr>
+                <td><strong>Moderado</strong></td>
+                <td style="color:#0ea5e9">Azul</td>
+                <td>Alguna cuota vencida o con mora histórica</td>
+            </tr>
+            <tr>
+                <td><strong>Alto</strong></td>
+                <td style="color:#f97316">Naranja</td>
+                <td>2+ cuotas vencidas, más de 14 días de atraso, o refinanciado</td>
+            </tr>
+            <tr>
+                <td><strong>Crítico</strong></td>
+                <td style="color:#ef4444">Rojo</td>
+                <td>4+ cuotas vencidas, más de 30 días de atraso, o refinanciado 2+ veces</td>
+            </tr>
+        </tbody>
+    </table>
+    <p>Puede filtrar por cobrador o nivel de riesgo para priorizar la gestión.</p>
+</div>
+
+<div id="adm-aging">
+    <h3>5.8 Antigüedad de deuda</h3>
+    <p>En <strong>"Antig. Deuda"</strong> verá la deuda de la cartera agrupada en 5 bandas de antigüedad:</p>
+    <ul>
+        <li><strong style="color:#10b981">Al Día</strong> — Cuotas que aún no vencieron</li>
+        <li><strong style="color:#eab308">1-14 días</strong> — Atraso reciente</li>
+        <li><strong style="color:#f97316">15-30 días</strong> — Atraso moderado</li>
+        <li><strong style="color:#ef4444">31-60 días</strong> — Atraso grave</li>
+        <li><strong style="color:#991b1b">60+ días</strong> — Atraso crítico</li>
+    </ul>
+    <p>Las tarjetas superiores muestran la cantidad de cuotas y el monto total por banda. Debajo, puede expandir el detalle por cobrador y zona.</p>
+</div>
+
+<div id="adm-liquidaciones">
+    <h3>5.9 Liquidaciones</h3>
+    <p>Las liquidaciones son el cálculo semanal de lo que cada cobrador debe entregar. En <strong>"Liquidaciones"</strong> puede:</p>
+    <ul>
+        <li>Crear una nueva liquidación seleccionando el cobrador y período</li>
+        <li>Ver y editar liquidaciones en estado borrador</li>
+        <li>Confirmar y exportar a PDF</li>
+    </ul>
+</div>
+
+<div id="adm-ventas">
+    <h3>5.10 Gestión de ventas y vendedores</h3>
+    <p>En la sección <strong>"Ventas"</strong> del menú:</p>
+    <ul>
+        <li><strong>Ventas:</strong> Listado de todas las ventas con filtros por fecha, artículo y vendedor</li>
+        <li><strong>Vendedores:</strong> Gestión de vendedores (crear, editar, activar/desactivar)</li>
+        <li><strong>Estad. Ventas:</strong> Estadísticas de rendimiento de vendedores</li>
+    </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--                    6. TICKETS                                 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div class="section" id="tickets">
+    <h2>6. Tickets de Soporte</h2>
+    <div class="role-tag"><span class="badge badge-todos">Todos los roles</span></div>
+
+    <h3>6.1 Crear y gestionar tickets</h3>
+    <p>Si tiene un problema o necesita reportar algo, puede crear un ticket de soporte:</p>
+    <ol class="steps">
+        <li>Vaya a <strong>"Tickets"</strong> en el menú lateral (sección Soporte)</li>
+        <li>Presione <strong>"Nuevo Ticket"</strong></li>
+        <li>Complete:
+            <ul>
+                <li><strong>Asunto:</strong> Descripción breve del problema</li>
+                <li><strong>Descripción:</strong> Detalle completo de lo que necesita</li>
+                <li><strong>Prioridad:</strong> Baja, media o alta</li>
+            </ul>
+        </li>
+        <li>Presione <strong>"Crear Ticket"</strong></li>
+    </ol>
+    <p>Puede ver el estado de sus tickets y agregar respuestas/comentarios desde el detalle de cada ticket.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--                    7. PREGUNTAS FRECUENTES                    -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div class="section">
+    <h2>7. Preguntas Frecuentes</h2>
+
+    <h4>¿Qué hago si olvidé mi contraseña?</h4>
+    <p>Comuníquese con el administrador para que le asigne una nueva contraseña.</p>
+
+    <h4>¿Puedo usar el sistema desde el celular?</h4>
+    <p>Sí, el sistema está diseñado para funcionar en celulares. La interfaz del cobrador está optimizada especialmente para uso en campo con el celular.</p>
+
+    <h4>¿Qué pasa si cobro y no tengo internet?</h4>
+    <p>El sistema necesita conexión a internet para funcionar. Si no tiene señal en el momento del cobro, tome nota y registre el pago cuando tenga conexión.</p>
+
+    <h4>¿Puedo cobrar cuotas de otros cobradores?</h4>
+    <p>No. Cada cobrador solo ve y puede cobrar sus propios clientes. El admin y supervisor pueden ver la agenda de cualquier cobrador usando el filtro.</p>
+
+    <h4>¿Qué significa "Por Rendir"?</h4>
+    <p>Es el total de pagos que usted registró pero que todavía no fueron aprobados por el supervisor. Una vez aprobados, desaparecen de "Por Rendir".</p>
+
+    <h4>¿Qué es una "cuota pura"?</h4>
+    <p>Es cuando el cliente paga solo el capital de la cuota, sin la mora. La mora queda congelada para cobrarla después. Útil cuando el cliente tiene mucha mora acumulada y quiere ir pagando el capital.</p>
+
+    <h4>¿Qué significa "CAP_PAGADA"?</h4>
+    <p>Es una cuota donde el cliente pagó el capital pero todavía debe la mora. Aparece en celeste en el cronograma.</p>
+
+    <h4>¿Qué es refinanciar?</h4>
+    <p>Cuando un cliente no puede pagar, se pueden tomar las cuotas pendientes y generar un nuevo cronograma con más cuotas (más plazo). El crédito se marca como "refinanciado".</p>
+
+    <h4>¿Cómo exporto un reporte a PDF?</h4>
+    <p>En los reportes que lo permiten, verá un botón <strong>"Exportar PDF"</strong> o <strong>"PDF"</strong> en la parte superior. Al presionarlo, se generará un archivo PDF que puede descargar, imprimir o compartir.</p>
+
+    <h4>¿Cómo abro el archivo CSV en Excel?</h4>
+    <p>Al descargar el CSV, haga doble clic sobre el archivo. Excel lo abrirá automáticamente con las columnas separadas correctamente. Si los datos aparecen todos en una sola columna, vaya a Datos → Texto en columnas y seleccione "Punto y coma" como separador.</p>
+
+    <h4>¿Qué es el "scoring de riesgo"?</h4>
+    <p>Es un indicador automático que el sistema calcula para cada crédito activo, evaluando cuántas cuotas tiene vencidas, cuántos días de atraso acumula y si fue refinanciado. Ayuda a identificar los créditos que necesitan más atención.</p>
+</div>
+
+<!-- PIE -->
+<div style="text-align:center;padding:40px 20px;color:#9ca3af;font-size:12px;border-top:1px solid #e5e7eb;margin-top:60px">
+    <p><strong>Imperio Comercial</strong> — Sistema de Gestión de Créditos</p>
+    <p>Manual generado en Marzo 2026</p>
+    <p style="margin-top:8px">Para soporte técnico, contacte al administrador del sistema.</p>
+</div>
+
+</div><!-- /content -->
+
+</body>
+</html>

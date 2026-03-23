@@ -10,6 +10,63 @@ verificar_permiso('ver_reportes');
 
 $pdo = obtener_conexion();
 
+// ── Export CSV ─────────────────────────────────────────────
+if (($_GET['export'] ?? '') === 'csv') {
+    $cobrador_id_csv = (int) ($_GET['cobrador_id'] ?? 0);
+    $zona_csv        = trim($_GET['zona'] ?? '');
+
+    $w = [
+        "cu.estado IN ('VENCIDA','PARCIAL')",
+        "cr.estado IN ('EN_CURSO','MOROSO')",
+        "cu.fecha_vencimiento < CURDATE()",
+        "(cu.monto_cuota - cu.saldo_pagado) > 0",
+    ];
+    $p = [];
+    if ($cobrador_id_csv > 0) { $w[] = 'cr.cobrador_id = ?'; $p[] = $cobrador_id_csv; }
+    if ($zona_csv !== '')     { $w[] = 'cl.zona = ?';         $p[] = $zona_csv; }
+    $wStr = implode(' AND ', $w);
+
+    $stmtCsv = $pdo->prepare("
+        SELECT
+            cl.apellidos, cl.nombres,
+            COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
+            CONCAT(cu.numero_cuota, '/', cr.cant_cuotas)   AS cuota,
+            (cu.monto_cuota - cu.saldo_pagado)              AS monto_adeudado,
+            DATEDIFF(CURDATE(), cu.fecha_vencimiento)       AS dias_atraso,
+            cu.fecha_vencimiento,
+            CONCAT(u.apellido, ', ', u.nombre)              AS cobrador,
+            cl.zona
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_clientes cl ON cr.cliente_id = cl.id
+        LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
+        JOIN ic_usuarios u       ON cr.cobrador_id = u.id
+        WHERE $wStr
+        ORDER BY dias_atraso DESC, cl.apellidos ASC
+    ");
+    $stmtCsv->execute($p);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="atrasados_' . date('Y-m-d') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF"); // BOM UTF-8
+    fputcsv($out, ['Cliente', 'Artículo', 'Cuota', 'Monto Adeudado', 'Días Atraso', 'Fecha Vencimiento', 'Cobrador', 'Zona'], ';');
+    while ($row = $stmtCsv->fetch()) {
+        fputcsv($out, [
+            $row['apellidos'] . ', ' . $row['nombres'],
+            $row['articulo'],
+            $row['cuota'],
+            number_format((float)$row['monto_adeudado'], 2, ',', '.'),
+            $row['dias_atraso'],
+            date('d/m/Y', strtotime($row['fecha_vencimiento'])),
+            $row['cobrador'],
+            $row['zona'] ?: '—',
+        ], ';');
+    }
+    fclose($out);
+    exit;
+}
+
 // ── Filtros y vista ──────────────────────────────────────────
 $cobrador_id = (int) ($_GET['cobrador_id'] ?? 0);
 $zona_sel    = trim($_GET['zona'] ?? '');
@@ -168,7 +225,14 @@ $qs_pdf = http_build_query(array_filter([
     'cobrador_id' => $cobrador_id ?: null,
     'zona'        => $zona_sel ?: null,
 ]));
-$topbar_actions = '<a href="atrasados_pdf' . ($qs_pdf ? '?' . $qs_pdf : '') . '" target="_blank"
+$qs_csv = http_build_query(array_filter([
+    'cobrador_id' => $cobrador_id ?: null,
+    'zona'        => $zona_sel ?: null,
+    'export'      => 'csv',
+]));
+$topbar_actions = '<a href="atrasados?' . e($qs_csv) . '"
+    class="btn-ic btn-success btn-sm"><i class="fa fa-file-csv"></i> Exportar CSV</a>
+    <a href="atrasados_pdf' . ($qs_pdf ? '?' . $qs_pdf : '') . '" target="_blank"
     class="btn-ic btn-danger btn-sm"><i class="fa fa-file-pdf"></i> Exportar PDF</a>';
 
 $page_title   = 'Cuotas Atrasadas';

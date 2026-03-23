@@ -96,6 +96,39 @@ $cartera = $pdo->query("
     WHERE cr.estado IN('EN_CURSO','MOROSO')
 ")->fetch();
 
+// ── Créditos en riesgo (para alerta) ────────────────────────
+$stmt_riesgo = $pdo->query("
+    SELECT cr.id AS credito_id,
+           CONCAT(cl.apellidos, ', ', cl.nombres) AS cliente,
+           COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
+           CONCAT(u.nombre, ' ', u.apellido)      AS cobrador,
+           COUNT(CASE WHEN cu.estado IN ('VENCIDA','PARCIAL') AND cu.fecha_vencimiento < CURDATE() THEN 1 END) AS cuotas_vencidas,
+           COALESCE(MAX(CASE WHEN cu.fecha_vencimiento < CURDATE() AND cu.estado IN ('VENCIDA','PARCIAL')
+                             THEN DATEDIFF(CURDATE(), cu.fecha_vencimiento) END), 0) AS max_dias,
+           COALESCE(cr.veces_refinanciado, 0) AS refinanciado
+    FROM ic_creditos cr
+    JOIN ic_clientes cl ON cr.cliente_id = cl.id
+    JOIN ic_cuotas cu   ON cu.credito_id = cr.id
+    JOIN ic_usuarios u  ON cr.cobrador_id = u.id
+    LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
+    WHERE cr.estado IN ('EN_CURSO','MOROSO')
+    GROUP BY cr.id, cl.apellidos, cl.nombres, cr.articulo_desc, a.descripcion, u.nombre, u.apellido, cr.veces_refinanciado
+    HAVING cuotas_vencidas >= 2 OR max_dias > 14 OR refinanciado >= 1
+    ORDER BY max_dias DESC
+    LIMIT 8
+");
+$creditos_riesgo = $stmt_riesgo->fetchAll();
+// Calcular nivel de riesgo PHP
+foreach ($creditos_riesgo as &$_cr) {
+    $cv  = (int) $_cr['cuotas_vencidas'];
+    $md  = (int) $_cr['max_dias'];
+    $ref = (int) $_cr['refinanciado'];
+    if ($ref >= 2 || $cv >= 4 || $md > 30)      $_cr['riesgo'] = 4;
+    elseif ($ref >= 1 || $cv >= 2 || $md > 14)   $_cr['riesgo'] = 3;
+    else                                          $_cr['riesgo'] = 2;
+}
+unset($_cr);
+
 // ── Gauges (porcentaje para los indicadores circulares) ───────
 $g_clientes = $total_clientes  > 0 ? min(99,(int)round($clientes_activos  / $total_clientes  * 100)) : 0;
 $g_creditos = $total_creditos  > 0 ? min(99,(int)round($creditos_en_curso / $total_creditos  * 100)) : 0;
@@ -449,6 +482,35 @@ require_once __DIR__ . '/../views/layout.php';
             <?php endforeach; ?>
         <?php endif; ?>
     </div>
+
+    <!-- Créditos en Riesgo -->
+    <?php if (!empty($creditos_riesgo)): ?>
+    <div class="card-ic" style="border-left:4px solid var(--danger)">
+        <div class="card-ic-header">
+            <span class="card-title" style="color:var(--danger)"><i class="fa fa-shield-halved"></i> Créditos en Riesgo</span>
+            <a href="riesgo_cartera" class="btn-ic btn-ghost btn-sm">Ver reporte completo</a>
+        </div>
+        <?php foreach ($creditos_riesgo as $idx => $cr): ?>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;<?= $idx < count($creditos_riesgo) - 1 ? 'border-bottom:1px solid var(--dark-border)' : '' ?>">
+            <div style="min-width:0;flex:1;margin-right:12px">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <a href="../creditos/ver?id=<?= $cr['credito_id'] ?>" class="fw-bold" style="font-size:.87rem">
+                        <?= e($cr['cliente']) ?>
+                    </a>
+                    <?= badge_riesgo((int)$cr['riesgo']) ?>
+                </div>
+                <div class="text-muted" style="font-size:.73rem">
+                    <?= e($cr['articulo']) ?> · <?= e($cr['cobrador']) ?>
+                </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;font-size:.82rem">
+                <div style="color:var(--danger);font-weight:700"><?= $cr['cuotas_vencidas'] ?> cuotas vencidas</div>
+                <div class="text-muted" style="font-size:.72rem">máx. <?= $cr['max_dias'] ?> días</div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
 
     <!-- Últimos pagos como lista -->
     <div class="card-ic">

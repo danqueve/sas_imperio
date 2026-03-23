@@ -526,3 +526,53 @@ function whatsapp_finalizacion_url(string $telefono, string $nombre, string $art
     return whatsapp_url($telefono, $mensaje);
 }
 
+// ── Scoring predictivo para créditos activos ──────────────
+
+/**
+ * Calcula nivel de riesgo de un crédito EN CURSO.
+ * Retorna 1 (Bajo) a 4 (Crítico).
+ */
+function calcular_riesgo_credito_activo(int $credito_id, PDO $pdo): int
+{
+    $stmt = $pdo->prepare("
+        SELECT
+            COUNT(CASE WHEN cu.estado IN ('VENCIDA','PARCIAL') AND cu.fecha_vencimiento < CURDATE() THEN 1 END) AS cuotas_vencidas,
+            COALESCE(AVG(CASE WHEN cu.fecha_vencimiento < CURDATE() AND cu.estado IN ('VENCIDA','PARCIAL')
+                              THEN DATEDIFF(CURDATE(), cu.fecha_vencimiento) END), 0) AS avg_atraso,
+            COUNT(CASE WHEN cu.monto_mora > 0 THEN 1 END)                            AS con_mora,
+            COALESCE(cr.veces_refinanciado, 0)                                        AS refinanciado
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        WHERE cu.credito_id = ?
+    ");
+    $stmt->execute([$credito_id]);
+    $d = $stmt->fetch();
+    if (!$d) return 1;
+
+    $cv  = (int)   $d['cuotas_vencidas'];
+    $avg = (float) $d['avg_atraso'];
+    $cm  = (int)   $d['con_mora'];
+    $ref = (int)   $d['refinanciado'];
+
+    if ($ref >= 2 || $cv >= 4 || $avg > 30) return 4; // Crítico
+    if ($ref >= 1 || $cv >= 2 || $avg > 14 || $cm >= 3) return 3; // Alto
+    if ($cv >= 1 || $avg > 0 || $cm >= 1) return 2; // Moderado
+    return 1; // Bajo
+}
+
+/**
+ * Badge HTML para nivel de riesgo (1-4).
+ */
+function badge_riesgo(int $nivel): string
+{
+    $map = [
+        1 => ['fa-shield-halved', 'var(--success)',  'Bajo'],
+        2 => ['fa-exclamation',   'var(--info,#0ea5e9)', 'Moderado'],
+        3 => ['fa-triangle-exclamation', '#f97316',  'Alto'],
+        4 => ['fa-fire',          'var(--danger)',    'Crítico'],
+    ];
+    [$icon, $color, $label] = $map[$nivel] ?? $map[1];
+    return '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-size:.72rem;font-weight:700;background:' . $color . ';color:#fff">'
+         . '<i class="fa ' . $icon . '"></i> ' . $label . '</span>';
+}
+

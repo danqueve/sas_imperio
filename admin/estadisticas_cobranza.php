@@ -10,6 +10,80 @@ verificar_permiso('ver_estadisticas');
 
 $pdo = obtener_conexion();
 
+// ── Export CSV ─────────────────────────────────────────────
+if (($_GET['export'] ?? '') === 'csv') {
+    $hoy_csv    = new DateTimeImmutable('today');
+    $dow_csv    = (int) $hoy_csv->format('N');
+    $lun_actual = $hoy_csv->modify('-' . ($dow_csv - 1) . ' days');
+
+    if (!empty($_GET['semana']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['semana'])) {
+        try {
+            $lun_csv = new DateTimeImmutable($_GET['semana']);
+            $lun_csv = $lun_csv->modify('-' . ((int)$lun_csv->format('N') - 1) . ' days');
+        } catch (Exception $e) { $lun_csv = $lun_actual; }
+    } else {
+        $lun_csv = $lun_actual;
+    }
+    $sab_csv    = $lun_csv->modify('+5 days');
+    $ini_csv    = $lun_csv->format('Y-m-d');
+    $fin_csv    = $sab_csv->format('Y-m-d');
+    $dias_csv   = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+    // Cobradores
+    $cobs_csv = $pdo->query("SELECT id, nombre, apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY apellido")->fetchAll();
+
+    // Cobros
+    $sc = $pdo->prepare("
+        SELECT pt.cobrador_id, pt.fecha_jornada,
+               COUNT(DISTINCT pt.cuota_id) AS cobradas, SUM(pt.monto_total) AS monto_cobrado
+        FROM ic_pagos_temporales pt
+        WHERE pt.fecha_jornada BETWEEN ? AND ? AND pt.estado IN ('PENDIENTE','APROBADO')
+        GROUP BY pt.cobrador_id, pt.fecha_jornada
+    ");
+    $sc->execute([$ini_csv, $fin_csv]);
+    $cobros_csv = [];
+    foreach ($sc->fetchAll() as $r) $cobros_csv[$r['cobrador_id']][$r['fecha_jornada']] = $r;
+
+    // Agenda
+    $sa = $pdo->prepare("
+        SELECT cr.cobrador_id, cu.fecha_vencimiento,
+               COUNT(*) AS agendadas, SUM(cu.monto_cuota) AS monto_estimado
+        FROM ic_cuotas cu JOIN ic_creditos cr ON cu.credito_id = cr.id
+        WHERE cu.fecha_vencimiento BETWEEN ? AND ? AND cr.estado = 'EN_CURSO'
+        GROUP BY cr.cobrador_id, cu.fecha_vencimiento
+    ");
+    $sa->execute([$ini_csv, $fin_csv]);
+    $agenda_csv = [];
+    foreach ($sa->fetchAll() as $r) $agenda_csv[$r['cobrador_id']][$r['fecha_vencimiento']] = $r;
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="estadisticas_cobranza_' . $ini_csv . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['Cobrador','Día','Fecha','Agendados','Cobrados','Efectividad %','Monto Estimado','Monto Cobrado'], ';');
+
+    foreach ($cobs_csv as $cob) {
+        for ($i = 0; $i < 6; $i++) {
+            $fecha = $lun_csv->modify("+{$i} days")->format('Y-m-d');
+            $ag  = (int)   ($agenda_csv[$cob['id']][$fecha]['agendadas'] ?? 0);
+            $co  = (int)   ($cobros_csv[$cob['id']][$fecha]['cobradas']  ?? 0);
+            $me  = (float) ($agenda_csv[$cob['id']][$fecha]['monto_estimado'] ?? 0);
+            $mc  = (float) ($cobros_csv[$cob['id']][$fecha]['monto_cobrado']  ?? 0);
+            $eff = $ag > 0 ? round($co / $ag * 100) : 0;
+            fputcsv($out, [
+                $cob['apellido'] . ', ' . $cob['nombre'],
+                $dias_csv[$i],
+                date('d/m/Y', strtotime($fecha)),
+                $ag, $co, $eff . '%',
+                number_format($me, 2, ',', '.'),
+                number_format($mc, 2, ',', '.'),
+            ], ';');
+        }
+    }
+    fclose($out);
+    exit;
+}
+
 // ── Rango de la semana seleccionada ──────────────────────────
 $hoy = new DateTimeImmutable('today');
 $dow = (int) $hoy->format('N'); // 1=Lun … 7=Dom
@@ -236,9 +310,13 @@ require_once __DIR__ . '/../views/layout.php';
             <i class="fa fa-calendar-check"></i> Semana actual
         </a>
         <?php endif; ?>
+        <a href="estadisticas_cobranza?semana=<?= urlencode($inicio_str) ?>&export=csv"
+           class="btn-ic btn-success btn-sm" title="Exportar estadísticas a CSV">
+            <i class="fa fa-file-csv"></i> CSV
+        </a>
         <a href="estadisticas_pdf?semana=<?= urlencode($inicio_str) ?>"
            class="btn-ic btn-ghost btn-sm" target="_blank" title="Exportar estadísticas a PDF">
-            <i class="fa fa-file-pdf"></i> Exportar PDF
+            <i class="fa fa-file-pdf"></i> PDF
         </a>
     </div>
 </div>

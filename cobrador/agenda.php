@@ -52,6 +52,16 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute([$cobrador_filtro]);
 $todas = $stmt->fetchAll();
 
+// ── Calcular riesgo en batch (una vez por crédito) ────────
+$riesgo_cache = [];
+foreach (array_unique(array_column($todas, 'credito_id')) as $crid) {
+    $riesgo_cache[$crid] = calcular_riesgo_credito_activo((int)$crid, $pdo);
+}
+foreach ($todas as &$_t) {
+    $_t['riesgo'] = $riesgo_cache[$_t['credito_id']] ?? 1;
+}
+unset($_t);
+
 // Calcular mora y separar: del día vs vencidas
 $del_dia = [];
 $vencidas = [];
@@ -304,6 +314,87 @@ foreach ($mensual_rows_raw as $r) {
 }
 $mensual_rows = array_values($mensual_dedup);
 
+// ── FEATURE 7: Dashboard cobrador mejorado ──────────────────
+
+// Meta semanal (configurable por cobrador en admin/usuarios)
+$_meta_stmt = $pdo->prepare("SELECT meta_semanal FROM ic_usuarios WHERE id = ?");
+$_meta_stmt->execute([$cobrador_filtro]);
+$META_SEMANAL = (float) ($_meta_stmt->fetchColumn() ?: 500000);
+$dow_cobro    = (int) date('N');
+$lunes_sem    = date('Y-m-d', strtotime('-' . ($dow_cobro - 1) . ' days'));
+$sabado_sem   = date('Y-m-d', strtotime($lunes_sem . ' +5 days'));
+
+$stmt_meta = $pdo->prepare("
+    SELECT COALESCE(SUM(monto_total), 0) AS cobrado_semana
+    FROM ic_pagos_temporales
+    WHERE cobrador_id = ? AND fecha_jornada BETWEEN ? AND ?
+      AND estado IN ('PENDIENTE','APROBADO') AND origen = 'cobrador'
+");
+$stmt_meta->execute([$cobrador_filtro, $lunes_sem, $sabado_sem]);
+$cobrado_semana = (float) $stmt_meta->fetchColumn();
+$pct_meta       = $META_SEMANAL > 0 ? min(100, round($cobrado_semana / $META_SEMANAL * 100)) : 0;
+$falta_meta     = max(0, $META_SEMANAL - $cobrado_semana);
+
+// Racha: días consecutivos cumpliendo meta diaria
+$META_DIARIA = round($META_SEMANAL / 6);
+$stmt_racha = $pdo->prepare("
+    SELECT fecha_jornada, SUM(monto_total) AS total_dia
+    FROM ic_pagos_temporales
+    WHERE cobrador_id = ? AND fecha_jornada >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      AND estado IN ('PENDIENTE','APROBADO') AND origen = 'cobrador'
+    GROUP BY fecha_jornada
+    ORDER BY fecha_jornada DESC
+");
+$stmt_racha->execute([$cobrador_filtro]);
+$racha = 0;
+foreach ($stmt_racha->fetchAll() as $rd) {
+    if ((float) $rd['total_dia'] >= $META_DIARIA) {
+        $racha++;
+    } else {
+        break;
+    }
+}
+
+// Mini ranking semanal
+$stmt_rank = $pdo->prepare("
+    SELECT cobrador_id, SUM(monto_total) AS total_sem
+    FROM ic_pagos_temporales
+    WHERE fecha_jornada BETWEEN ? AND ? AND estado IN ('PENDIENTE','APROBADO')
+      AND origen = 'cobrador'
+    GROUP BY cobrador_id
+    ORDER BY total_sem DESC
+");
+$stmt_rank->execute([$lunes_sem, $sabado_sem]);
+$ranking_rows = $stmt_rank->fetchAll();
+$mi_posicion  = 0;
+$total_cobs   = count($ranking_rows);
+foreach ($ranking_rows as $idx => $rr) {
+    if ((int) $rr['cobrador_id'] === $cobrador_filtro) {
+        $mi_posicion = $idx + 1;
+        break;
+    }
+}
+if ($mi_posicion === 0 && $total_cobs > 0) $mi_posicion = $total_cobs + 1;
+
+// Tendencia 4 semanas
+$stmt_tend = $pdo->prepare("
+    SELECT YEARWEEK(fecha_jornada, 1) AS yw, SUM(monto_total) AS total
+    FROM ic_pagos_temporales
+    WHERE cobrador_id = ? AND fecha_jornada >= DATE_SUB(CURDATE(), INTERVAL 28 DAY)
+      AND estado IN ('PENDIENTE','APROBADO') AND origen = 'cobrador'
+    GROUP BY yw
+    ORDER BY yw ASC
+");
+$stmt_tend->execute([$cobrador_filtro]);
+$tendencia_rows = $stmt_tend->fetchAll();
+$tend_vals = array_column($tendencia_rows, 'total');
+$tend_pct  = 0;
+if (count($tend_vals) >= 2) {
+    $sem_ant = (float) $tend_vals[count($tend_vals) - 2];
+    $sem_act = (float) $tend_vals[count($tend_vals) - 1];
+    $tend_pct = $sem_ant > 0 ? round(($sem_act - $sem_ant) / $sem_ant * 100) : 0;
+}
+
 $page_title = 'Agenda del ' . $hoy_dt->format('d/m/Y');
 $page_current = 'agenda';
 require_once __DIR__ . '/../views/layout.php';
@@ -449,6 +540,68 @@ $prog_pct      = $prog_total > 0 ? round(($prog_cobrados / $prog_total) * 100) :
     </div>
 </div>
 
+<!-- META SEMANAL -->
+<?php
+$meta_color = $pct_meta >= 100 ? '#d4a017' : ($pct_meta >= 70 ? 'var(--success)' : ($pct_meta >= 40 ? '#f97316' : 'var(--danger)'));
+?>
+<div class="card-ic mb-4" style="padding:16px;border-left:4px solid <?= $meta_color ?>">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:.9rem;font-weight:700">
+            <i class="fa fa-bullseye" style="color:<?= $meta_color ?>"></i> Meta Semanal
+        </span>
+        <span style="font-size:.85rem;font-weight:800;color:<?= $meta_color ?>">
+            <?= $pct_meta ?>%
+        </span>
+    </div>
+    <div style="background:rgba(255,255,255,.08);border-radius:99px;height:10px;overflow:hidden;margin-bottom:10px">
+        <div style="width:<?= $pct_meta ?>%;height:100%;background:<?= $meta_color ?>;border-radius:99px;transition:width .4s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.82rem">
+        <span style="color:var(--text-muted)">
+            <?= formato_pesos($cobrado_semana) ?> / <?= formato_pesos($META_SEMANAL) ?>
+        </span>
+        <?php if ($pct_meta >= 100): ?>
+            <span style="color:#d4a017;font-weight:800"><i class="fa fa-trophy"></i> Meta alcanzada!</span>
+        <?php else: ?>
+            <span style="color:var(--text-muted)">Faltan: <strong><?= formato_pesos($falta_meta) ?></strong></span>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- STRIP GAMIFICACIÓN -->
+<div class="kpi-grid mb-4" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi-card" style="--kpi-color:#f97316">
+        <div class="kpi-label" style="font-size:.78rem">Racha</div>
+        <div class="kpi-value" style="font-size:1.4rem;color:#f97316">
+            <?= $racha ?> <span style="font-size:.8rem">dias</span>
+        </div>
+        <div class="kpi-sub"><?= $racha > 0 ? 'consecutivos sobre meta' : 'sin racha activa' ?></div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--primary)">
+        <div class="kpi-label" style="font-size:.78rem">Tu Posicion</div>
+        <div class="kpi-value" style="font-size:1.4rem">
+            <?= $mi_posicion > 0 ? $mi_posicion . '<span style="font-size:.8rem;color:var(--text-muted)"> de ' . max($total_cobs, 1) . '</span>' : '—' ?>
+        </div>
+        <div class="kpi-sub">ranking esta semana</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:<?= $tend_pct >= 0 ? 'var(--success)' : 'var(--danger)' ?>">
+        <div class="kpi-label" style="font-size:.78rem">Tendencia</div>
+        <div class="kpi-value" style="font-size:1.4rem;color:<?= $tend_pct >= 0 ? 'var(--success)' : 'var(--danger)' ?>">
+            <i class="fa fa-arrow-<?= $tend_pct >= 0 ? 'up' : 'down' ?>"></i>
+            <?= abs($tend_pct) ?>%
+        </div>
+        <div class="kpi-sub">
+            <?php if (count($tend_vals) >= 2): ?>
+                <?php foreach (array_slice($tend_vals, -4) as $tv): ?>
+                    <span style="font-size:.7rem;color:var(--text-muted)"><?= formato_pesos((float)$tv) ?></span>
+                <?php endforeach; ?>
+            <?php else: ?>
+                datos insuficientes
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
 <!-- SUMARIO DEL DÍA -->
 <div class="kpi-grid mb-4">
     <div class="kpi-card" style="--kpi-color:var(--success)">
@@ -559,6 +712,9 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     <span class="agenda-nombre"><?= e(strtoupper($c['apellidos'] . ' ' . $c['nombres'])) ?> <i class="fa fa-chart-line" style="font-size:.75rem;opacity:.5"></i></span>
                     <span class="agenda-zona">Zona: <?= e($c['zona'] ?: '—') ?></span>
                 </button>
+                <?php if (($c['riesgo'] ?? 1) >= 2): ?>
+                    <?= badge_riesgo((int)$c['riesgo']) ?>
+                <?php endif; ?>
                 <?php if (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0): ?>
                     <span class="agenda-badge-prev">
                         <?= $c['cuotas_atrasadas'] ?> ant.

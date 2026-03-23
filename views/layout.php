@@ -220,11 +220,23 @@ if ($rol === 'admin') {
                         <i class="fa fa-hand-holding-dollar"></i>
                         <span class="nav-text">Atrasados</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'riesgo_cartera' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/riesgo_cartera"
+                       data-tooltip="Riesgo de Cartera">
+                        <i class="fa fa-shield-halved"></i>
+                        <span class="nav-text">Riesgo Cartera</span>
+                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'finalizados' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/finalizados"
                        data-tooltip="Créditos Finalizados">
                         <i class="fa fa-circle-check"></i>
                         <span class="nav-text">Finalizados</span>
+                    </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'aging_report' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/aging_report"
+                       data-tooltip="Antigüedad de Deuda">
+                        <i class="fa fa-layer-group"></i>
+                        <span class="nav-text">Antig. Deuda</span>
                     </a>
                 <?php endif; ?>
 
@@ -273,6 +285,12 @@ if ($rol === 'admin') {
                        data-tooltip="Usuarios">
                         <i class="fa fa-user-cog"></i>
                         <span class="nav-text">Usuarios</span>
+                    </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'metas' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/metas"
+                       data-tooltip="Metas Semanales">
+                        <i class="fa fa-bullseye"></i>
+                        <span class="nav-text">Metas</span>
                     </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'log' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/log"
