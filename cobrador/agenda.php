@@ -43,7 +43,7 @@ $sql = "
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
     WHERE cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
-      AND cr.estado = 'EN_CURSO'
+      AND cr.estado IN ('EN_CURSO','MOROSO')
       $condCobrador
     ORDER BY cu.fecha_vencimiento ASC, cl.apellidos ASC
 ";
@@ -218,7 +218,7 @@ $semana_stmt = $pdo->prepare("
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen,
            (SELECT pt2.id FROM ic_pagos_temporales pt2 WHERE pt2.cuota_id=cu.id AND pt2.estado='PENDIENTE' LIMIT 1) AS pt_id
     FROM ic_clientes cl
-    JOIN ic_creditos cr ON cr.cliente_id  = cl.id AND cr.cobrador_id = ? AND cr.estado = 'EN_CURSO'
+    JOIN ic_creditos cr ON cr.cliente_id  = cl.id AND cr.cobrador_id = ? AND cr.estado IN ('EN_CURSO','MOROSO')
                        AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas  cu ON cu.credito_id   = cr.id AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
     LEFT JOIN ic_articulos a ON a.id           = cr.articulo_id
@@ -283,7 +283,7 @@ $mensual_stmt = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
     WHERE cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
-      AND cr.estado = 'EN_CURSO'
+      AND cr.estado IN ('EN_CURSO','MOROSO')
       AND cr.frecuencia IN ('quincenal', 'mensual')
       AND cr.cobrador_id = ?
     ORDER BY cu.fecha_vencimiento ASC, cl.apellidos ASC
