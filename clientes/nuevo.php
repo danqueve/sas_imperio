@@ -40,9 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("
             INSERT INTO ic_clientes
               (nombres, apellidos, dni, cuil, telefono, telefono_alt, fecha_nacimiento,
-               direccion, direccion_laboral, coordenadas, cobrador_id, dia_cobro,
+               direccion, calle1, calle2, direccion_laboral, coordenadas, cobrador_id, dia_cobro,
                zona, estado, token_acceso, tiene_garante)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
         $stmt->execute([
             trim($v['nombres']),
@@ -53,6 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             trim($v['telefono_alt'] ?? ''),
             $v['fecha_nacimiento'] ?: null,
             trim($v['direccion'] ?? ''),
+            trim($v['calle1'] ?? ''),
+            trim($v['calle2'] ?? ''),
             trim($v['direccion_laboral'] ?? ''),
             trim($v['coordenadas'] ?? ''),
             ($v['cobrador_id'] ?: null),
@@ -69,15 +71,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Garante opcional
         if (!empty($v['tiene_garante']) && !empty($v['g_nombres']) && !empty($v['g_apellidos'])) {
             $pdo->prepare("
-                INSERT INTO ic_garantes (cliente_id, nombres, apellidos, dni, telefono, direccion, coordenadas)
-                VALUES (?,?,?,?,?,?,?)
+                INSERT INTO ic_garantes (cliente_id, nombres, apellidos, dni, cuil, telefono, direccion, localidad, coordenadas)
+                VALUES (?,?,?,?,?,?,?,?,?)
             ")->execute([
                         $cliente_id,
                         trim($v['g_nombres']),
                         trim($v['g_apellidos']),
                         trim($v['g_dni'] ?? ''),
+                        trim($v['g_cuil'] ?? ''),
                         trim($v['g_telefono'] ?? ''),
                         trim($v['g_direccion'] ?? ''),
+                        trim($v['g_localidad'] ?? ''),
                         trim($v['g_coordenadas'] ?? ''),
                     ]);
         }
@@ -157,6 +161,14 @@ require_once __DIR__ . '/../views/layout.php';
                     <label>Dirección (domicilio)</label>
                     <input type="text" name="direccion" value="<?= e($v['direccion'] ?? '') ?>"
                         placeholder="Calle 123, Localidad">
+                </div>
+                <div class="form-group">
+                    <label>Entre Calle</label>
+                    <input type="text" name="calle1" value="<?= e($v['calle1'] ?? '') ?>" placeholder="Ej: San Martín">
+                </div>
+                <div class="form-group">
+                    <label>Y Calle</label>
+                    <input type="text" name="calle2" value="<?= e($v['calle2'] ?? '') ?>" placeholder="Ej: Rivadavia">
                 </div>
                 <div class="form-group" style="grid-column:span 2">
                     <label>Dirección Laboral</label>
@@ -240,8 +252,16 @@ require_once __DIR__ . '/../views/layout.php';
                         <input type="text" name="g_dni" value="<?= e($v['g_dni'] ?? '') ?>">
                     </div>
                     <div class="form-group">
+                        <label>CUIL / CUIT Garante</label>
+                        <input type="text" name="g_cuil" value="<?= e($v['g_cuil'] ?? '') ?>" placeholder="20-12345678-0">
+                    </div>
+                    <div class="form-group">
                         <label>Teléfono Garante</label>
                         <input type="text" name="g_telefono" value="<?= e($v['g_telefono'] ?? '') ?>">
+                    </div>
+                    <div class="form-group">
+                        <label>Localidad Garante</label>
+                        <input type="text" name="g_localidad" value="<?= e($v['g_localidad'] ?? '') ?>" placeholder="Ej: Tafí Viejo">
                     </div>
                     <div class="form-group" style="grid-column:span 2">
                         <label>Dirección Garante</label>

@@ -240,9 +240,21 @@ usort($timeline, fn($a, $b) => strcmp($b['fecha'], $a['fecha']));
 $page_title   = 'Crédito #' . $id;
 $page_current = 'creditos';
 
+// ¿Existe ya un reconocimiento de deuda para este crédito?
+$recon_check = $pdo->prepare("SELECT id FROM ic_reconocimientos WHERE credito_id=?");
+$recon_check->execute([$id]);
+$tiene_recon = (bool) $recon_check->fetch();
+
 $topbar_actions = '<a href="resumen_pdf.php?id=' . $id . '" target="_blank" class="btn-ic btn-ghost btn-sm"><i class="fa fa-file-pdf"></i> PDF Resumen</a> ';
 if ((es_admin() || es_supervisor()) && $cr['estado'] === 'FINALIZADO') {
     $topbar_actions .= '<a href="libre_deuda_pdf.php?id=' . $id . '" target="_blank" class="btn-ic btn-success btn-sm"><i class="fa fa-stamp"></i> Libre Deuda</a> ';
+}
+if (es_admin() || es_supervisor()) {
+    if ($tiene_recon) {
+        $topbar_actions .= '<a href="reconocimiento_pdf.php?credito_id=' . $id . '" target="_blank" class="btn-ic btn-success btn-sm"><i class="fa fa-file-contract"></i> PDF Reconocimiento</a> ';
+    } else {
+        $topbar_actions .= '<a href="reconocimiento_nuevo.php?credito_id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-file-contract"></i> Reconocimiento</a> ';
+    }
 }
 if (es_admin()) {
     $topbar_actions .= '<a href="editar?id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar</a> ';

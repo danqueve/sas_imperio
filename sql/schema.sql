@@ -268,4 +268,47 @@ CREATE TABLE IF NOT EXISTS `ic_historial_refinanciaciones` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci
   COMMENT='Auditoría de cada refinanciación realizada sobre un crédito';
 
+-- ------------------------------------------------------------
+-- Migración: ic_clientes — campos "entre calles" para Reconocimiento de Deuda
+-- ------------------------------------------------------------
+ALTER TABLE ic_clientes
+  ADD COLUMN IF NOT EXISTS calle1 VARCHAR(100) NULL COMMENT 'Entre calle' AFTER direccion,
+  ADD COLUMN IF NOT EXISTS calle2 VARCHAR(100) NULL COMMENT 'Y calle'    AFTER calle1;
+
+-- ------------------------------------------------------------
+-- Migración: ic_garantes — cuil y localidad para Reconocimiento de Deuda
+-- ------------------------------------------------------------
+ALTER TABLE ic_garantes
+  ADD COLUMN IF NOT EXISTS cuil     VARCHAR(20)  NULL AFTER dni,
+  ADD COLUMN IF NOT EXISTS localidad VARCHAR(100) NULL AFTER direccion;
+
+-- ------------------------------------------------------------
+-- Tabla ic_reconocimientos
+-- Vinculada 1:1 a ic_creditos. Almacena los datos del documento
+-- "Reconocimiento de Deuda" para generación de PDF.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_reconocimientos` (
+  `id`               INT AUTO_INCREMENT PRIMARY KEY,
+  `credito_id`       INT          NOT NULL,
+  `deudor_genero`    VARCHAR(5)   NOT NULL DEFAULT 'El',
+  `deudor_cuil`      VARCHAR(20)  NULL,
+  `deudor_calle1`    VARCHAR(100) NULL     COMMENT 'Entre calle',
+  `deudor_calle2`    VARCHAR(100) NULL     COMMENT 'Y calle',
+  `suma_letras`      VARCHAR(400) NOT NULL,
+  `tiene_garante`    TINYINT(1)   NOT NULL DEFAULT 0,
+  `garante_genero`   VARCHAR(5)   NOT NULL DEFAULT 'Sr.',
+  `garante_cuil`     VARCHAR(20)  NULL,
+  `garante_localidad` VARCHAR(100) NULL,
+  `dia_firma`        TINYINT(2)   NOT NULL,
+  `mes_firma`        VARCHAR(20)  NOT NULL,
+  `anio_firma`       YEAR         NOT NULL,
+  `ciudad_firma`     VARCHAR(100) NOT NULL DEFAULT 'San Miguel de Tucuman',
+  `provincia_firma`  VARCHAR(100) NOT NULL DEFAULT 'Tucuman',
+  `creado_en`        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `pdf_generado`     TINYINT(1)   NOT NULL DEFAULT 0,
+  FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE,
+  UNIQUE KEY `uq_recon_credito` (`credito_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci
+  COMMENT='Reconocimientos de Deuda vinculados a créditos';
+
 SET FOREIGN_KEY_CHECKS = 1;
