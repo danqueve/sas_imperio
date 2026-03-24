@@ -251,7 +251,8 @@ if ((es_admin() || es_supervisor()) && $cr['estado'] === 'FINALIZADO') {
 }
 if (es_admin() || es_supervisor()) {
     if ($tiene_recon) {
-        $topbar_actions .= '<a href="reconocimiento_pdf.php?credito_id=' . $id . '" target="_blank" class="btn-ic btn-success btn-sm"><i class="fa fa-file-contract"></i> PDF Reconocimiento</a> ';
+        $topbar_actions .= '<a href="reconocimiento_nuevo.php?credito_id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-edit"></i> Editar Recon.</a> ';
+        $topbar_actions .= '<a href="reconocimiento_pdf.php?credito_id=' . $id . '" target="_blank" class="btn-ic btn-success btn-sm"><i class="fa fa-file-contract"></i> PDF Recon.</a> ';
     } else {
         $topbar_actions .= '<a href="reconocimiento_nuevo.php?credito_id=' . $id . '" class="btn-ic btn-ghost btn-sm"><i class="fa fa-file-contract"></i> Reconocimiento</a> ';
     }
