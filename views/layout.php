@@ -298,6 +298,12 @@ if ($rol === 'admin') {
                         <i class="fa fa-history"></i>
                         <span class="nav-text">Actividad</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'interes_cero' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/interes_cero"
+                       data-tooltip="Interés a Cero">
+                        <i class="fa fa-percent"></i>
+                        <span class="nav-text">Interés a Cero</span>
+                    </a>
                 <?php endif; ?>
 
                 <!-- Soporte — visible para todos los roles -->
