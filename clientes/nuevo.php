@@ -35,6 +35,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!empty($v['tiene_garante']) && (empty($v['g_nombres']) || empty($v['g_apellidos']))) {
         $error = 'Si el cliente tiene garante, debe completar Nombres y Apellidos del garante.';
     } else {
+        // Verificar DNI único
+        $dni_input = trim($v['dni'] ?? '');
+        if ($dni_input !== '') {
+            $stmt_dni = $pdo->prepare("SELECT id, nombres, apellidos FROM ic_clientes WHERE dni = ? LIMIT 1");
+            $stmt_dni->execute([$dni_input]);
+            $dup = $stmt_dni->fetch();
+            if ($dup) {
+                $error = 'El DNI ' . e($dni_input) . ' ya está registrado para el cliente: <strong>' . e($dup['apellidos'] . ', ' . $dup['nombres']) . '</strong>. <a href="ver?id=' . (int)$dup['id'] . '">Ver cliente</a>';
+            }
+        }
+    }
+
+    if (!$error) {
         // Insertar cliente
         $token = generar_token();
         $stmt = $pdo->prepare("
@@ -394,6 +407,35 @@ function setupMapsInput(id) {
 
 setupMapsInput('coordenadas');
 setupMapsInput('g_coordenadas');
+
+// ── Verificación DNI en tiempo real ──────────────────────────────────────────
+(function() {
+  var dniInp = document.querySelector('[name=dni]');
+  if (!dniInp) return;
+
+  var feedback = document.createElement('small');
+  feedback.style.cssText = 'display:block;margin-top:3px;font-size:.75rem';
+  dniInp.parentNode.appendChild(feedback);
+
+  dniInp.addEventListener('blur', function() {
+    var dni = this.value.trim();
+    if (!dni) { feedback.textContent = ''; return; }
+    feedback.style.color = '#999';
+    feedback.textContent = '⏳ Verificando…';
+    fetch('verificar_dni?dni=' + encodeURIComponent(dni))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.existe) {
+          feedback.style.color = 'var(--danger,#ef4444)';
+          feedback.innerHTML = '✗ DNI ya registrado: <strong>' + d.nombre + '</strong>. <a href="ver?id=' + d.id + '">Ver cliente</a>';
+        } else {
+          feedback.style.color = 'var(--success,#22c55e)';
+          feedback.textContent = '✓ DNI disponible';
+        }
+      })
+      .catch(function() { feedback.textContent = ''; });
+  });
+})();
 </script>
 JS;
 require_once __DIR__ . '/../views/layout_footer.php';
