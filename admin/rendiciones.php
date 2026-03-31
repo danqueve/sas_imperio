@@ -215,7 +215,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
                     <?php foreach ($fechas_arr as $f): ?>
                         <span style="font-size:.7rem;background:rgba(79,70,229,.18);color:var(--primary-light);padding:2px 7px;border-radius:10px;white-space:nowrap">
-                            <?= nombre_dia((int) date('N', strtotime($f))) ?> <?= date('d/m', strtotime($f)) ?>
+                            <?= label_jornada($f) ?>
                         </span>
                     <?php endforeach; ?>
                 </div>
@@ -251,16 +251,22 @@ require_once __DIR__ . '/../views/layout.php';
             </div>
 
             <?php foreach ($pagos_por_jornada as $fecha_jornada => $pagos_jornada):
-                $tot = $totales_por_jornada[$fecha_jornada];
-                $dia_nombre = nombre_dia((int) date('N', strtotime($fecha_jornada)));
+                $tot       = $totales_por_jornada[$fecha_jornada];
+                $lbl_jornada = label_jornada($fecha_jornada);
+                $es_domingo  = ((int) date('N', strtotime($fecha_jornada)) === 7);
             ?>
 
             <!-- Sub-header de jornada -->
-            <div style="padding:10px 16px;background:rgba(79,70,229,.08);border-left:3px solid var(--primary);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div style="padding:10px 16px;background:<?= $es_domingo ? 'rgba(245,158,11,.10)' : 'rgba(79,70,229,.08)' ?>;border-left:3px solid <?= $es_domingo ? 'var(--warning)' : 'var(--primary)' ?>;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
                 <div>
                     <strong style="font-size:.92rem">
                         <i class="fa fa-calendar-day"></i>
-                        <?= $dia_nombre ?> <?= date('d/m/Y', strtotime($fecha_jornada)) ?>
+                        <?= e($lbl_jornada) ?>
+                        <?php if ($es_domingo): ?>
+                            <span style="font-size:.72rem;background:rgba(245,158,11,.2);color:var(--warning);padding:2px 7px;border-radius:8px;margin-left:6px;font-weight:500">
+                                cobros del sábado
+                            </span>
+                        <?php endif; ?>
                     </strong>
                     <span class="text-muted" style="font-size:.78rem;margin-left:10px">
                         <?= $tot['cant'] ?> pago<?= $tot['cant'] !== 1 ? 's' : '' ?> — <?= formato_pesos($tot['total']) ?>
@@ -277,7 +283,7 @@ require_once __DIR__ . '/../views/layout.php';
                         </span>
                     </a>
                     <button type="button" class="btn-ic btn-success btn-sm"
-                        onclick="abrirAprobarJornada('<?= e($fecha_jornada) ?>', <?= $tot['cant'] ?>, '<?= e($dia_nombre) ?> <?= date('d/m/Y', strtotime($fecha_jornada)) ?>', '<?= formato_pesos($tot['total']) ?>')">
+                        onclick="abrirAprobarJornada('<?= e($fecha_jornada) ?>', <?= $tot['cant'] ?>, '<?= e($lbl_jornada) ?>', '<?= formato_pesos($tot['total']) ?>')">
                         <i class="fa fa-check"></i> Aprobar jornada
                     </button>
                 </div>

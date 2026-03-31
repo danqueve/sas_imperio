@@ -38,6 +38,11 @@ $hasta = (isset($_GET['hasta']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['ha
     ? $_GET['hasta'] : $hoy;
 if ($desde > $hasta) [$desde, $hasta] = [$hasta, $desde];
 
+// Si el rango termina en sábado, extender 1 día para incluir entradas tardías (domingo = sábado)
+$hasta_ext = (date('N', strtotime($hasta)) == 6)
+    ? date('Y-m-d', strtotime($hasta . ' +1 day'))
+    : $hasta;
+
 $mes_ant_ini = date('Y-m-01', strtotime('first day of last month'));
 $mes_ant_fin = date('Y-m-t',  strtotime('first day of last month'));
 $trim_ini    = date('Y-m-01', strtotime('-2 months'));
@@ -59,7 +64,7 @@ $stmt = $pdo->prepare("
     FROM ic_pagos_confirmados
     WHERE cobrador_id = ? AND fecha_pago BETWEEN ? AND ?
 ");
-$stmt->execute([$cobrador_id, $desde, $hasta]);
+$stmt->execute([$cobrador_id, $desde, $hasta_ext]);
 $prod = $stmt->fetch(PDO::FETCH_ASSOC);
 
 $ticket_promedio = $prod['cant_pagos'] > 0
@@ -135,7 +140,7 @@ $stmt = $pdo->prepare("
     GROUP BY DATE(fecha_pago)
     ORDER BY dia
 ");
-$stmt->execute([$cobrador_id, $desde, $hasta]);
+$stmt->execute([$cobrador_id, $desde, $hasta_ext]);
 $cobros_diarios_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Promedio diario del equipo (excluyendo al cobrador)
@@ -151,7 +156,7 @@ $stmt = $pdo->prepare("
     GROUP BY DATE(sub.fecha_pago)
     ORDER BY dia
 ");
-$stmt->execute([$cobrador_id, $desde, $hasta]);
+$stmt->execute([$cobrador_id, $desde, $hasta_ext]);
 $prom_equipo_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Construir series indexadas por fecha

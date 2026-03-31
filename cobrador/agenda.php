@@ -323,6 +323,7 @@ $META_SEMANAL = (float) ($_meta_stmt->fetchColumn() ?: 500000);
 $dow_cobro    = (int) date('N');
 $lunes_sem    = date('Y-m-d', strtotime('-' . ($dow_cobro - 1) . ' days'));
 $sabado_sem   = date('Y-m-d', strtotime($lunes_sem . ' +5 days'));
+$domingo_sem  = date('Y-m-d', strtotime($lunes_sem . ' +6 days')); // incluye entradas tardías del sábado
 
 $stmt_meta = $pdo->prepare("
     SELECT COALESCE(SUM(monto_total), 0) AS cobrado_semana
@@ -330,7 +331,7 @@ $stmt_meta = $pdo->prepare("
     WHERE cobrador_id = ? AND fecha_jornada BETWEEN ? AND ?
       AND estado IN ('PENDIENTE','APROBADO') AND origen = 'cobrador'
 ");
-$stmt_meta->execute([$cobrador_filtro, $lunes_sem, $sabado_sem]);
+$stmt_meta->execute([$cobrador_filtro, $lunes_sem, $domingo_sem]);
 $cobrado_semana = (float) $stmt_meta->fetchColumn();
 $pct_meta       = $META_SEMANAL > 0 ? min(100, round($cobrado_semana / $META_SEMANAL * 100)) : 0;
 $falta_meta     = max(0, $META_SEMANAL - $cobrado_semana);
@@ -364,7 +365,7 @@ $stmt_rank = $pdo->prepare("
     GROUP BY cobrador_id
     ORDER BY total_sem DESC
 ");
-$stmt_rank->execute([$lunes_sem, $sabado_sem]);
+$stmt_rank->execute([$lunes_sem, $domingo_sem]);
 $ranking_rows = $stmt_rank->fetchAll();
 $mi_posicion  = 0;
 $total_cobs   = count($ranking_rows);

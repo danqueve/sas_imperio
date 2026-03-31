@@ -99,7 +99,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <th>#</th>
                     <th>Cobrador</th>
-                    <th>Período</th>
+                    <th>Semana</th>
                     <th>Total Cobrado</th>
                     <th>Comisión</th>
                     <th>Extras</th>
@@ -120,8 +120,10 @@ require_once __DIR__ . '/../views/layout.php';
                             <td class="text-muted nowrap">#<?= $liq['id'] ?></td>
                             <td class="fw-bold"><?= e($liq['cob_nombre'] . ' ' . $liq['cob_apellido']) ?></td>
                             <td class="nowrap text-muted">
+                                <span style="font-size:.72rem;color:var(--text-muted)">Lun</span>
                                 <?= date('d/m/Y', strtotime($liq['fecha_desde'])) ?>
                                 <span style="color:var(--dark-border)">→</span>
+                                <span style="font-size:.72rem;color:var(--text-muted)">Dom</span>
                                 <?= date('d/m/Y', strtotime($liq['fecha_hasta'])) ?>
                             </td>
                             <td class="nowrap fw-bold"><?= formato_pesos($liq['total_cobrado']) ?></td>

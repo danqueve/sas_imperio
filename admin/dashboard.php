@@ -136,11 +136,12 @@ $total_pend = $cartera['vigentes'] + $cartera['vencidas'];
 $g_al_dia   = $total_pend > 0 ? min(99,(int)round($cartera['vigentes'] / $total_pend * 100)) : 100;
 $g_cobro    = $cobrado_mes > 0 ? min(99,(int)round($cobrado_hoy / $cobrado_mes * 100)) : 0;
 
-// ── Semana de cobros: Lunes → Sábado ──────────────────────────
-$dow_hoy       = (int)date('N');                          // 1=Lun … 6=Sáb, 7=Dom
-$dias_al_lunes = ($dow_hoy === 7) ? 6 : ($dow_hoy - 1);  // Dom retrocede a sem. anterior
-$semana_inicio = date('Y-m-d', strtotime("-{$dias_al_lunes} days"));
-$semana_fin    = date('Y-m-d', strtotime($semana_inicio . ' +5 days'));
+// ── Semana de cobros: Lunes → Sábado (+ domingo como tardío de sábado) ───────
+$dow_hoy        = (int)date('N');                          // 1=Lun … 6=Sáb, 7=Dom
+$dias_al_lunes  = ($dow_hoy === 7) ? 6 : ($dow_hoy - 1);  // Dom retrocede a sem. anterior
+$semana_inicio  = date('Y-m-d', strtotime("-{$dias_al_lunes} days"));
+$semana_fin     = date('Y-m-d', strtotime($semana_inicio . ' +5 days')); // Sáb (gráfico Lun-Sáb)
+$semana_fin_ext = date('Y-m-d', strtotime($semana_inicio . ' +6 days')); // Dom (incluye tardíos Sáb)
 
 // ── Cobros gráfico: 6 días Lun–Sáb de la semana actual ────────
 $dias_es    = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -165,7 +166,7 @@ $stmt_cob = $pdo->prepare("
     GROUP BY DATE(pc.fecha_pago), pc.cobrador_id
     ORDER BY pc.cobrador_id
 ");
-$stmt_cob->execute([$semana_inicio, $semana_fin]);
+$stmt_cob->execute([$semana_inicio, $semana_fin_ext]);
 $rows_cob = $stmt_cob->fetchAll();
 
 // Construir estructura: cobrador_id → [nombre, mapa de días]
@@ -195,12 +196,12 @@ foreach ($rows_cob as $r) {
 }
 $chart_vals = array_values($chart_map);
 
-// Total cobrado en la semana (para encabezado del gráfico)
+// Total cobrado en la semana (incluye entradas tardías del domingo = sábado)
 $stmt_sem = $pdo->prepare("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_pago BETWEEN ? AND ?");
-$stmt_sem->execute([$semana_inicio, $semana_fin]);
+$stmt_sem->execute([$semana_inicio, $semana_fin_ext]);
 $cobrado_semana = (float)$stmt_sem->fetchColumn();
 
-// ── Ranking cobradores de la semana (Lun–Sáb) ────────────────
+// ── Ranking cobradores de la semana (Lun–Sáb + tardíos domingo) ──────────────
 $stmt_rank = $pdo->prepare("
     SELECT u.nombre, u.apellido, COUNT(*) AS pagos, COALESCE(SUM(pc.monto_total),0) AS total
     FROM ic_pagos_confirmados pc
@@ -208,7 +209,7 @@ $stmt_rank = $pdo->prepare("
     WHERE pc.fecha_pago BETWEEN ? AND ?
     GROUP BY pc.cobrador_id ORDER BY total DESC LIMIT 5
 ");
-$stmt_rank->execute([$semana_inicio, $semana_fin]);
+$stmt_rank->execute([$semana_inicio, $semana_fin_ext]);
 $cobradores_mes = $stmt_rank->fetchAll();
 $max_cob = count($cobradores_mes) ? (float)$cobradores_mes[0]['total'] : 1;
 

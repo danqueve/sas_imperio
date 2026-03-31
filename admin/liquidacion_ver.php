@@ -31,21 +31,21 @@ $items_stmt = $pdo->prepare("SELECT * FROM ic_liquidacion_items WHERE liquidacio
 $items_stmt->execute([$id]);
 $items = $items_stmt->fetchAll();
 
-// Cobros del período por día
+// Cobros de la semana por día (usa semana_lunes para corte correcto Lun-Dom)
 $cobros_stmt = $pdo->prepare("
-    SELECT DATE(pc.fecha_pago) AS dia,
-           SUM(pc.monto_efectivo) AS efectivo,
-           SUM(pc.monto_transferencia) AS transferencia,
-           SUM(pc.monto_mora_cobrada) AS mora,
-           SUM(pc.monto_total) AS subtotal,
-           COUNT(*) AS cant_pagos
+    SELECT DATE(pc.fecha_jornada) AS dia,
+           SUM(pc.monto_efectivo)       AS efectivo,
+           SUM(pc.monto_transferencia)  AS transferencia,
+           SUM(pc.monto_mora_cobrada)   AS mora,
+           SUM(pc.monto_total)          AS subtotal,
+           COUNT(*)                     AS cant_pagos
     FROM ic_pagos_confirmados pc
-    WHERE pc.cobrador_id = ?
-      AND pc.fecha_pago BETWEEN ? AND ?
-    GROUP BY DATE(pc.fecha_pago)
+    WHERE pc.cobrador_id  = ?
+      AND pc.semana_lunes = ?
+    GROUP BY DATE(pc.fecha_jornada)
     ORDER BY dia
 ");
-$cobros_stmt->execute([$liq['cobrador_id'], $liq['fecha_desde'], $liq['fecha_hasta']]);
+$cobros_stmt->execute([$liq['cobrador_id'], $liq['fecha_desde']]);
 $cobros_dias = $cobros_stmt->fetchAll();
 
 // Acciones POST
@@ -144,8 +144,8 @@ require_once __DIR__ . '/../views/layout.php';
     <h2 style="margin:0 0 4px">💼 Imperio Comercial — Liquidación #<?= $id ?></h2>
     <p style="margin:0;font-size:.9rem;color:#555">
         Cobrador: <strong><?= e($liq['cob_nombre'] . ' ' . $liq['cob_apellido']) ?></strong>
-        &nbsp;|&nbsp; Período:
-        <strong><?= date('d/m/Y', strtotime($liq['fecha_desde'])) ?> al <?= date('d/m/Y', strtotime($liq['fecha_hasta'])) ?></strong>
+        &nbsp;|&nbsp; Semana:
+        <strong>Lun <?= date('d/m/Y', strtotime($liq['fecha_desde'])) ?> al Dom <?= date('d/m/Y', strtotime($liq['fecha_hasta'])) ?></strong>
     </p>
     <hr>
 </div>
@@ -172,8 +172,8 @@ require_once __DIR__ . '/../views/layout.php';
             <?php endif; ?>
         </div>
         <div>
-            <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.7px">Período</div>
-            <div class="fw-bold"><?= date('d/m/Y', strtotime($liq['fecha_desde'])) ?> → <?= date('d/m/Y', strtotime($liq['fecha_hasta'])) ?></div>
+            <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.7px">Semana</div>
+            <div class="fw-bold">Lun <?= date('d/m/Y', strtotime($liq['fecha_desde'])) ?> → Dom <?= date('d/m/Y', strtotime($liq['fecha_hasta'])) ?></div>
         </div>
         <div>
             <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.7px">Creada</div>
@@ -198,8 +198,8 @@ require_once __DIR__ . '/../views/layout.php';
 <!-- ── Cobros del período ── -->
 <div class="card-ic mb-4">
     <div class="card-ic-header">
-        <span class="card-title"><i class="fa fa-calendar-check"></i> Cobros del Período</span>
-        <span class="text-muted" style="font-size:.82rem">Lun–Sáb</span>
+        <span class="card-title"><i class="fa fa-calendar-check"></i> Cobros de la Semana</span>
+        <span class="text-muted" style="font-size:.82rem">Lun–Dom</span>
     </div>
     <?php if (empty($cobros_dias)): ?>
         <p class="text-muted text-center" style="padding:24px">Sin cobros confirmados en este período.</p>

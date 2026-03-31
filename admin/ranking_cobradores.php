@@ -21,6 +21,11 @@ $hasta = (isset($_GET['hasta']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['ha
 
 if ($desde > $hasta) [$desde, $hasta] = [$hasta, $desde];
 
+// Si el rango termina en sábado, extender 1 día para incluir entradas tardías (domingo = sábado)
+$hasta_ext = (date('N', strtotime($hasta)) == 6)
+    ? date('Y-m-d', strtotime($hasta . ' +1 day'))
+    : $hasta;
+
 // Detectar período activo para resaltar botón
 $mes_ant_ini = date('Y-m-01', strtotime('first day of last month'));
 $mes_ant_fin = date('Y-m-t', strtotime('first day of last month'));
@@ -70,7 +75,7 @@ if (!empty($ids)) {
         WHERE pc.fecha_pago BETWEEN ? AND ?
         GROUP BY pc.cobrador_id
     ");
-    $stmt->execute([$desde, $hasta]);
+    $stmt->execute([$desde, $hasta_ext]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $cid = (int)$r['cobrador_id'];
         if (!isset($data[$cid])) continue;

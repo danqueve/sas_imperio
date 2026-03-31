@@ -20,6 +20,11 @@ $hasta = (isset($_GET['hasta']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['ha
     ? $_GET['hasta'] : $hoy;
 if ($desde > $hasta) [$desde, $hasta] = [$hasta, $desde];
 
+// Si el rango termina en sábado, extender 1 día para incluir entradas tardías (domingo = sábado)
+$hasta_ext = (date('N', strtotime($hasta)) == 6)
+    ? date('Y-m-d', strtotime($hasta . ' +1 day'))
+    : $hasta;
+
 $mes_ant_ini = date('Y-m-01', strtotime('first day of last month'));
 $mes_ant_fin = date('Y-m-t',  strtotime('first day of last month'));
 $trim_ini    = date('Y-m-01', strtotime('-2 months'));
@@ -171,14 +176,14 @@ if ($cobrador_id > 0) {
 
     if ($cobrador_info) {
         $nombre_cob  = e($cobrador_info['apellido'] . ', ' . $cobrador_info['nombre']);
-        $met_cob     = obtener_metricas($pdo, [$cobrador_id], $desde, $hasta, false);
+        $met_cob     = obtener_metricas($pdo, [$cobrador_id], $desde, $hasta_ext, false);
 
         // Promedio del resto del equipo
         $ids_resto = array_map('intval', array_column(
             array_filter($cobradores, fn($c) => (int)$c['id'] !== $cobrador_id),
             'id'
         ));
-        $met_prom = obtener_metricas($pdo, $ids_resto, $desde, $hasta, true);
+        $met_prom = obtener_metricas($pdo, $ids_resto, $desde, $hasta_ext, true);
     }
 }
 

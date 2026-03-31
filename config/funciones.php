@@ -3,6 +3,26 @@
 // Sistema Imperio Comercial — Funciones de Negocio
 // ============================================================
 
+// ── Semana de cobro ───────────────────────────────────────────
+
+/**
+ * Devuelve el lunes que inicia la semana de cobro de una fecha de jornada.
+ * Regla: Domingo (N=7) → lunes anterior; Lunes-Sábado → lunes de esa semana.
+ */
+function calcular_semana_lunes(string $fecha_jornada): string
+{
+    $d = new DateTime($fecha_jornada);
+    $dow = (int) $d->format('N'); // 1=Lun … 7=Dom
+    if ($dow === 7) {
+        // Domingo pertenece a la semana que empezó el lunes anterior
+        $d->modify('-6 days');
+    } else {
+        // Lunes (1) → resta 0; Martes (2) → resta 1; … Sábado (6) → resta 5
+        $d->modify('-' . ($dow - 1) . ' days');
+    }
+    return $d->format('Y-m-d');
+}
+
 // ── Mora ─────────────────────────────────────────────────────
 
 /**
@@ -78,23 +98,34 @@ function fecha_jornada(?string $datetime = null): string
 
 /**
  * Devuelve las fechas de jornada disponibles para registrar pagos en este momento.
- * Lunes antes de las 10 AM → [sábado, domingo] (rendición del fin de semana).
- * Cualquier otro día antes de las 10 AM → [ayer].
- * Resto → [hoy].
+ *
+ * Reglas de negocio:
+ *   - Semana hábil: Lunes a Sábado. Domingo NO es día de cobro.
+ *   - Domingo (cualquier hora) → jornada del Sábado anterior.
+ *   - Lunes antes de las 10 AM → jornada del Sábado (rinde cobros del Sábado).
+ *   - Cualquier otro día antes de las 10 AM → jornada de ayer.
+ *   - Resto → jornada de hoy.
  */
 function jornadas_disponibles(): array
 {
     $dow  = (int) date('N'); // 1=Lun … 7=Dom
     $hora = (int) date('H');
-    if ($dow === 1 && $hora < 10) {
-        return [
-            date('Y-m-d', strtotime('-2 days')), // Sábado
-            date('Y-m-d', strtotime('-1 day')),  // Domingo
-        ];
+
+    // Domingo: siempre pertenece al sábado anterior
+    if ($dow === 7) {
+        return [date('Y-m-d', strtotime('-1 day'))]; // Sábado
     }
+
+    // Lunes antes de las 10 AM: rinde el sábado
+    if ($dow === 1 && $hora < 10) {
+        return [date('Y-m-d', strtotime('-2 days'))]; // Sábado
+    }
+
+    // Cualquier otro día antes de las 10 AM: jornada de ayer
     if ($hora < 10) {
         return [date('Y-m-d', strtotime('-1 day'))];
     }
+
     return [date('Y-m-d')];
 }
 
@@ -156,13 +187,14 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
             $pdo->beginTransaction();
 
             // 1. Insertar en pagos_confirmados con snapshot completo
+            $semana_lunes = calcular_semana_lunes($pago['fecha_jornada'] ?: $fecha);
             $ins = $pdo->prepare("
                 INSERT INTO ic_pagos_confirmados
                     (pago_temp_id, cuota_id, cobrador_id, aprobador_id, fecha_pago,
                      monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada,
-                     es_cuota_pura, observaciones, fecha_jornada, origen,
+                     es_cuota_pura, observaciones, fecha_jornada, semana_lunes, origen,
                      monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $ins->execute([
                 $pago['id'],
@@ -178,6 +210,7 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 (int)($pago['es_cuota_pura'] ?? 0),
                 $pago['observaciones'] ?? null,
                 $pago['fecha_jornada'],
+                $semana_lunes,
                 $pago['origen'] ?? 'cobrador',
                 $pago['monto_cuota'],
                 $pago['numero_cuota'],
@@ -380,7 +413,22 @@ function generar_token(): string
 
 function nombre_dia(int $n): string
 {
-    return ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][$n] ?? '?';
+    return ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][$n] ?? '?';
+}
+
+/**
+ * Devuelve el label de una fecha_jornada para mostrar al usuario.
+ * Si es domingo (N=7), se muestra como "Sáb (tardío) dd/mm/YYYY" porque el domingo
+ * no es día hábil — esos pagos corresponden al sábado anterior.
+ */
+function label_jornada(string $fecha): string
+{
+    $dow = (int) date('N', strtotime($fecha));
+    if ($dow === 7) {
+        // Domingo → mostrar como Sábado tardío
+        return 'Sáb (tardío) ' . date('d/m/Y', strtotime($fecha));
+    }
+    return nombre_dia($dow) . ' ' . date('d/m/Y', strtotime($fecha));
 }
 
 function badge_estado_credito(string $estado): string

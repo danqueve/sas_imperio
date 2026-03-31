@@ -36,27 +36,53 @@ $cobradores = $pdo->query("SELECT id, nombre, apellido FROM ic_usuarios WHERE ro
 
 $error = '';
 
-// AJAX: consultar cobros de un cobrador en un período
+// AJAX: semanas disponibles para un cobrador (excluye la semana de esta liquidación en edición)
+if (isset($_GET['ajax_semanas'])) {
+    header('Content-Type: application/json');
+    $cob_id = (int) ($_GET['cobrador_id'] ?? 0);
+    if (!$cob_id) { echo json_encode([]); exit; }
+    $rows = $pdo->prepare("
+        SELECT pc.semana_lunes,
+               COUNT(*)            AS cant_pagos,
+               SUM(pc.monto_total) AS total
+        FROM ic_pagos_confirmados pc
+        WHERE pc.cobrador_id = ?
+          AND pc.semana_lunes IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM ic_liquidaciones liq
+              WHERE liq.cobrador_id = pc.cobrador_id
+                AND liq.fecha_desde = pc.semana_lunes
+                AND liq.id != ?
+          )
+        GROUP BY pc.semana_lunes
+        ORDER BY pc.semana_lunes DESC
+        LIMIT 26
+    ");
+    $rows->execute([$cob_id, $id]);
+    echo json_encode($rows->fetchAll(PDO::FETCH_ASSOC));
+    exit;
+}
+
+// AJAX: cobros de una semana por semana_lunes
 if (isset($_GET['ajax_cobros'])) {
     header('Content-Type: application/json');
-    $cob_id  = (int) ($_GET['cobrador_id'] ?? 0);
-    $f_desde = $_GET['fecha_desde'] ?? '';
-    $f_hasta = $_GET['fecha_hasta'] ?? '';
-    if (!$cob_id || !$f_desde || !$f_hasta) {
+    $cob_id       = (int) ($_GET['cobrador_id'] ?? 0);
+    $semana_lunes = trim($_GET['semana_lunes'] ?? '');
+    if (!$cob_id || !$semana_lunes) {
         echo json_encode(['total' => 0, 'dias' => []]);
         exit;
     }
     $rows = $pdo->prepare("
-        SELECT DATE(pc.fecha_pago) AS dia,
-               SUM(pc.monto_total) AS subtotal,
-               COUNT(*) AS cant_pagos
+        SELECT DATE(pc.fecha_jornada) AS dia,
+               SUM(pc.monto_total)   AS subtotal,
+               COUNT(*)              AS cant_pagos
         FROM ic_pagos_confirmados pc
-        WHERE pc.cobrador_id = ?
-          AND pc.fecha_pago BETWEEN ? AND ?
-        GROUP BY DATE(pc.fecha_pago)
+        WHERE pc.cobrador_id  = ?
+          AND pc.semana_lunes = ?
+        GROUP BY DATE(pc.fecha_jornada)
         ORDER BY dia
     ");
-    $rows->execute([$cob_id, $f_desde, $f_hasta]);
+    $rows->execute([$cob_id, $semana_lunes]);
     $dias  = $rows->fetchAll(PDO::FETCH_ASSOC);
     $total = array_sum(array_column($dias, 'subtotal'));
     echo json_encode(['total' => (float)$total, 'dias' => $dias]);
@@ -64,25 +90,36 @@ if (isset($_GET['ajax_cobros'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $v = $_POST;
+    $v           = $_POST;
     $items_desc  = $v['item_desc']  ?? [];
     $items_tipo  = $v['item_tipo']  ?? [];
     $items_monto = $v['item_monto'] ?? [];
 
-    if (empty($v['cobrador_id']) || empty($v['fecha_desde']) || empty($v['fecha_hasta'])) {
-        $error = 'Completá cobrador y período.';
+    $semana_lunes = trim($v['semana_lunes'] ?? '');
+
+    if (empty($v['cobrador_id']) || !$semana_lunes) {
+        $error = 'Completá cobrador y semana.';
     } else {
         $cob_id  = (int) $v['cobrador_id'];
-        $f_desde = $v['fecha_desde'];
-        $f_hasta = $v['fecha_hasta'];
+        $f_desde = $semana_lunes;
+        $f_hasta = date('Y-m-d', strtotime($semana_lunes . ' +6 days'));
 
+        // Verificar duplicado (otra liquidación distinta para mismo cobrador/semana)
+        $dup = $pdo->prepare("SELECT id FROM ic_liquidaciones WHERE cobrador_id=? AND fecha_desde=? AND id != ? LIMIT 1");
+        $dup->execute([$cob_id, $f_desde, $id]);
+        if ($dup->fetch()) {
+            $error = 'Ya existe otra liquidación para ese cobrador en esa semana.';
+        }
+    }
+
+    if (!$error) {
         // Recalcular total cobrado desde BD
         $stmt_total = $pdo->prepare("
             SELECT COALESCE(SUM(monto_total),0)
             FROM ic_pagos_confirmados
-            WHERE cobrador_id=? AND fecha_pago BETWEEN ? AND ?
+            WHERE cobrador_id=? AND semana_lunes=?
         ");
-        $stmt_total->execute([$cob_id, $f_desde, $f_hasta]);
+        $stmt_total->execute([$cob_id, $semana_lunes]);
         $total_cobrado = (float) $stmt_total->fetchColumn();
 
         $comision_pct   = (float) ($v['comision_pct'] ?? 5);
@@ -140,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
             registrar_log($pdo, $_SESSION['user_id'], 'LIQUIDACION_EDITADA', 'liquidacion', $id,
-                'Cobrador: ' . $cob_id . ' | Período: ' . $f_desde . ' a ' . $f_hasta . ' | Neto: ' . formato_pesos($total_neto));
+                'Cobrador: ' . $cob_id . ' | Semana: ' . $f_desde . ' | Neto: ' . formato_pesos($total_neto));
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Liquidación actualizada correctamente.'];
             header("Location: liquidacion_ver?id=$id");
             exit;
@@ -150,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Si hay error, recargar items desde POST para no perderlos
+    // Si hay error, recargar items desde POST
     $items_actuales = [];
     for ($i = 0; $i < count($items_desc ?? []); $i++) {
         $desc  = trim($items_desc[$i] ?? '');
@@ -162,11 +199,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Valores del formulario: POST tiene prioridad (en caso de error), sino la BD
-$val_cobrador  = $_POST['cobrador_id']  ?? $liq['cobrador_id'];
-$val_desde     = $_POST['fecha_desde']  ?? $liq['fecha_desde'];
-$val_hasta     = $_POST['fecha_hasta']  ?? $liq['fecha_hasta'];
-$val_comision  = $_POST['comision_pct'] ?? $liq['comision_pct'];
-$val_obs       = $_POST['observaciones'] ?? $liq['observaciones'];
+$val_cobrador   = $_POST['cobrador_id']  ?? $liq['cobrador_id'];
+$val_semana     = $_POST['semana_lunes'] ?? $liq['fecha_desde']; // fecha_desde = semana_lunes
+$val_comision   = $_POST['comision_pct'] ?? $liq['comision_pct'];
+$val_obs        = $_POST['observaciones'] ?? $liq['observaciones'];
 
 $page_title   = 'Editar Liquidación #' . $id;
 $page_current = 'liquidaciones';
@@ -180,16 +216,16 @@ require_once __DIR__ . '/../views/layout.php';
 
     <form method="POST" class="form-ic" id="form-liq">
 
-        <!-- ── Período y Cobrador ───────────────────────── -->
+        <!-- ── Cobrador y Semana ─────────────────────────── -->
         <div class="card-ic mb-4">
             <div class="card-ic-header">
-                <span class="card-title"><i class="fa fa-calendar-week"></i> Período y Cobrador</span>
+                <span class="card-title"><i class="fa fa-calendar-week"></i> Cobrador y Semana</span>
             </div>
             <div class="form-grid">
 
                 <div class="form-group" style="grid-column:span 2">
                     <label>Cobrador *</label>
-                    <select name="cobrador_id" id="cobrador_id" required onchange="consultarCobros()">
+                    <select name="cobrador_id" id="cobrador_id" required onchange="cargarSemanas()">
                         <option value="">— Seleccionar cobrador —</option>
                         <?php foreach ($cobradores as $cob): ?>
                             <option value="<?= $cob['id'] ?>" <?= (int)$val_cobrador === (int)$cob['id'] ? 'selected' : '' ?>>
@@ -199,26 +235,31 @@ require_once __DIR__ . '/../views/layout.php';
                     </select>
                 </div>
 
-                <div class="form-group">
-                    <label>Fecha Desde (Lunes) *</label>
-                    <input type="date" name="fecha_desde" id="fecha_desde"
-                           value="<?= e($val_desde) ?>"
-                           required onchange="ajustarHasta();consultarCobros()">
-                </div>
-
-                <div class="form-group">
-                    <label>Fecha Hasta (Sábado) *</label>
-                    <input type="date" name="fecha_hasta" id="fecha_hasta"
-                           value="<?= e($val_hasta) ?>"
-                           required onchange="consultarCobros()">
+                <div class="form-group" style="grid-column:span 2">
+                    <label>Semana a Liquidar *
+                        <span class="text-muted" style="font-size:.75rem;font-weight:400"> — Lunes a Domingo</span>
+                    </label>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                        <select id="sel_semana" style="flex:1;min-width:260px" onchange="seleccionarSemana(this.value)">
+                            <option value="">Cargando semanas...</option>
+                        </select>
+                        <span class="text-muted" style="font-size:.8rem;white-space:nowrap">o ingresá manualmente:</span>
+                        <input type="date" id="semana_manual" placeholder="Lunes de la semana"
+                               style="width:160px" onchange="seleccionarSemana(this.value)"
+                               value="<?= e($val_semana) ?>">
+                    </div>
+                    <input type="hidden" name="semana_lunes" id="semana_lunes" value="<?= e($val_semana) ?>">
+                    <div id="lbl_periodo" style="margin-top:8px;font-size:.82rem;color:var(--primary-light)">
+                        <i class="fa fa-calendar-range"></i> <span id="lbl_periodo_txt"></span>
+                    </div>
                 </div>
 
             </div>
 
-            <!-- Resumen de cobros del período -->
+            <!-- Resumen de cobros de la semana -->
             <div id="resumen-cobros" style="margin-top:16px;display:none">
                 <div style="font-size:.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">
-                    <i class="fa fa-search"></i> Cobros confirmados en el período
+                    <i class="fa fa-search"></i> Cobros confirmados en la semana
                 </div>
                 <div id="tabla-dias-cobro" style="overflow-x:auto"></div>
             </div>
@@ -234,7 +275,7 @@ require_once __DIR__ . '/../views/layout.php';
             </div>
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Total Cobrado en el Período</label>
+                    <label>Total Cobrado en la Semana</label>
                     <div id="lbl_total_cobrado"
                          style="font-size:1.5rem;font-weight:800;color:var(--primary-light);margin-top:6px">
                         <?= formato_pesos($liq['total_cobrado']) ?>
@@ -284,9 +325,7 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                         </tr>
                         <?php $itemIdx = 0; foreach ($items_actuales as $it): ?>
-                            <?php
-                            $monto_abs = abs((float)$it['monto']);
-                            ?>
+                            <?php $monto_abs = abs((float)$it['monto']); ?>
                             <tr class="item-row" id="item-<?= ++$itemIdx ?>">
                                 <td>
                                     <select name="item_tipo[]" class="item-tipo" onchange="recalcular()" style="min-width:110px">
@@ -317,7 +356,6 @@ require_once __DIR__ . '/../views/layout.php';
                 </table>
             </div>
 
-            <!-- Totales -->
             <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
                 <div style="background:rgba(0,0,0,.3);border-radius:10px;padding:14px;text-align:center">
                     <div class="text-muted" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.8px">Extras / Ventas</div>
@@ -353,34 +391,81 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
+$itemIdx_js = $itemIdx ?? 0;
+$total_cobrado_js = $liq['total_cobrado'];
+$liq_id_js = $id;
 $page_scripts = <<<JS
 <script>
 const TIPOS = {venta:'Venta',bonus:'Bonus',gasto:'Gasto',descuento:'Descuento',otro:'Otro'};
-let itemCount = {$itemIdx};
-let totalCobrado = {$liq['total_cobrado']};
+let itemCount    = {$itemIdx_js};
+let totalCobrado = {$total_cobrado_js};
+const LIQ_ID     = {$liq_id_js};
+
+const DIAS_ES  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const MESES_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
 function fmt(n) {
     return '\$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-function ajustarHasta() {
-    const desde = document.getElementById('fecha_desde').value;
-    if (!desde) return;
-    const d = new Date(desde + 'T00:00:00');
-    d.setDate(d.getDate() + 5);
-    document.getElementById('fecha_hasta').value = d.toISOString().split('T')[0];
+function fmtFecha(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return DIAS_ES[d.getDay()] + ' ' + String(d.getDate()).padStart(2,'0') + '/' + MESES_ES[d.getMonth()];
 }
 
-function consultarCobros() {
-    const cobId  = document.getElementById('cobrador_id').value;
-    const fDesde = document.getElementById('fecha_desde').value;
-    const fHasta = document.getElementById('fecha_hasta').value;
-    if (!cobId || !fDesde || !fHasta) return;
+function fmtSemanaLabel(lunes) {
+    const d = new Date(lunes + 'T00:00:00');
+    const dom = new Date(d); dom.setDate(dom.getDate() + 6);
+    return 'Semana ' + fmtFecha(lunes) + ' al ' + fmtFecha(dom.toISOString().split('T')[0]);
+}
+
+function cargarSemanas() {
+    const cobId = document.getElementById('cobrador_id').value;
+    const sel   = document.getElementById('sel_semana');
+    if (!cobId) { sel.innerHTML = '<option value="">— Primero seleccioná un cobrador —</option>'; return; }
+
+    sel.innerHTML = '<option value="">Cargando...</option>';
+    fetch(`?id=\${LIQ_ID}&ajax_semanas=1&cobrador_id=\${cobId}`)
+        .then(r => r.json())
+        .then(semanas => {
+            const current = document.getElementById('semana_lunes').value;
+            sel.innerHTML = '<option value="">— Seleccionar semana —</option>';
+            semanas.forEach(s => {
+                const lbl = fmtSemanaLabel(s.semana_lunes) + ' (' + s.cant_pagos + ' pagos · ' + fmt(s.total) + ')';
+                const opt = document.createElement('option');
+                opt.value = s.semana_lunes;
+                opt.textContent = lbl;
+                if (s.semana_lunes === current) opt.selected = true;
+                sel.appendChild(opt);
+            });
+            // Si la semana actual no está en la lista (ya tenía liquidación), agregarla
+            if (current && !semanas.find(s => s.semana_lunes === current)) {
+                const opt = document.createElement('option');
+                opt.value = current;
+                opt.textContent = fmtSemanaLabel(current) + ' (semana actual)';
+                opt.selected = true;
+                sel.appendChild(opt);
+            }
+        })
+        .catch(() => { sel.innerHTML = '<option value="">Error al cargar semanas</option>'; });
+}
+
+function seleccionarSemana(lunes) {
+    if (!lunes) return;
+    document.getElementById('semana_lunes').value = lunes;
+    document.getElementById('lbl_periodo_txt').textContent = fmtSemanaLabel(lunes);
+    document.getElementById('lbl_periodo').style.display = '';
+    consultarCobros(lunes);
+}
+
+function consultarCobros(semana) {
+    const cobId = document.getElementById('cobrador_id').value;
+    if (!cobId || !semana) return;
 
     document.getElementById('cargando-cobros').style.display = '';
     document.getElementById('resumen-cobros').style.display  = 'none';
 
-    fetch(`?id={$id}&ajax_cobros=1&cobrador_id=\${cobId}&fecha_desde=\${fDesde}&fecha_hasta=\${fHasta}`)
+    fetch(`?id=\${LIQ_ID}&ajax_cobros=1&cobrador_id=\${cobId}&semana_lunes=\${semana}`)
         .then(r => r.json())
         .then(data => {
             totalCobrado = data.total;
@@ -390,14 +475,12 @@ function consultarCobros() {
 
             let html = '<table class="table-ic" style="font-size:.82rem"><thead><tr><th>Día</th><th>Pagos</th><th>Subtotal</th></tr></thead><tbody>';
             if (data.dias.length === 0) {
-                html += '<tr><td colspan="3" class="text-muted text-center" style="padding:12px">Sin cobros confirmados en este período.</td></tr>';
+                html += '<tr><td colspan="3" class="text-muted text-center" style="padding:12px">Sin cobros confirmados en esta semana.</td></tr>';
             } else {
                 data.dias.forEach(d => {
-                    const f = new Date(d.dia + 'T00:00:00');
-                    const label = f.toLocaleDateString('es-AR', {weekday:'long', day:'2-digit', month:'2-digit'});
-                    html += `<tr><td>\${label}</td><td>\${d.cant_pagos}</td><td class="fw-bold">\${fmt(d.subtotal)}</td></tr>`;
+                    html += '<tr><td>' + fmtFecha(d.dia) + '</td><td>' + d.cant_pagos + '</td><td class="fw-bold">' + fmt(d.subtotal) + '</td></tr>';
                 });
-                html += `<tr style="background:rgba(79,70,229,.15);font-weight:700"><td colspan="2" style="text-align:right">Total</td><td>\${fmt(data.total)}</td></tr>`;
+                html += '<tr style="background:rgba(79,70,229,.15);font-weight:700"><td colspan="2" style="text-align:right">Total</td><td>' + fmt(data.total) + '</td></tr>';
             }
             html += '</tbody></table>';
             document.getElementById('tabla-dias-cobro').innerHTML = html;
@@ -416,11 +499,8 @@ function recalcular() {
     document.querySelectorAll('.item-row').forEach(row => {
         const tipo  = row.querySelector('.item-tipo').value;
         const monto = parseFloat(row.querySelector('.item-monto').value) || 0;
-        if (['gasto','descuento'].includes(tipo)) {
-            descuentos += Math.abs(monto);
-        } else {
-            extras += Math.abs(monto);
-        }
+        if (['gasto','descuento'].includes(tipo)) descuentos += Math.abs(monto);
+        else extras += Math.abs(monto);
     });
 
     const neto = comision + extras - descuentos;
@@ -430,47 +510,34 @@ function recalcular() {
 }
 
 function checkVacio() {
-    const filas = document.querySelectorAll('.item-row').length;
-    document.getElementById('row-vacio').style.display = filas === 0 ? '' : 'none';
+    document.getElementById('row-vacio').style.display =
+        document.querySelectorAll('.item-row').length === 0 ? '' : 'none';
 }
 
 function agregarItem() {
     itemCount++;
-    const tipoOpts = Object.entries(TIPOS)
-        .map(([k,v]) => `<option value="\${k}">\${v}</option>`).join('');
-
+    const tipoOpts = Object.entries(TIPOS).map(([k,v]) => '<option value="' + k + '">' + v + '</option>').join('');
     const row = document.createElement('tr');
     row.className = 'item-row';
     row.id = 'item-' + itemCount;
-    row.innerHTML = `
-        <td>
-            <select name="item_tipo[]" class="item-tipo" onchange="recalcular()" style="min-width:110px">
-                \${tipoOpts}
-            </select>
-        </td>
-        <td>
-            <input type="text" name="item_desc[]" placeholder="Descripción..." style="width:100%;min-width:180px">
-        </td>
-        <td>
-            <input type="number" name="item_monto[]" class="item-monto"
-                   step="0.01" min="0" placeholder="0.00" oninput="recalcular()"
-                   style="width:140px">
-        </td>
-        <td>
-            <button type="button" class="btn-ic btn-danger btn-icon btn-sm"
-                    onclick="this.closest('tr').remove();checkVacio();recalcular()">
-                <i class="fa fa-trash"></i>
-            </button>
-        </td>
-    `;
+    row.innerHTML = '<td><select name="item_tipo[]" class="item-tipo" onchange="recalcular()" style="min-width:110px">' + tipoOpts + '</select></td>'
+        + '<td><input type="text" name="item_desc[]" placeholder="Descripción..." style="width:100%;min-width:180px"></td>'
+        + '<td><input type="number" name="item_monto[]" class="item-monto" step="0.01" min="0" placeholder="0.00" oninput="recalcular()" style="width:140px"></td>'
+        + '<td><button type="button" class="btn-ic btn-danger btn-icon btn-sm" onclick="this.closest(\'tr\').remove();checkVacio();recalcular()"><i class="fa fa-trash"></i></button></td>';
     document.getElementById('tbody-items').appendChild(row);
     document.getElementById('row-vacio').style.display = 'none';
     recalcular();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    const semana = document.getElementById('semana_lunes').value;
+    if (semana) {
+        document.getElementById('lbl_periodo_txt').textContent = fmtSemanaLabel(semana);
+        document.getElementById('lbl_periodo').style.display = '';
+        consultarCobros(semana);
+    }
+    cargarSemanas();
     recalcular();
-    consultarCobros();
 });
 </script>
 JS;

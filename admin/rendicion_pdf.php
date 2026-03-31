@@ -205,7 +205,7 @@ class RendicionPDF extends FPDF
 if ($es_multi) {
     $fecha_label = 'Jornadas: ' . date('d/m', strtotime($fechas_jornada[0])) . ' - ' . date('d/m/Y', strtotime(end($fechas_jornada)));
 } else {
-    $fecha_label = 'Fecha: ' . date('d/m/Y', strtotime($fechas_jornada[0]));
+    $fecha_label = 'Fecha: ' . label_jornada($fechas_jornada[0]);
 }
 
 $pdf = new RendicionPDF('P', 'mm', 'A4');
@@ -225,17 +225,13 @@ $pdf->AddPage();
 $pdf->SetTextColor(0, 0, 0);
 $pdf->SetDrawColor(0, 0, 0);
 
-$dias_es = [1 => 'Lunes', 2 => 'Martes', 3 => 'Miercoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sabado', 7 => 'Domingo'];
-
 foreach ($por_jornada as $fecha_j => $pagos_j):
 
     // Sub-encabezado de jornada (solo si multi-jornada)
     if ($es_multi) {
-        $dow = (int) date('N', strtotime($fecha_j));
-        $dia_nombre = $dias_es[$dow] ?? '';
         $pdf->SetFont('Helvetica', 'B', 9);
         $pdf->SetFillColor(230, 230, 230);
-        $pdf->Cell($ANCHO_TOTAL, 7, lat('Jornada: ' . $dia_nombre . ' ' . date('d/m/Y', strtotime($fecha_j))), 1, 1, 'L', true);
+        $pdf->Cell($ANCHO_TOTAL, 7, lat('Jornada: ' . label_jornada($fecha_j)), 1, 1, 'L', true);
         $pdf->SetFillColor(255, 255, 255);
     }
 
