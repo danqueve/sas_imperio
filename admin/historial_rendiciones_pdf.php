@@ -26,12 +26,21 @@ if (!$cobrador) die('Cobrador no encontrado.');
 $dstmt = $pdo->prepare("
     SELECT pc.*,
            cr.id AS credito_id,
-           cl.nombres, cl.apellidos,
+           cl.nombres, cl.apellidos, cl.id AS cliente_id,
            COALESCE(pc.numero_cuota,    cu.numero_cuota)          AS numero_cuota,
            COALESCE(pc.fecha_vcto_orig, cu.fecha_vencimiento)     AS fecha_vencimiento,
            COALESCE(pc.monto_cuota_orig, cu.monto_cuota)          AS monto_cuota,
            COALESCE(pc.articulo_snap, cr.articulo_desc, a.descripcion) AS articulo,
-           COALESCE(pc.es_cuota_pura, pt.es_cuota_pura, 0)        AS es_cuota_pura
+           COALESCE(pc.es_cuota_pura, pt.es_cuota_pura, 0)        AS es_cuota_pura,
+           (SELECT COUNT(*)
+            FROM ic_cuotas cu2
+            JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
+            WHERE cr2.cliente_id = cl.id
+              AND cu2.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+              AND cr2.estado IN ('EN_CURSO','MOROSO')
+              AND cu2.fecha_vencimiento < CURDATE()
+              AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
+           ) AS cuotas_atrasadas_cliente
     FROM ic_pagos_confirmados pc
     JOIN ic_cuotas cu   ON pc.cuota_id     = cu.id
     JOIN ic_creditos cr ON cu.credito_id   = cr.id
@@ -263,43 +272,94 @@ $pdf->SetTextColor(0, 0, 0);
 $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
 
-$index = 1;
+// Organizar en 2 secciones
+$pagos_normal = [];
+$pagos_5plus  = [];
 foreach ($pagos as $p) {
-    $es_pura = (int)($p['es_cuota_pura'] ?? 0);
-
-    $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
-    $articulo_raw = $p['articulo'];
-    $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
-    $vlr_cuota  = (float) $p['monto_cuota_sum'];
-
-    // Mora
-    $mora_val = (float) $p['monto_mora_cobrada'];
-    if ($es_pura && $mora_val > 0) {
-        $mora_str = fmt($mora_val) . ' (Pend.)';
-    } elseif ($mora_val > 0) {
-        $mora_str = fmt($mora_val);
+    if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
+        $pagos_5plus[] = $p;
     } else {
-        $mora_str = '-';
+        $pagos_normal[] = $p;
+    }
+}
+
+$secciones = [
+    ['titulo' => 'Cobranza Normal (< 5 atrasadas)', 'datos' => $pagos_normal],
+    ['titulo' => 'Morosos Criticos (5+ atrasadas)', 'datos' => $pagos_5plus]
+];
+
+$index = 1;
+foreach ($secciones as $sec) {
+    if (empty($sec['datos'])) continue;
+
+    // Sub-encabezado de sección
+    $pdf->SetFont('Helvetica', 'BI', 9);
+    $pdf->SetTextColor(80, 80, 80);
+    $ancho_total_seccion = array_sum($COLS);
+    $pdf->Cell($ancho_total_seccion, 7, lat($sec['titulo']), 1, 1, 'L', false);
+    $pdf->SetTextColor(0, 0, 0);
+
+    $sec_efectivo = 0.0;
+    $sec_transfer = 0.0;
+    $sec_mora     = 0.0;
+    $sec_total    = 0.0;
+
+    foreach ($sec['datos'] as $p) {
+        $es_pura = (int)($p['es_cuota_pura'] ?? 0);
+
+        $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
+        if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
+            $cliente_raw .= ' (At. ' . $p['cuotas_atrasadas_cliente'] . ')';
+        }
+        $articulo_raw = $p['articulo'];
+        $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
+        $vlr_cuota  = (float) $p['monto_cuota_sum'];
+
+        // Mora
+        $mora_val = (float) $p['monto_mora_cobrada'];
+        if ($es_pura && $mora_val > 0) {
+            $mora_str = fmt($mora_val) . ' (Pend.)';
+        } elseif ($mora_val > 0) {
+            $mora_str = fmt($mora_val);
+        } else {
+            $mora_str = '-';
+        }
+
+        $sec_efectivo += (float)$p['monto_efectivo'];
+        $sec_transfer += (float)$p['monto_transferencia'];
+        $sec_total    += (float)$p['monto_total'];
+        $sec_mora     += $es_pura ? 0.0 : $mora_val;
+
+        $pdf->SetFont('Helvetica', '', 10);
+        $pdf->Cell($COLS[0], 7, $index,                                      1, 0, 'C', false);
+        $pdf->Cell($COLS[1], 7, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
+        $pdf->Cell($COLS[2], 7, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
+        $pdf->Cell($COLS[3], 7, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
+        $pdf->Cell($COLS[4], 7, fmt($vlr_cuota),                 1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 7, fmt((float)$p['monto_efectivo']),       1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 7, fmt((float)$p['monto_transferencia']),  1, 0, 'R', false);
+
+        if ($es_pura && $mora_val > 0) {
+            $pdf->SetFont('Helvetica', 'I', 9);
+        }
+        $pdf->Cell($COLS[7], 7, lat($mora_str),                  1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', '', 10);
+
+        $pdf->Cell($COLS[8], 7, fmt((float)$p['monto_total']),   1, 0, 'R', false);
+        $pdf->Ln();
+        $index++;
     }
 
-    $pdf->SetFont('Helvetica', '', 10);
-    $pdf->Cell($COLS[0], 7, $index,                                      1, 0, 'C', false);
-    $pdf->Cell($COLS[1], 7, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
-    $pdf->Cell($COLS[2], 7, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
-    $pdf->Cell($COLS[3], 7, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
-    $pdf->Cell($COLS[4], 7, fmt($vlr_cuota),                 1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 7, fmt((float)$p['monto_efectivo']),       1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 7, fmt((float)$p['monto_transferencia']),  1, 0, 'R', false);
-
-    if ($es_pura && $mora_val > 0) {
-        $pdf->SetFont('Helvetica', 'I', 9);
-    }
-    $pdf->Cell($COLS[7], 7, lat($mora_str),                  1, 0, 'R', false);
-    $pdf->SetFont('Helvetica', '', 10);
-
-    $pdf->Cell($COLS[8], 7, fmt((float)$p['monto_total']),   1, 0, 'R', false);
+    // Fila SUBTOTAL de sección
+    $pdf->SetFont('Helvetica', 'B', 9);
+    $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+    $label_total = 'SUBTOTAL ' . mb_strtoupper($sec['titulo'], 'UTF-8');
+    $pdf->Cell($ancho_label, 7, lat($label_total), 1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 7, fmt($sec_efectivo), 1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 7, fmt($sec_transfer), 1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 7, fmt($sec_mora),     1, 0, 'R', false);
+    $pdf->Cell($COLS[8], 7, fmt($sec_total),    1, 0, 'R', false);
     $pdf->Ln();
-    $index++;
 }
 
 // ── Fila TOTALES ────────────────────────────────────────────────

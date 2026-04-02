@@ -31,10 +31,19 @@ if (!$cobrador) {
 // Obtener el detalle individual de pagos de esa fecha, cobrador y origen
 $dstmt = $pdo->prepare("
     SELECT pc.*,
-           cl.nombres, cl.apellidos,
+           cl.nombres, cl.apellidos, cl.id AS cliente_id,
            cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
-           u.nombre AS apr_nombre, u.apellido AS apr_apellido
+           u.nombre AS apr_nombre, u.apellido AS apr_apellido,
+           (SELECT COUNT(*)
+            FROM ic_cuotas cu2
+            JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
+            WHERE cr2.cliente_id = cl.id
+              AND cu2.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+              AND cr2.estado IN ('EN_CURSO','MOROSO')
+              AND cu2.fecha_vencimiento < CURDATE()
+              AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
+           ) AS cuotas_atrasadas_cliente
     FROM ic_pagos_confirmados pc
     JOIN ic_cuotas cu ON pc.cuota_id = cu.id
     JOIN ic_creditos cr ON cu.credito_id = cr.id
@@ -102,30 +111,64 @@ require_once __DIR__ . '/../views/layout.php';
         <h3 class="card-title">Comprobantes (<?= count($detalle_pagos) ?> recibos)</h3>
     </div>
     
-    <div style="overflow-x:auto">
-        <table class="table-ic">
-            <thead>
-                <tr>
-                    <th>Fecha Cobro</th>
-                    <th>Cliente</th>
-                    <th>Artículo</th>
-                    <th class="text-center">Cuota</th>
-                    <th class="text-right">Efectivo</th>
-                    <th class="text-right">Transferencia</th>
-                    <th class="text-right">Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($detalle_pagos)): ?>
-                    <tr><td colspan="7" class="text-center text-muted" style="padding:24px">No hay pagos en esta rendición.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($detalle_pagos as $dp): ?>
+    <?php 
+        $pagos_normal = [];
+        $pagos_5plus  = [];
+        foreach ($detalle_pagos as $p) {
+            if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
+                $pagos_5plus[] = $p;
+            } else {
+                $pagos_normal[] = $p;
+            }
+        }
+        
+        $secciones = [
+            ['titulo' => 'Cobranza Normal (< 5 atrasadas)', 'icono' => '🟢', 'pagos' => $pagos_normal, 'bg_tot' => 'rgba(79,70,229,.05)'],
+            ['titulo' => 'Morosos Críticos (5+ atrasadas)', 'icono' => '🔴', 'pagos' => $pagos_5plus, 'bg_tot' => 'rgba(239,68,68,.08)']
+        ];
+    ?>
+
+    <?php if (empty($detalle_pagos)): ?>
+        <p class="text-center text-muted" style="padding:24px">No hay pagos en esta rendición.</p>
+    <?php else: ?>
+        <?php foreach ($secciones as $sec): 
+            if (empty($sec['pagos'])) continue;
+            
+            $sef = array_sum(array_column($sec['pagos'], 'monto_efectivo'));
+            $str = array_sum(array_column($sec['pagos'], 'monto_transferencia'));
+            $stot = $sef + $str;
+        ?>
+        <div style="padding:8px 16px;background:var(--bg-panel);font-weight:700;font-size:.85rem;color:var(--text-color);border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:6px">
+            <?= $sec['icono'] ?> <?= $sec['titulo'] ?>
+        </div>
+        <div style="overflow-x:auto">
+            <table class="table-ic" style="margin-bottom:0">
+                <thead>
+                    <tr>
+                        <th>Fecha Cobro</th>
+                        <th>Cliente</th>
+                        <th>Artículo</th>
+                        <th class="text-center">Cuota</th>
+                        <th class="text-right">Efectivo</th>
+                        <th class="text-right">Transferencia</th>
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($sec['pagos'] as $dp): ?>
                         <tr>
                             <td class="text-muted nowrap">
                                 <?= date('d/m/Y H:i', strtotime($dp['fecha_pago'])) ?>
                             </td>
                             <td>
-                                <div class="fw-bold"><?= e($dp['apellidos'] . ', ' . $dp['nombres']) ?></div>
+                                <div class="fw-bold">
+                                    <?= e($dp['apellidos'] . ', ' . $dp['nombres']) ?>
+                                    <?php if ((int)$dp['cuotas_atrasadas_cliente'] >= 5): ?>
+                                        <span style="font-size:.68rem;background:rgba(239,68,68,.15);color:var(--danger);padding:2px 5px;border-radius:4px;margin-left:4px" title="<?= $dp['cuotas_atrasadas_cliente'] ?> cuotas vencidas">
+                                            ⚠ <?= $dp['cuotas_atrasadas_cliente'] ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td class="text-muted"><?= e($dp['articulo']) ?></td>
                             <td class="text-center">
@@ -138,14 +181,23 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= $dp['monto_transferencia'] > 0 ? formato_pesos($dp['monto_transferencia']) : '—' ?>
                             </td>
                             <td class="text-right fw-bold" style="color:var(--success)">
-                                <?= formato_pesos($dp['monto_total']) ?>
+                                <?= formato_pesos($dp['monto_efectivo'] + $dp['monto_transferencia']) ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
+                </tbody>
+                <tfoot>
+                    <tr style="background:<?= $sec['bg_tot'] ?>;font-weight:700">
+                        <td colspan="4" style="text-align:right;padding-right:12px;font-size:.82rem">SUBTOTAL <?= mb_strtoupper($sec['titulo'], 'UTF-8') ?></td>
+                        <td class="nowrap text-right" style="color:var(--success)"><?= formato_pesos($sef) ?></td>
+                        <td class="nowrap text-right" style="color:var(--primary-light)"><?= formato_pesos($str) ?></td>
+                        <td class="nowrap text-right" style="color:var(--accent)"><?= formato_pesos($stot) ?></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
 </div>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>

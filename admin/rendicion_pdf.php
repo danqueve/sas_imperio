@@ -27,9 +27,18 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
-               cl.nombres, cl.apellidos,
+               cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
-               COALESCE(cr.articulo_desc, a.descripcion) AS articulo
+               COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
+               (SELECT COUNT(*)
+                FROM ic_cuotas cu2
+                JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
+                WHERE cr2.cliente_id = cl.id
+                  AND cu2.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+                  AND cr2.estado IN ('EN_CURSO','MOROSO')
+                  AND cu2.fecha_vencimiento < CURDATE()
+                  AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
+               ) AS cuotas_atrasadas_cliente
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
         JOIN ic_creditos cr ON cu.credito_id   = cr.id
@@ -43,9 +52,18 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
-               cl.nombres, cl.apellidos,
+               cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
-               COALESCE(cr.articulo_desc, a.descripcion) AS articulo
+               COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
+               (SELECT COUNT(*)
+                FROM ic_cuotas cu2
+                JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
+                WHERE cr2.cliente_id = cl.id
+                  AND cu2.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+                  AND cr2.estado IN ('EN_CURSO','MOROSO')
+                  AND cu2.fecha_vencimiento < CURDATE()
+                  AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
+               ) AS cuotas_atrasadas_cliente
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
         JOIN ic_creditos cr ON cu.credito_id   = cr.id
@@ -235,82 +253,134 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
         $pdf->SetFillColor(255, 255, 255);
     }
 
-    // Subtotales de esta jornada
+    // Organizar en 2 secciones
+    $pagos_normal = [];
+    $pagos_5plus  = [];
+    foreach ($pagos_j as $p) {
+        if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
+            $pagos_5plus[] = $p;
+        } else {
+            $pagos_normal[] = $p;
+        }
+    }
+    
+    $secciones = [
+        ['titulo' => 'Cobranza Normal (< 5 atrasadas)', 'datos' => $pagos_normal],
+        ['titulo' => 'Morosos Criticos (5+ atrasadas)', 'datos' => $pagos_5plus]
+    ];
+
     $j_efectivo = 0.0;
     $j_transfer = 0.0;
     $j_mora     = 0.0;
     $j_total    = 0.0;
 
     $index = 1;
-    foreach ($pagos_j as $p) {
-        $es_pura = (int)($p['es_cuota_pura'] ?? 0);
-        $es_baja = (int)($p['solicitud_baja'] ?? 0);
+    
+    foreach ($secciones as $sec) {
+        if (empty($sec['datos'])) continue;
+        
+        // Sub-encabezado de sección
+        $pdf->SetFont('Helvetica', 'BI', 8);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->Cell($ANCHO_TOTAL, 6, lat($sec['titulo']), 1, 1, 'L', false);
+        $pdf->SetTextColor(0, 0, 0);
 
-        $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
-        $articulo_raw = $p['articulo'];
-        $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
-        $vlr_cuota  = (float) $p['monto_cuota_sum'];
+        $sec_efectivo = 0.0;
+        $sec_transfer = 0.0;
+        $sec_mora     = 0.0;
+        $sec_total    = 0.0;
 
-        $mora_val = (float) $p['monto_mora_cobrada'];
-        if ($es_pura && $mora_val > 0) {
-            $mora_str = fmt($mora_val) . ' (Pend.)';
-        } elseif ($mora_val > 0) {
-            $mora_str = fmt($mora_val);
-        } else {
-            $mora_str = '-';
-        }
+        foreach ($sec['datos'] as $p) {
+            $es_pura = (int)($p['es_cuota_pura'] ?? 0);
+            $es_baja = (int)($p['solicitud_baja'] ?? 0);
 
-        $ef = (float) $p['monto_efectivo'];
-        $tr = (float) $p['monto_transferencia'];
-        $tt = (float) $p['monto_total'];
+            $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
+            if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
+                $cliente_raw .= ' (At. ' . $p['cuotas_atrasadas_cliente'] . ')';
+            }
+            $articulo_raw = $p['articulo'];
+            $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
+            $vlr_cuota  = (float) $p['monto_cuota_sum'];
 
-        $j_efectivo += $ef;
-        $j_transfer += $tr;
-        $j_mora     += $es_pura ? 0.0 : $mora_val;
-        $j_total    += $tt;
+            $mora_val = (float) $p['monto_mora_cobrada'];
+            if ($es_pura && $mora_val > 0) {
+                $mora_str = fmt($mora_val) . ' (P.)';
+            } elseif ($mora_val > 0) {
+                $mora_str = fmt($mora_val);
+            } else {
+                $mora_str = '-';
+            }
 
-        $pdf->SetFont('Helvetica', '', 8);
-        $pdf->Cell($COLS[0], 6, $index,                                    1, 0, 'C', false);
-        $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1), 1, 0, 'L', false);
-        $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),1, 0, 'L', false);
-        $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1), 1, 0, 'C', false);
-        $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($vlr_cuota), $COLS[4] - 1), 1, 0, 'R', false);
-        $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($ef), $COLS[5] - 1),     1, 0, 'R', false);
-        $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($tr), $COLS[6] - 1),     1, 0, 'R', false);
+            $ef = (float) $p['monto_efectivo'];
+            $tr = (float) $p['monto_transferencia'];
+            $tt = (float) $p['monto_total'];
 
-        if ($es_pura && $mora_val > 0) {
-            $pdf->SetFont('Helvetica', 'I', 7);
-        }
-        $pdf->Cell($COLS[7], 6, $pdf->fitText($mora_str, $COLS[7] - 1),  1, 0, 'R', false);
-        $pdf->SetFont('Helvetica', '', 8);
+            $sec_efectivo += $ef;
+            $sec_transfer += $tr;
+            $sec_mora     += $es_pura ? 0.0 : $mora_val;
+            $sec_total    += $tt;
 
-        $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1), 1, 0, 'R', false);
-        $pdf->Ln();
-
-        // Solicitud de baja inline
-        if ($es_baja) {
-            $motivo = trim($p['motivo_baja'] ?? '');
-            $baja_txt = 'Solicitud de baja' . ($motivo ? ': ' . mb_strimwidth($motivo, 0, 60, '..') : '');
-            $pdf->SetFont('Helvetica', 'I', 7);
-            $pdf->SetTextColor(100, 100, 100);
-            $pdf->Cell($COLS[0], 4, '', 0, 0);
-            $pdf->Cell($ANCHO_TOTAL - $COLS[0], 4, lat($baja_txt), 0, 1, 'L');
-            $pdf->SetTextColor(0, 0, 0);
             $pdf->SetFont('Helvetica', '', 8);
-        }
+            $pdf->Cell($COLS[0], 6, $index,                                    1, 0, 'C', false);
+            $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1), 1, 0, 'L', false);
+            $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),1, 0, 'L', false);
+            $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1), 1, 0, 'C', false);
+            $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($vlr_cuota), $COLS[4] - 1), 1, 0, 'R', false);
+            $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($ef), $COLS[5] - 1),     1, 0, 'R', false);
+            $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($tr), $COLS[6] - 1),     1, 0, 'R', false);
 
-        $index++;
+            if ($es_pura && $mora_val > 0) {
+                $pdf->SetFont('Helvetica', 'I', 7);
+            }
+            $pdf->Cell($COLS[7], 6, $pdf->fitText($mora_str, $COLS[7] - 1),  1, 0, 'R', false);
+            $pdf->SetFont('Helvetica', '', 8);
+
+            $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1), 1, 0, 'R', false);
+            $pdf->Ln();
+
+            // Solicitud de baja inline
+            if ($es_baja) {
+                $motivo = trim($p['motivo_baja'] ?? '');
+                $baja_txt = 'Solicitud de baja' . ($motivo ? ': ' . mb_strimwidth($motivo, 0, 60, '..') : '');
+                $pdf->SetFont('Helvetica', 'I', 7);
+                $pdf->SetTextColor(100, 100, 100);
+                $pdf->Cell($COLS[0], 4, '', 0, 0);
+                $pdf->Cell($ANCHO_TOTAL - $COLS[0], 4, lat($baja_txt), 0, 1, 'L');
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFont('Helvetica', '', 8);
+            }
+
+            $index++;
+        }
+        
+        // Fila subtotal sección
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+        $label_total = 'SUBTOTAL ' . mb_strtoupper($sec['titulo'], 'UTF-8');
+        $pdf->Cell($ancho_label, 6, lat($label_total), 1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($sec_efectivo), $COLS[5] - 1),  1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($sec_transfer), $COLS[6] - 1),  1, 0, 'R', false);
+        $pdf->Cell($COLS[7], 6, $pdf->fitText(fmt($sec_mora), $COLS[7] - 1),      1, 0, 'R', false);
+        $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($sec_total), $COLS[8] - 1),     1, 0, 'R', false);
+        $pdf->Ln();
+        
+        $j_efectivo += $sec_efectivo;
+        $j_transfer += $sec_transfer;
+        $j_mora     += $sec_mora;
+        $j_total    += $sec_total;
     }
 
-    // Fila subtotal/total de jornada
+    // Fila total de jornada
     $pdf->SetFont('Helvetica', 'B', 8);
     $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
-    $label_total = $es_multi ? 'SUBTOTAL' : 'TOTALES';
-    $pdf->Cell($ancho_label, 7, lat($label_total), 1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 7, $pdf->fitText(fmt($j_efectivo), $COLS[5] - 1),  1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 7, $pdf->fitText(fmt($j_transfer), $COLS[6] - 1),  1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 7, $pdf->fitText(fmt($j_mora), $COLS[7] - 1),      1, 0, 'R', false);
-    $pdf->Cell($COLS[8], 7, $pdf->fitText(fmt($j_total), $COLS[8] - 1),     1, 0, 'R', false);
+    $label_total = $es_multi ? 'TOTAL JORNADA' : 'TOTALES';
+    $pdf->SetFillColor(240, 240, 240);
+    $pdf->Cell($ancho_label, 7, lat($label_total), 1, 0, 'R', true);
+    $pdf->Cell($COLS[5], 7, $pdf->fitText(fmt($j_efectivo), $COLS[5] - 1),  1, 0, 'R', true);
+    $pdf->Cell($COLS[6], 7, $pdf->fitText(fmt($j_transfer), $COLS[6] - 1),  1, 0, 'R', true);
+    $pdf->Cell($COLS[7], 7, $pdf->fitText(fmt($j_mora), $COLS[7] - 1),      1, 0, 'R', true);
+    $pdf->Cell($COLS[8], 7, $pdf->fitText(fmt($j_total), $COLS[8] - 1),     1, 0, 'R', true);
+    $pdf->SetFillColor(255, 255, 255);
     $pdf->Ln();
 
     // Espacio entre jornadas

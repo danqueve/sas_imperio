@@ -111,9 +111,18 @@ $nombre_cobrador = '';
 if ($cobrador_id) {
     $dstmt = $pdo->prepare("
         SELECT pt.*, pt.solicitud_baja, pt.motivo_baja, pt.fecha_jornada,
-               cl.nombres, cl.apellidos,
+               cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
-               COALESCE(cr.articulo_desc, a.descripcion) AS articulo
+               COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
+               (SELECT COUNT(*)
+                FROM ic_cuotas cu2
+                JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
+                WHERE cr2.cliente_id = cl.id
+                  AND cu2.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+                  AND cr2.estado IN ('EN_CURSO','MOROSO')
+                  AND cu2.fecha_vencimiento < CURDATE()
+                  AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
+               ) AS cuotas_atrasadas_cliente
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu    ON pt.cuota_id   = cu.id
         JOIN ic_creditos cr  ON cu.credito_id = cr.id
@@ -289,7 +298,35 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
             </div>
 
-            <!-- Tabla de pagos de esta jornada -->
+            <?php 
+                $pagos_normal = [];
+                $pagos_5plus  = [];
+                foreach ($pagos_jornada as $p) {
+                    if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
+                        $pagos_5plus[] = $p;
+                    } else {
+                        $pagos_normal[] = $p;
+                    }
+                }
+                
+                $secciones = [
+                    ['titulo' => 'Cobranza Normal (< 5 atrasadas)', 'clase' => 'success', 'icono' => '🟢', 'icono_fa' => 'fa-check-circle', 'pagos' => $pagos_normal, 'bg_tot' => 'rgba(79,70,229,.05)'],
+                    ['titulo' => 'Morosos Críticos (5+ atrasadas)', 'clase' => 'danger', 'icono' => '🔴', 'icono_fa' => 'fa-exclamation-circle', 'pagos' => $pagos_5plus, 'bg_tot' => 'rgba(239,68,68,.08)']
+                ];
+            ?>
+
+            <?php foreach ($secciones as $sec): 
+                if (empty($sec['pagos'])) continue;
+                
+                $sef = array_sum(array_column($sec['pagos'], 'monto_efectivo'));
+                $str = array_sum(array_column($sec['pagos'], 'monto_transferencia'));
+                $smo = array_sum(array_column($sec['pagos'], 'monto_mora_cobrada'));
+                $stot = array_sum(array_column($sec['pagos'], 'monto_total'));
+            ?>
+            <div style="padding:8px 16px;background:var(--bg-panel);font-weight:700;font-size:.85rem;color:var(--text-color);border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:6px">
+                <?= $sec['icono'] ?> <?= $sec['titulo'] ?>
+            </div>
+            <!-- Tabla de pagos de esta sección -->
             <div style="overflow-x:auto">
                 <table class="table-ic" style="margin-bottom:0">
                     <thead>
@@ -305,10 +342,15 @@ require_once __DIR__ . '/../views/layout.php';
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($pagos_jornada as $p): ?>
+                        <?php foreach ($sec['pagos'] as $p): ?>
                             <tr <?= $p['solicitud_baja'] ? 'style="background:rgba(245,158,11,.08);border-left:3px solid var(--warning)"' : '' ?>>
                                 <td class="fw-bold">
                                     <?= e($p['apellidos'] . ', ' . $p['nombres']) ?>
+                                    <?php if ((int)$p['cuotas_atrasadas_cliente'] >= 5): ?>
+                                        <span style="font-size:.68rem;background:rgba(239,68,68,.15);color:var(--danger);padding:2px 5px;border-radius:4px;margin-left:4px" title="<?= $p['cuotas_atrasadas_cliente'] ?> cuotas vencidas">
+                                            ⚠ <?= $p['cuotas_atrasadas_cliente'] ?>
+                                        </span>
+                                    <?php endif; ?>
                                     <?php if ($p['es_cuota_pura']): ?>
                                         <span style="font-size:.68rem;background:rgba(245,158,11,.15);color:var(--warning);padding:1px 5px;border-radius:4px;margin-left:4px">solo capital</span>
                                     <?php endif; ?>
@@ -363,16 +405,21 @@ require_once __DIR__ . '/../views/layout.php';
                         <?php endforeach; ?>
                     </tbody>
                     <tfoot>
-                        <tr style="background:rgba(79,70,229,.10);font-weight:700">
-                            <td colspan="3" style="text-align:right;padding-right:12px;font-size:.82rem">SUBTOTAL</td>
-                            <td class="nowrap" style="color:var(--success)"><?= formato_pesos($tot['efectivo']) ?></td>
-                            <td class="nowrap" style="color:var(--primary-light)"><?= formato_pesos($tot['transferencia']) ?></td>
-                            <td class="nowrap" style="color:var(--warning)"><?= formato_pesos($tot['mora']) ?></td>
-                            <td class="nowrap" style="color:var(--accent)"><?= formato_pesos($tot['total']) ?></td>
+                        <tr style="background:<?= $sec['bg_tot'] ?>;font-weight:700">
+                            <td colspan="3" style="text-align:right;padding-right:12px;font-size:.82rem">SUBTOTAL <?= mb_strtoupper($sec['titulo'], 'UTF-8') ?></td>
+                            <td class="nowrap" style="color:var(--success)"><?= formato_pesos($sef) ?></td>
+                            <td class="nowrap" style="color:var(--primary-light)"><?= formato_pesos($str) ?></td>
+                            <td class="nowrap" style="color:var(--warning)"><?= formato_pesos($smo) ?></td>
+                            <td class="nowrap" style="color:var(--accent)"><?= formato_pesos($stot) ?></td>
                             <td class="no-print"></td>
                         </tr>
                     </tfoot>
                 </table>
+            </div>
+            <?php endforeach; ?>
+
+            <div style="background:rgba(255,255,255,.05);padding:10px 16px;display:flex;justify-content:flex-end;border-top:2px solid rgba(255,255,255,.1)">
+                <div style="font-size:.9rem">TOTAL JORNADA: <strong style="color:var(--accent);font-size:1.1rem;margin-left:10px"><?= formato_pesos($tot['total']) ?></strong></div>
             </div>
             <div style="height:1px;background:rgba(255,255,255,.06);margin:0 16px"></div>
 

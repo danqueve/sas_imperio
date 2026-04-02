@@ -16,7 +16,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     $zona_csv        = trim($_GET['zona'] ?? '');
 
     $w = [
-        "cu.estado IN ('VENCIDA','PARCIAL')",
+        "cu.estado IN ('PENDIENTE','VENCIDA','PARCIAL')",
         "cr.estado IN ('EN_CURSO','MOROSO')",
         "cu.fecha_vencimiento < CURDATE()",
         "(cu.monto_cuota - cu.saldo_pagado) > 0",
@@ -79,7 +79,7 @@ $offset = ($page - 1) * $limit;
 
 // ── WHERE dinámico (compartido por todas las consultas) ──────
 $where  = [
-    "cu.estado IN ('VENCIDA','PARCIAL')",
+    "cu.estado IN ('PENDIENTE','VENCIDA','PARCIAL')",
     "cr.estado IN ('EN_CURSO','MOROSO')",
     "cu.fecha_vencimiento < CURDATE()",
     "(cu.monto_cuota - cu.saldo_pagado) > 0",
