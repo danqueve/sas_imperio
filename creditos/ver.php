@@ -140,6 +140,21 @@ foreach ($lista_cuotas as &$cuota) {
         $cuota['mora_calc'] = (float)$cuota['monto_mora'] > 0
             ? (float)$cuota['monto_mora']
             : calcular_mora($cuota['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
+
+        // Auto-corrección: si PARCIAL pero saldo cubre capital + mora → PAGADA
+        if ($cuota['estado'] === 'PARCIAL') {
+            $saldo = (float)($cuota['saldo_pagado'] ?? 0);
+            $total_debido = (float)$cuota['monto_cuota'] + $cuota['mora_calc'];
+            if ($saldo >= $total_debido - 0.005) {
+                $fecha_pago_fix = $cuota['fecha_pago'] ?? date('Y-m-d');
+                $pdo->prepare("UPDATE ic_cuotas SET estado='PAGADA', fecha_pago=COALESCE(fecha_pago, ?) WHERE id=?")
+                    ->execute([$fecha_pago_fix, $cuota['id']]);
+                $cuota['estado']           = 'PAGADA';
+                $cuota['fecha_pago']       = $fecha_pago_fix;
+                $cuota['dias_atraso_calc'] = 0;
+                $cuota['mora_calc']        = 0;
+            }
+        }
     } elseif ($cuota['estado'] === 'CAP_PAGADA') {
         // Capital pagado, mora congelada en monto_mora
         $cuota['dias_atraso_calc'] = 0;
@@ -565,9 +580,14 @@ require_once __DIR__ . '/../views/layout.php';
                                     <span style="color:var(--warning)"><?= formato_pesos($q['mora_calc']) ?></span>
                                     <br><span class="text-muted" style="font-size:.70rem;font-weight:normal">mora pendiente</span>
                                 <?php elseif ($q['estado'] === 'PARCIAL' && !empty($q['saldo_pagado'])): ?>
+                                    <?php $resta_q = max(0, ($q['monto_cuota'] + $q['mora_calc']) - (float)$q['saldo_pagado']); ?>
                                     <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
                                     <br><span class="text-success" style="font-size:.70rem;font-weight:normal">A favor: <?= formato_pesos($q['saldo_pagado']) ?></span>
-                                    <br><span class="text-warning" style="font-size:.70rem;">Resta: <?= formato_pesos(max(0, ($q['monto_cuota'] + $q['mora_calc']) - $q['saldo_pagado'])) ?></span>
+                                    <?php if ($resta_q <= 0.005): ?>
+                                        <br><span class="text-success" style="font-size:.70rem;font-weight:600">✓ Cubierta</span>
+                                    <?php else: ?>
+                                        <br><span class="text-warning" style="font-size:.70rem;">Resta: <?= formato_pesos($resta_q) ?></span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <?= formato_pesos($q['monto_cuota'] + $q['mora_calc']) ?>
                                 <?php endif; ?>

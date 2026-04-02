@@ -223,15 +223,18 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
             $saldo_prev  = (float) ($pago['saldo_pagado'] ?? 0);
 
             // Fase 1: usar mora congelada al momento del registro del cobrador
-            // Fallback: cuota.monto_mora → recálculo (pagos legacy sin mora_congelada)
+            // Fallback: cuota.monto_mora → recálculo usando fecha_jornada (no hoy)
+            // IMPORTANTE: el fallback recalcula con fecha_jornada para no penalizar
+            // pagos registrados en término pero aprobados días después.
             $mora_frozen = (float) ($pago['mora_congelada'] ?? 0);
             if ($mora_frozen <= 0) {
                 $mora_frozen = (float) $pago['monto_mora'];
             }
             if ($mora_frozen <= 0) {
+                $fecha_ref_mora = $pago['fecha_jornada'] ?: $fecha;
                 $mora_frozen = calcular_mora(
                     $monto_base,
-                    dias_atraso_habiles($pago['fecha_vencimiento']),
+                    dias_atraso_habiles($pago['fecha_vencimiento'], $fecha_ref_mora),
                     (float) $pago['interes_moratorio_pct']
                 );
             }
