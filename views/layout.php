@@ -24,7 +24,7 @@ if ($rol === 'admin') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($page_title ?? 'Imperio Comercial') ?> — Imperio Comercial</title>
     <link rel="icon" type="image/png" href="<?= BASE_URL ?>assets/img/logo.png">
-    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css?v=4">
+    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css?v=5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     
     <?php if ($rol === 'cobrador'): ?>
@@ -144,6 +144,14 @@ if ($rol === 'admin') {
                         <i class="fa fa-chart-pie"></i>
                         <span class="nav-text">Dashboard</span>
                     </a>
+                    <?php if ($rol === 'supervisor'): ?>
+                    <a class="nav-item <?= ($page_current ?? '') === 'supervisor' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>supervisor/index"
+                       data-tooltip="Panel Supervisor">
+                        <i class="fa fa-user-shield"></i>
+                        <span class="nav-text">Mi Panel</span>
+                    </a>
+                    <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if ($rol !== 'cobrador' && $rol !== 'vendedor'): ?>
@@ -237,6 +245,12 @@ if ($rol === 'admin') {
                        data-tooltip="Antigüedad de Deuda">
                         <i class="fa fa-layer-group"></i>
                         <span class="nav-text">Antig. Deuda</span>
+                    </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'cohortes' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/cohortes"
+                       data-tooltip="Análisis de Cohortes">
+                        <i class="fa fa-chart-gantt"></i>
+                        <span class="nav-text">Cohortes</span>
                     </a>
                 <?php endif; ?>
 

@@ -48,7 +48,9 @@ $total_pagado_historico = array_sum(array_column(
 
 $page_title    = e($c['apellidos'] . ', ' . $c['nombres']);
 $page_current  = 'clientes';
-$topbar_actions = '<a href="editar?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-pencil"></i> Editar</a>';
+$topbar_actions = '
+  <a href="ficha_pdf?id=' . $id . '" target="_blank" class="btn-ic btn-ghost btn-sm"><i class="fa fa-file-pdf"></i> PDF</a>
+  <a href="editar?id=' . $id . '" class="btn-ic btn-primary btn-sm"><i class="fa fa-pencil"></i> Editar</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -76,10 +78,22 @@ require_once __DIR__ . '/../views/layout.php';
                 <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
                     <span class="text-muted" style="font-size:.7rem">#<?= $c['id'] ?></span>
                     <?= badge_estado_cliente($c['estado']) ?>
-                    <?php if (!empty($c['puntaje_pago'])): ?>
-                        <?= badge_puntaje_pago((int)$c['puntaje_pago']) ?>
-                    <?php endif; ?>
                 </div>
+                <?php if (!empty($c['puntaje_pago'])): ?>
+                <?php
+                    $pmap = [1=>['Excelente','var(--success)',100],2=>['Bueno','var(--primary)',70],3=>['Regular','var(--warning)',40],4=>['Malo','var(--danger)',15]];
+                    [$plbl,$pclr,$ppct] = $pmap[(int)$c['puntaje_pago']] ?? ['—','var(--text-muted)',0];
+                ?>
+                <div style="margin-top:5px">
+                    <div style="display:flex;justify-content:space-between;font-size:.68rem;margin-bottom:3px">
+                        <span style="color:<?= $pclr ?>;font-weight:700"><?= $plbl ?></span>
+                        <span class="text-muted"><?= $c['creditos_sin_mora'] ?? 0 ?>/<?= $c['total_creditos_finalizados'] ?? 0 ?> sin mora</span>
+                    </div>
+                    <div style="height:5px;background:var(--dark-border);border-radius:3px;overflow:hidden">
+                        <div style="height:100%;width:<?= $ppct ?>%;background:<?= $pclr ?>;border-radius:3px;transition:width .4s"></div>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -264,5 +278,73 @@ require_once __DIR__ . '/../views/layout.php';
     </div>
 
 </div>
+
+<?php $puede_notas = in_array(usuario_actual()['rol'], ['admin','supervisor']); ?>
+<div class="card-ic" style="margin-top:16px">
+    <div class="card-ic-header">
+        <span class="card-title"><i class="fa fa-note-sticky"></i> Notas internas</span>
+    </div>
+    <div id="notas-lista" style="margin-bottom:14px;display:flex;flex-direction:column;gap:8px">
+        <p class="text-muted" style="font-size:.82rem;padding:8px 0">Cargando notas...</p>
+    </div>
+    <?php if ($puede_notas): ?>
+    <form id="form-nota" style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="inp-nota" rows="2" placeholder="Agregar nota interna..."
+            style="flex:1;background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;
+                   color:var(--text-main);padding:8px 12px;font-family:inherit;font-size:.875rem;resize:vertical;outline:none"></textarea>
+        <button type="submit" class="btn-ic btn-primary btn-sm" style="align-self:flex-end">
+            <i class="fa fa-paper-plane"></i> Guardar
+        </button>
+    </form>
+    <?php endif; ?>
+</div>
+
+<script>
+(function(){
+    const cid = <?= $id ?>;
+    const puedeEscribir = <?= $puede_notas ? 'true' : 'false' ?>;
+    const lista = document.getElementById('notas-lista');
+
+    function renderNotas(notas) {
+        if (!notas.length) {
+            lista.innerHTML = '<p class="text-muted" style="font-size:.82rem;padding:8px 0">Sin notas registradas.</p>';
+            return;
+        }
+        lista.innerHTML = notas.map(n => `
+            <div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px 14px;border-left:3px solid var(--primary)">
+                <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
+                    <span><strong style="color:var(--text-body)">${n.autor}</strong> · ${n.autor_rol} · ${n.created_at.substring(0,16).replace('T',' ')}</span>
+                    ${puedeEscribir ? `<button onclick="eliminarNota(${n.id})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.78rem;padding:0 4px" title="Eliminar"><i class="fa fa-xmark"></i></button>` : ''}
+                </div>
+                <div style="font-size:.85rem;color:var(--text-main);white-space:pre-wrap">${n.nota.replace(/</g,'&lt;')}</div>
+            </div>`).join('');
+    }
+
+    function cargarNotas() {
+        fetch(`notas_ajax?cliente_id=${cid}`)
+            .then(r=>r.json()).then(d=>{ if(d.ok) renderNotas(d.notas); });
+    }
+
+    window.eliminarNota = function(nid) {
+        if (!confirm('¿Eliminar esta nota?')) return;
+        fetch(`notas_ajax?cliente_id=${cid}`, {method:'DELETE',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`nota_id=${nid}`})
+            .then(r=>r.json()).then(d=>{ if(d.ok) cargarNotas(); });
+    };
+
+    const form = document.getElementById('form-nota');
+    if (form) {
+        form.addEventListener('submit', e => {
+            e.preventDefault();
+            const nota = document.getElementById('inp-nota').value.trim();
+            if (!nota) return;
+            const fd = new FormData(); fd.append('cliente_id', cid); fd.append('nota', nota);
+            fetch('notas_ajax', {method:'POST', body: fd})
+                .then(r=>r.json()).then(d=>{ if(d.ok){ document.getElementById('inp-nota').value=''; cargarNotas(); }});
+        });
+    }
+
+    cargarNotas();
+})();
+</script>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>

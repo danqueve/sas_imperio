@@ -70,6 +70,7 @@ $zonas = $pdo->query("SELECT DISTINCT zona FROM ic_clientes WHERE zona IS NOT NU
 
 $page_title = 'Clientes';
 $page_current = 'clientes';
+$topbar_actions = '<a href="mapa" class="btn-ic btn-ghost btn-sm"><i class="fa fa-map-location-dot"></i> Mapa</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 

@@ -194,6 +194,28 @@ if (!empty($cr['primer_vencimiento']) && $ultimo_venc) {
     $pct_tiempo = min(100, (int)round($dias_trans / $dias_total * 100));
 }
 
+// #6 Predicción de fecha de cierre
+$fecha_cierre_pred = null;
+$pendientes_pred = array_filter($lista_cuotas, fn($c) => !in_array($c['estado'], ['PAGADA']));
+$n_pendientes = count($pendientes_pred);
+if ($n_pendientes > 0 && !empty($cr['primer_vencimiento'])) {
+    // Calcular intervalo promedio de días entre pagos confirmados
+    $fechas_pagos = array_column($historial_pagos, 'fecha_jornada');
+    sort($fechas_pagos);
+    $intervalo_dias = match($cr['frecuencia']) { 'quincenal' => 15, 'mensual' => 30, default => 7 };
+    if (count($fechas_pagos) >= 2) {
+        $diffs = [];
+        for ($i = 1; $i < count($fechas_pagos); $i++) {
+            $diffs[] = (new DateTime($fechas_pagos[$i]))->diff(new DateTime($fechas_pagos[$i-1]))->days;
+        }
+        $avg = array_sum($diffs) / count($diffs);
+        if ($avg > 1) $intervalo_dias = (int)round($avg);
+    }
+    $ultimo_pago_dt = count($fechas_pagos) ? new DateTime(end($fechas_pagos)) : new DateTime('today');
+    $ultimo_pago_dt->modify('+' . ($n_pendientes * $intervalo_dias) . ' days');
+    $fecha_cierre_pred = $ultimo_pago_dt->format('Y-m-d');
+}
+
 // #8 Simulador
 $sim_capital = 0; $sim_mora = 0;
 foreach ($lista_cuotas as $c) {
@@ -340,6 +362,22 @@ require_once __DIR__ . '/../views/layout.php';
             <?= $vencidas !== 1 ? 's' : '' ?>
         </div>
     </div>
+    <?php if ($fecha_cierre_pred && $cr['estado'] !== 'FINALIZADO'): ?>
+    <div class="kpi-card" style="--kpi-color:#a855f7">
+        <div class="kpi-icon-box" style="--icon-bg:rgba(168,85,247,.15);--icon-color:#a855f7">
+            <i class="fa fa-crystal-ball" title="predicción"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Cierre Estimado</div>
+            <div class="kpi-value" style="font-size:1.15rem;color:#a855f7">
+                <?= date('d/m/Y', strtotime($fecha_cierre_pred)) ?>
+            </div>
+            <div class="kpi-sub text-muted" style="font-size:.68rem">
+                Basado en ritmo actual de pagos
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php if (!empty($proximas_3d)): ?>

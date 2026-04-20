@@ -39,6 +39,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             if ($esEdicion) {
+                // Registrar historial si cambiaron precios
+                $prev = $pdo->prepare("SELECT precio_costo,precio_venta,precio_contado,precio_tarjeta FROM ic_articulos WHERE id=?");
+                $prev->execute([$id]);
+                $ant = $prev->fetch(PDO::FETCH_ASSOC);
+                $campos_precio = ['precio_costo','precio_venta','precio_contado','precio_tarjeta'];
+                $nuevos = [$costo, $venta, $contado, $tarjeta];
+                $cambio = false;
+                foreach ($campos_precio as $i => $campo) {
+                    if ((float)($ant[$campo] ?? 0) !== (float)($nuevos[$i] ?? 0)) { $cambio = true; break; }
+                }
+                if ($cambio) {
+                    $pdo->prepare("
+                        INSERT INTO ic_precios_historial
+                          (articulo_id, usuario_id,
+                           precio_costo_ant, precio_venta_ant, precio_contado_ant, precio_tarjeta_ant,
+                           precio_costo_nuevo, precio_venta_nuevo, precio_contado_nuevo, precio_tarjeta_nuevo)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)
+                    ")->execute([$id, $_SESSION['user_id'],
+                        $ant['precio_costo'], $ant['precio_venta'], $ant['precio_contado'], $ant['precio_tarjeta'],
+                        $costo, $venta, $contado, $tarjeta]);
+                }
                 $pdo->prepare("UPDATE ic_articulos SET descripcion=?,sku=?,categoria=?,precio_costo=?,precio_venta=?,precio_contado=?,precio_tarjeta=?,stock=?,activo=? WHERE id=?")
                     ->execute([$desc, $sku, $cat, $costo, $venta, $contado, $tarjeta, $stock, $activo, $id]);
                 registrar_log($pdo, $_SESSION['user_id'], 'ARTICULO_EDITADO', 'articulo', $id, $desc);
@@ -191,6 +212,50 @@ require_once __DIR__ . '/../views/layout.php';
             <a href="index" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>
+
+    <?php if ($esEdicion):
+        $hist = $pdo->prepare("
+            SELECT h.*, CONCAT(u.nombre,' ',u.apellido) AS editor
+            FROM ic_precios_historial h
+            JOIN ic_usuarios u ON u.id = h.usuario_id
+            WHERE h.articulo_id = ?
+            ORDER BY h.created_at DESC LIMIT 20
+        ");
+        $hist->execute([$id]);
+        $historial = $hist->fetchAll();
+    ?>
+    <?php if ($historial): ?>
+    <div class="card-ic mt-4">
+        <div class="card-ic-header">
+            <span class="card-title"><i class="fa fa-clock-rotate-left"></i> Historial de precios</span>
+        </div>
+        <div style="overflow-x:auto">
+        <table class="table-ic" style="font-size:.8rem">
+            <thead><tr>
+                <th>Fecha</th><th>Editor</th>
+                <th>Costo ant.</th><th>Costo nuevo</th>
+                <th>Venta ant.</th><th>Venta nueva</th>
+                <th>Contado ant.</th><th>Contado nuevo</th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($historial as $h): ?>
+            <tr>
+                <td class="text-muted nowrap"><?= date('d/m/Y H:i', strtotime($h['created_at'])) ?></td>
+                <td><?= e($h['editor']) ?></td>
+                <td class="text-muted"><?= $h['precio_costo_ant'] !== null ? formato_pesos((float)$h['precio_costo_ant']) : '—' ?></td>
+                <td><?= $h['precio_costo_nuevo'] !== null ? formato_pesos((float)$h['precio_costo_nuevo']) : '—' ?></td>
+                <td class="text-muted"><?= $h['precio_venta_ant'] !== null ? formato_pesos((float)$h['precio_venta_ant']) : '—' ?></td>
+                <td><?= $h['precio_venta_nuevo'] !== null ? formato_pesos((float)$h['precio_venta_nuevo']) : '—' ?></td>
+                <td class="text-muted"><?= $h['precio_contado_ant'] !== null ? formato_pesos((float)$h['precio_contado_ant']) : '—' ?></td>
+                <td><?= $h['precio_contado_nuevo'] !== null ? formato_pesos((float)$h['precio_contado_nuevo']) : '—' ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <?php endif; ?>
+    <?php endif; ?>
 </div>
 
 <?php

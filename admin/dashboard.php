@@ -48,6 +48,40 @@ $clientes_dormidos = (int)$pdo->query("
       )
 ")->fetchColumn();
 
+// ── Comparativas MoM ─────────────────────────────────────────
+$cobrado_mes_ant    = (float)$pdo->query("
+    SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados
+    WHERE fecha_pago >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
+      AND fecha_pago <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
+")->fetchColumn();
+$cobrado_hoy_sem_ant = (float)$pdo->query("
+    SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados
+    WHERE fecha_pago = DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+")->fetchColumn();
+$finalizados_mes_ant = (int)$pdo->query("
+    SELECT COUNT(*) FROM ic_creditos
+    WHERE estado='FINALIZADO'
+      AND fecha_finalizacion >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
+      AND fecha_finalizacion <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
+")->fetchColumn();
+$creditos_mes        = (int)$pdo->query("
+    SELECT COUNT(*) FROM ic_creditos WHERE fecha_alta >= DATE_FORMAT(CURDATE(),'%Y-%m-01')
+")->fetchColumn();
+$creditos_mes_ant    = (int)$pdo->query("
+    SELECT COUNT(*) FROM ic_creditos
+    WHERE fecha_alta >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
+      AND fecha_alta <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
+")->fetchColumn();
+// Helper: flecha con % de cambio
+function delta_html(float $actual, float $anterior, string $color_up = 'var(--success)', string $color_down = 'var(--danger)'): string {
+    if ($anterior <= 0) return $actual > 0 ? '<span style="color:'.$color_up.';font-weight:700;font-size:.72rem">↑ nuevo</span>' : '';
+    $pct = round(($actual - $anterior) / $anterior * 100, 1);
+    if ($pct == 0) return '<span style="color:var(--text-muted);font-size:.72rem">= sin cambio</span>';
+    $arrow = $pct > 0 ? '↑' : '↓';
+    $color = $pct > 0 ? $color_up : $color_down;
+    return '<span style="color:'.$color.';font-weight:700;font-size:.72rem">'.$arrow.' '.abs($pct).'% vs mes ant.</span>';
+}
+
 // ── Solicitudes de anulación pendientes (solo admin) ──────────
 $sol_baja_items = [];
 if (es_admin()) {
@@ -317,8 +351,8 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="kpi-label">Créditos en Curso</div>
             <div class="kpi-value"><?= number_format($creditos_en_curso) ?></div>
             <div class="kpi-sub">
-                de <?= number_format($total_creditos) ?> totales
-                <span class="kpi-pct" style="color:var(--primary-light)">↑ <?= $g_creditos ?>%</span>
+                <?= $creditos_mes ?> nuevos este mes
+                &nbsp;<?= delta_html($creditos_mes, $creditos_mes_ant, 'var(--primary-light)', 'var(--warning)') ?>
             </div>
         </div>
     </div>
@@ -332,9 +366,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="kpi-value" style="font-size:1.45rem"><?= formato_pesos($cobrado_hoy) ?></div>
             <div class="kpi-sub">
                 <?= $pagos_hoy ?> pago<?= $pagos_hoy !== 1 ? 's' : '' ?> aprobado<?= $pagos_hoy !== 1 ? 's' : '' ?>
-                <?php if ($g_cobro > 0): ?>
-                    <span class="kpi-pct" style="color:var(--accent)">↑ <?= $g_cobro ?>% del mes</span>
-                <?php endif; ?>
+                &nbsp;<?= delta_html($cobrado_hoy, $cobrado_hoy_sem_ant, 'var(--accent)', 'var(--danger)') ?>
             </div>
         </div>
     </div>
@@ -380,7 +412,8 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="kpi-label">Finalizados este Mes</div>
             <div class="kpi-value"><?= number_format($finalizados_mes) ?></div>
             <div class="kpi-sub">
-                <a href="<?= BASE_URL ?>admin/finalizados" style="color:inherit;text-decoration:underline dotted">ver reporte completo →</a>
+                <?= delta_html($finalizados_mes, $finalizados_mes_ant) ?>
+                &nbsp;<a href="<?= BASE_URL ?>admin/finalizados" style="color:var(--text-muted);text-decoration:underline dotted;font-size:.72rem">ver →</a>
             </div>
         </div>
     </div>

@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manual de Mejoras — SAS Imperio</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --primary: #6366f1;
+    --primary-light: #818cf8;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #38bdf8;
+    --purple: #a855f7;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #0ea5e9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+
+  /* COVER */
+  .cover {
+    background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #1e293b 100%);
+    padding: 80px 40px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(99,102,241,.15) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(168,85,247,.1) 0%, transparent 60%);
+  }
+  .cover-badge {
+    display: inline-block;
+    background: rgba(99,102,241,.2);
+    border: 1px solid rgba(99,102,241,.4);
+    color: var(--primary-light);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .cover h1 {
+    font-size: 2.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff 0%, var(--primary-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .cover p {
+    color: var(--muted);
+    font-size: 1.05rem;
+    max-width: 560px;
+    margin: 0 auto 32px;
+    position: relative;
+  }
+  .cover-meta {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    position: relative;
+  }
+  .cover-meta-item { text-align: center; }
+  .cover-meta-item .num {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--primary-light);
+  }
+  .cover-meta-item .lbl {
+    font-size: .75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+
+  /* LAYOUT */
+  .container { max-width: 960px; margin: 0 auto; padding: 48px 24px; }
+
+  /* TOC */
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 48px;
+  }
+  .toc h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 8px;
+  }
+  .toc a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: .9rem;
+    transition: background .15s;
+    border: 1px solid transparent;
+  }
+  .toc a:hover {
+    background: rgba(99,102,241,.1);
+    border-color: rgba(99,102,241,.2);
+    color: var(--primary-light);
+  }
+  .toc-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: rgba(99,102,241,.2);
+    color: var(--primary-light);
+    font-size: .7rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* SECTION */
+  .section { margin-bottom: 56px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+  }
+  .section-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+  .section-header h2 { font-size: 1.4rem; font-weight: 800; }
+  .section-header .phase-badge {
+    margin-left: auto;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    white-space: nowrap;
+  }
+
+  /* FEATURE CARD */
+  .feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    transition: border-color .2s;
+  }
+  .feature-card:hover { border-color: rgba(99,102,241,.4); }
+  .feature-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .feature-letter {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    font-size: .85rem;
+    font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .feature-card h3 { font-size: 1.05rem; font-weight: 700; }
+  .feature-card .file-path {
+    font-size: .75rem;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+    background: rgba(255,255,255,.05);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-top: 3px;
+    display: inline-block;
+  }
+  .feature-card p { color: var(--muted); font-size: .9rem; margin-bottom: 10px; }
+  .feature-card p:last-child { margin-bottom: 0; }
+  .feature-card strong { color: var(--text); }
+
+  /* HOW-TO */
+  .how-to {
+    background: rgba(255,255,255,.03);
+    border-left: 3px solid var(--primary);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin-top: 12px;
+    font-size: .875rem;
+  }
+  .how-to .how-label {
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--primary-light);
+    margin-bottom: 6px;
+  }
+  .how-to ul { padding-left: 16px; color: var(--muted); }
+  .how-to ul li { margin-bottom: 4px; }
+  .how-to ul li strong { color: var(--text); }
+
+  /* TAGS */
+  .tag {
+    display: inline-block;
+    font-size: .68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+  }
+  .tag-new { background: rgba(16,185,129,.15); color: var(--success); }
+  .tag-modified { background: rgba(99,102,241,.15); color: var(--primary-light); }
+  .tag-deleted { background: rgba(239,68,68,.15); color: var(--danger); }
+  .tag-db { background: rgba(56,189,248,.15); color: var(--info); }
+
+  /* CSS IMPROVEMENTS */
+  .css-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .css-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .css-item h4 { font-size: .9rem; font-weight: 700; margin-bottom: 6px; }
+  .css-item p { font-size: .82rem; color: var(--muted); }
+  .css-item .change {
+    font-family: 'Courier New', monospace;
+    font-size: .75rem;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-top: 8px;
+    color: var(--success);
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .change .old { color: var(--danger); text-decoration: line-through; }
+  .change .new { color: var(--success); }
+
+  /* CLEANUP */
+  .cleanup-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+  }
+  .cleanup-item {
+    background: var(--card);
+    border: 1px solid rgba(239,68,68,.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'Courier New', monospace;
+    font-size: .8rem;
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cleanup-item::before { content: '✕'; color: var(--danger); font-weight: 700; }
+
+  /* DB TABLE */
+  .db-table {
+    background: var(--card);
+    border: 1px solid rgba(56,189,248,.25);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 12px;
+  }
+  .db-table h4 {
+    font-family: 'Courier New', monospace;
+    font-size: .95rem;
+    color: var(--info);
+    margin-bottom: 10px;
+  }
+  .db-table table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .db-table th {
+    text-align: left;
+    color: var(--muted);
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .db-table td {
+    padding: 5px 8px 5px 0;
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: .8rem;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+    vertical-align: top;
+  }
+  .db-table td:last-child { color: var(--muted); font-family: inherit; font-size: .78rem; }
+
+  /* ROLES */
+  .role { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: .7rem; font-weight: 700; }
+  .role-admin { background: rgba(239,68,68,.15); color: #fca5a5; }
+  .role-sup { background: rgba(245,158,11,.15); color: #fcd34d; }
+  .role-cob { background: rgba(16,185,129,.15); color: #6ee7b7; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: .82rem;
+  }
+
+  h1, h2, h3, h4 { line-height: 1.3; }
+  a { color: var(--primary-light); }
+
+  @media print {
+    body { background: #fff; color: #000; }
+    .cover { background: #f1f5f9; }
+    .feature-card, .toc, .db-table, .css-item { background: #f8fafc; border-color: #e2e8f0; }
+    .cover h1 { -webkit-text-fill-color: #1e293b; }
+  }
+</style>
+</head>
+<body>
+
+<!-- PORTADA -->
+<div class="cover">
+  <div class="cover-badge">SAS Imperio — Sistema de Créditos</div>
+  <h1>Manual de Mejoras</h1>
+  <p>Documentación completa de todas las mejoras implementadas: limpieza de archivos, rediseño visual y nuevas funcionalidades.</p>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <div class="num">9</div>
+      <div class="lbl">Archivos eliminados</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="num">8</div>
+      <div class="lbl">Mejoras CSS</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="num">10</div>
+      <div class="lbl">Nuevas funciones</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="num">3</div>
+      <div class="lbl">Tablas nuevas en BD</div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ÍNDICE -->
+  <div class="toc">
+    <h2>Índice</h2>
+    <div class="toc-grid">
+      <a href="#fase1"><div class="toc-num">1</div> Limpieza de archivos</a>
+      <a href="#fase2"><div class="toc-num">2</div> Mejoras visuales (CSS)</a>
+      <a href="#feat-a"><div class="toc-num">A</div> Notas privadas en cliente</a>
+      <a href="#feat-b"><div class="toc-num">B</div> Comparativas en dashboard</a>
+      <a href="#feat-c"><div class="toc-num">C</div> Historial de precios</a>
+      <a href="#feat-d"><div class="toc-num">D</div> PDF ficha de cliente</a>
+      <a href="#feat-e"><div class="toc-num">E</div> Intentos de cobro fallidos</a>
+      <a href="#feat-f"><div class="toc-num">F</div> Puntaje de pago visual</a>
+      <a href="#feat-g"><div class="toc-num">G</div> Mapa de clientes</a>
+      <a href="#feat-h"><div class="toc-num">H</div> Predicción de cierre de crédito</a>
+      <a href="#feat-i"><div class="toc-num">I</div> Panel dedicado al supervisor</a>
+      <a href="#feat-j"><div class="toc-num">J</div> Análisis de cohortes</a>
+      <a href="#bd"><div class="toc-num">⬡</div> Tablas nuevas en base de datos</a>
+    </div>
+  </div>
+
+  <!-- FASE 1: LIMPIEZA -->
+  <div class="section" id="fase1">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(239,68,68,.15);color:var(--danger)">🗑️</div>
+      <div>
+        <h2>Fase 1 — Limpieza de Archivos</h2>
+        <div style="color:var(--muted);font-size:.85rem">Eliminación de archivos temporales y módulos obsoletos</div>
+      </div>
+      <span class="phase-badge" style="background:rgba(239,68,68,.15);color:var(--danger)">Completado</span>
+    </div>
+
+    <p style="color:var(--muted);margin-bottom:20px">Se eliminaron todos los archivos de debug, scripts de prueba y módulos legacy que ya no tenían uso productivo. Esto reduce el riesgo de seguridad y mantiene el código limpio.</p>
+
+    <div class="cleanup-list">
+      <div class="cleanup-item">test_debug.php</div>
+      <div class="cleanup-item">test_debug_2.php</div>
+      <div class="cleanup-item">test_debug_3.php</div>
+      <div class="cleanup-item">test_debug_ablanedo.php</div>
+      <div class="cleanup-item">test_pagos_conf.php</div>
+      <div class="cleanup-item">test_pagos_tmp.php</div>
+      <div class="cleanup-item">test_vendedor.php</div>
+      <div class="cleanup-item">test_vendedor2.php</div>
+      <div class="cleanup-item">diagnostico.php</div>
+      <div class="cleanup-item">recon/ (carpeta completa)</div>
+      <div class="cleanup-item">README_ETAPA_2.md → 5.md</div>
+      <div class="cleanup-item">implementation_plan.md</div>
+      <div class="cleanup-item">plan_estadisticas_cobrador.md</div>
+      <div class="cleanup-item">fpdf/tutorial/</div>
+    </div>
+
+    <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:14px 18px;margin-top:16px;font-size:.85rem;color:#fcd34d">
+      ⚠️ <strong>Nota sobre recon/:</strong> Era un módulo independiente con su propio repositorio Git y una copia duplicada de la librería FPDF. Su funcionalidad de reconocimiento de deuda ya estaba integrada en <code>creditos/reconocimiento_*.php</code>, por lo que fue seguro eliminarlo.
+    </div>
+  </div>
+
+  <!-- FASE 2: CSS -->
+  <div class="section" id="fase2">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(168,85,247,.15);color:var(--purple)">🎨</div>
+      <div>
+        <h2>Fase 2 — Mejoras Visuales</h2>
+        <div style="color:var(--muted);font-size:.85rem">Archivo modificado: <code>assets/css/style.css</code> (versión bumpeada a v=5)</div>
+      </div>
+      <span class="phase-badge" style="background:rgba(168,85,247,.15);color:var(--purple)">8 cambios</span>
+    </div>
+
+    <div class="css-grid">
+      <div class="css-item">
+        <h4>A — Tipografía jerarquizada</h4>
+        <p>Los títulos ahora tienen peso visual diferente según su nivel jerárquico, mejorando la lectura.</p>
+        <div class="change">h1, h2 → font-weight: 800
+h3, h4 → font-weight: 700
+h5, h6 → font-weight: 600</div>
+      </div>
+
+      <div class="css-item">
+        <h4>B — Dark mode más suave</h4>
+        <p>Los colores de fondo se suavizaron para reducir la fatiga visual en uso prolongado.</p>
+        <div class="change"><span class="old">--dark: #1C2434</span>
+<span class="new">--dark: #202B3D</span>
+<span class="old">--dark-card: #24303F</span>
+<span class="new">--dark-card: #263344</span>
+<span class="old">--text-body: #CBD5E1</span>
+<span class="new">--text-body: #D8E3EE</span></div>
+      </div>
+
+      <div class="css-item">
+        <h4>C — KPI Cards con gradiente</h4>
+        <p>Las tarjetas de KPI ahora tienen un gradiente sutil que usa el color de cada métrica como tinte.</p>
+        <div class="change">.kpi-card::before {
+  background: radial-gradient(
+    ellipse, color-mix(
+      var(--kpi-color) 10%,
+      transparent) 0%,
+    transparent 70%
+  )
+}</div>
+      </div>
+
+      <div class="css-item">
+        <h4>D — Focus de inputs más visible</h4>
+        <p>Al hacer click en un campo de formulario ahora aparece un borde azul y un halo de color para guiar la atención.</p>
+        <div class="change">:focus {
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 0 4px
+    rgba(60,80,224,.2);
+}</div>
+      </div>
+
+      <div class="css-item">
+        <h4>E — Sidebar más legible</h4>
+        <p>Las etiquetas de sección del menú lateral (GENERAL, GESTIÓN, etc.) son ahora más grandes y con menos separación entre letras.</p>
+        <div class="change"><span class="old">.nav-label: 0.6rem / 1.5px</span>
+<span class="new">.nav-label: 0.7rem / 1px</span></div>
+      </div>
+
+      <div class="css-item">
+        <h4>F — Badges más legibles</h4>
+        <p>Las pastillas de estado (PENDIENTE, MOROSO, etc.) aumentaron su tamaño de fuente para mejorar la lectura en tablas.</p>
+        <div class="change"><span class="old">.badge-ic: 0.67rem</span>
+<span class="new">.badge-ic: 0.75rem</span></div>
+      </div>
+
+      <div class="css-item">
+        <h4>H — Tablas con más respiro</h4>
+        <p>Las filas de las tablas tienen más padding y mejor interlineado, reduciendo la densidad visual.</p>
+        <div class="change"><span class="old">padding: 10px 14px</span>
+<span class="new">padding: 12px 16px</span>
+<span class="new">line-height: 1.5</span></div>
+      </div>
+
+      <div class="css-item">
+        <h4>I — Botones con mejor hover</h4>
+        <p>Los tres tipos de botón tienen reacciones al hover diferenciadas: brillo en primario, glow verde en éxito, tinte índigo en ghost.</p>
+        <div class="change">btn-primary:hover → brightness(1.1)
+btn-success:hover → glow verde
+btn-ghost:hover → tinte índigo</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FASE 3: FUNCIONALIDADES -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(99,102,241,.15);color:var(--primary-light)">⚡</div>
+      <div>
+        <h2>Fase 3 — Nuevas Funcionalidades</h2>
+        <div style="color:var(--muted);font-size:.85rem">10 funciones nuevas distribuidas en módulos existentes y nuevos</div>
+      </div>
+      <span class="phase-badge" style="background:rgba(99,102,241,.15);color:var(--primary-light)">10 features</span>
+    </div>
+
+    <!-- FEATURE A -->
+    <div class="feature-card" id="feat-a">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(16,185,129,.15);color:var(--success)">A</div>
+        <div>
+          <h3>Notas Privadas en Ficha de Cliente</h3>
+          <div>
+            <span class="tag tag-new">Nuevo</span>
+            <span class="tag tag-db">Nueva tabla BD</span>
+            <span class="file-path">clientes/ver.php</span>
+            <span class="file-path">clientes/notas_ajax.php</span>
+          </div>
+        </div>
+      </div>
+      <p>Permite que <strong>admins y supervisores</strong> dejen notas internas en la ficha de cada cliente. Las notas son visibles para todos los roles con acceso a la ficha, pero solo admin/supervisor pueden crearlas y eliminarlas.</p>
+      <p>Funciona sin recargar la página (AJAX). Cada nota muestra quién la escribió y cuándo.</p>
+      <div class="how-to">
+        <div class="how-label">¿Cómo usarlo?</div>
+        <ul>
+          <li>Ir a <strong>Clientes → Ver ficha</strong> de cualquier cliente</li>
+          <li>Bajar hasta la sección <strong>"Notas Internas"</strong> al final de la página</li>
+          <li>Escribir la nota y hacer clic en <strong>Guardar Nota</strong></li>
+          <li>Para eliminar: clic en el ícono de papelera junto a la nota</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE B -->
+    <div class="feature-card" id="feat-b">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(245,158,11,.15);color:var(--warning)">B</div>
+        <div>
+          <h3>Comparativas Período Anterior en Dashboard</h3>
+          <div>
+            <span class="tag tag-modified">Modificado</span>
+            <span class="file-path">admin/dashboard.php</span>
+          </div>
+        </div>
+      </div>
+      <p>Los KPIs del dashboard ahora muestran una flecha y porcentaje de variación respecto al período anterior. Permite identificar de un vistazo si el negocio está creciendo o cayendo.</p>
+      <div class="how-to">
+        <div class="how-label">¿Qué compara cada KPI?</div>
+        <ul>
+          <li><strong>Cobrado Hoy:</strong> vs. el mismo día de la semana pasada</li>
+          <li><strong>Cobrado este Mes:</strong> vs. el mes anterior completo</li>
+          <li><strong>Créditos nuevos:</strong> vs. los del mes anterior</li>
+          <li>Flecha <span style="color:var(--success)">▲ verde</span> = mejora / <span style="color:var(--danger)">▼ roja</span> = caída</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE C -->
+    <div class="feature-card" id="feat-c">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(56,189,248,.15);color:var(--info)">C</div>
+        <div>
+          <h3>Historial de Cambios de Precios en Artículos</h3>
+          <div>
+            <span class="tag tag-modified">Modificado</span>
+            <span class="tag tag-db">Nueva tabla BD</span>
+            <span class="file-path">articulos/editar.php</span>
+          </div>
+        </div>
+      </div>
+      <p>Cada vez que se edita un artículo y se modifica algún precio (costo, venta, contado o tarjeta), el sistema guarda automáticamente el valor anterior y el nuevo, junto con el usuario que realizó el cambio y la fecha.</p>
+      <p>Esto permite auditar fluctuaciones de rentabilidad y saber quién cambió qué precio y cuándo.</p>
+      <div class="how-to">
+        <div class="how-label">¿Cómo verlo?</div>
+        <ul>
+          <li>Ir a <strong>Artículos → Editar</strong> cualquier artículo</li>
+          <li>Al final de la página aparece la tabla <strong>"Historial de Precios"</strong></li>
+          <li>Muestra los últimos 20 cambios con columnas: Precio, Anterior, Nuevo, Cambio ($), Editor, Fecha</li>
+          <li>El historial se genera automáticamente al guardar cambios en precios</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE D -->
+    <div class="feature-card" id="feat-d">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(239,68,68,.15);color:var(--danger)">D</div>
+        <div>
+          <h3>PDF de Ficha Completa del Cliente</h3>
+          <div>
+            <span class="tag tag-new">Nuevo</span>
+            <span class="file-path">clientes/ficha_pdf.php</span>
+          </div>
+        </div>
+      </div>
+      <p>Genera un PDF en formato A4 con toda la información del cliente: datos personales, garante (si tiene) y el historial completo de créditos con su estado y progreso de pago. Útil para armar legajos o expedientes físicos.</p>
+      <div class="how-to">
+        <div class="how-label">¿Cómo generarlo?</div>
+        <ul>
+          <li>Ir a <strong>Clientes → Ver ficha</strong> de cualquier cliente</li>
+          <li>Hacer clic en el botón <strong>"PDF"</strong> en la barra superior derecha</li>
+          <li>El navegador descargará el archivo automáticamente</li>
+          <li>Disponible solo para <span class="role role-admin">admin</span> y <span class="role role-sup">supervisor</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE E -->
+    <div class="feature-card" id="feat-e">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(249,115,22,.15);color:#f97316">E</div>
+        <div>
+          <h3>Registro de Intentos de Cobro Fallidos</h3>
+          <div>
+            <span class="tag tag-new">Nuevo</span>
+            <span class="tag tag-modified">Modificado</span>
+            <span class="tag tag-db">Nueva tabla BD</span>
+            <span class="file-path">cobrador/agenda.php</span>
+            <span class="file-path">cobrador/registrar_intento.php</span>
+          </div>
+        </div>
+      </div>
+      <p>Cuando el cobrador va a cobrar y el cliente no está disponible, ahora puede registrar el intento fallido con el motivo. Esto deja un historial de visitas no exitosas que antes se perdía completamente.</p>
+      <div class="how-to">
+        <div class="how-label">¿Cómo usarlo?</div>
+        <ul>
+          <li>En la <strong>Agenda del Día</strong>, cada cliente que aún no cobró muestra el botón <strong>"No cobré"</strong> (ícono de persona tachada, color naranja)</li>
+          <li>Al hacer clic, se abre un modal para elegir el motivo:
+            <ul style="margin-top:4px">
+              <li><strong>No estaba en casa</strong></li>
+              <li><strong>No quiso pagar</strong></li>
+              <li><strong>Prometió pagar</strong> — habilita campo de fecha prometida</li>
+              <li><strong>Otro</strong> — con campo de observación libre</li>
+            </ul>
+          </li>
+          <li>El registro queda guardado con fecha, cobrador y cuota involucrada</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE F -->
+    <div class="feature-card" id="feat-f">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(99,102,241,.15);color:var(--primary-light)">F</div>
+        <div>
+          <h3>Puntaje de Pago con Contexto Visual</h3>
+          <div>
+            <span class="tag tag-modified">Modificado</span>
+            <span class="file-path">clientes/ver.php</span>
+          </div>
+        </div>
+      </div>
+      <p>El puntaje de pago del cliente ahora se muestra con una barra de progreso coloreada y una etiqueta de texto en lugar de un número sin contexto. Facilita interpretar de un vistazo si el cliente es buen o mal pagador.</p>
+      <div class="how-to">
+        <div class="how-label">Escala de puntajes</div>
+        <ul>
+          <li><strong style="color:var(--success)">1 — Excelente:</strong> barra verde al 100%</li>
+          <li><strong style="color:var(--primary-light)">2 — Bueno:</strong> barra azul al 70%</li>
+          <li><strong style="color:var(--warning)">3 — Regular:</strong> barra amarilla al 40%</li>
+          <li><strong style="color:var(--danger)">4 — Malo:</strong> barra roja al 15%</li>
+          <li>También muestra cuántas cuotas pagó sin mora sobre el total</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE G -->
+    <div class="feature-card" id="feat-g">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(14,165,233,.15);color:var(--accent)">G</div>
+        <div>
+          <h3>Mapa Interactivo de Clientes</h3>
+          <div>
+            <span class="tag tag-new">Nuevo</span>
+            <span class="file-path">clientes/mapa.php</span>
+          </div>
+        </div>
+      </div>
+      <p>Muestra en un mapa todos los clientes que tienen coordenadas GPS cargadas, con marcadores de colores según el estado del crédito. Permite planificar rutas de cobro y visualizar la distribución geográfica de la cartera.</p>
+      <div class="how-to">
+        <div class="how-label">¿Cómo acceder?</div>
+        <ul>
+          <li>Ir a <strong>Clientes</strong> y hacer clic en el botón <strong>"Mapa"</strong> en la barra superior</li>
+          <li>Los marcadores tienen colores según estado:
+            <ul style="margin-top:4px">
+              <li><span style="color:var(--success)">● Verde:</span> crédito EN CURSO (al día)</li>
+              <li><span style="color:var(--danger)">● Rojo:</span> crédito MOROSO</li>
+              <li><span style="color:#6b7280">● Gris:</span> sin crédito activo</li>
+            </ul>
+          </li>
+          <li>Usar el filtro de estado para mostrar solo un tipo</li>
+          <li>Cada marcador tiene popup con nombre, zona, cobrador y link a WhatsApp</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE H -->
+    <div class="feature-card" id="feat-h">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(168,85,247,.15);color:var(--purple)">H</div>
+        <div>
+          <h3>Predicción de Fecha de Cierre de Crédito</h3>
+          <div>
+            <span class="tag tag-modified">Modificado</span>
+            <span class="file-path">creditos/ver.php</span>
+          </div>
+        </div>
+      </div>
+      <p>En la ficha de cada crédito activo aparece un KPI nuevo que estima cuándo terminará de pagarse el crédito, basándose en el <strong>ritmo de pago real</strong> del cliente. Si pagó varias cuotas, calcula el intervalo promedio entre pagos y proyecta las fechas restantes.</p>
+      <div class="how-to">
+        <div class="how-label">¿Cómo funciona el cálculo?</div>
+        <ul>
+          <li>Si el cliente tiene <strong>2 o más pagos registrados</strong>: usa el intervalo promedio real entre pagos</li>
+          <li>Si tiene pocos pagos: usa la frecuencia del contrato (semanal=7d, quincenal=15d, mensual=30d)</li>
+          <li>Solo visible cuando el crédito está <strong>EN_CURSO o MOROSO</strong></li>
+          <li>Aparece como el 5.º KPI con color morado en la fila de métricas</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE I -->
+    <div class="feature-card" id="feat-i">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(245,158,11,.15);color:var(--warning)">I</div>
+        <div>
+          <h3>Panel Dedicado al Supervisor</h3>
+          <div>
+            <span class="tag tag-new">Nuevo</span>
+            <span class="file-path">supervisor/index.php</span>
+          </div>
+        </div>
+      </div>
+      <p>El supervisor ahora tiene su propio panel de control enfocado en las tareas que le son relevantes: pagos por aprobar, cobradores sin actividad y créditos en riesgo alto. Ya no necesita navegar por el dashboard de admin para encontrar esta información.</p>
+      <div class="how-to">
+        <div class="how-label">Contenido del panel</div>
+        <ul>
+          <li><strong>KPI 1 — Pagos Pendientes:</strong> cuántos pagos esperan aprobación y de cuántos cobradores</li>
+          <li><strong>KPI 2 — Créditos en Riesgo:</strong> créditos con 2 o más cuotas vencidas</li>
+          <li><strong>KPI 3 — Cobrado Hoy:</strong> total aprobado en el día con link a rendiciones</li>
+          <li><strong>KPI 4 — Sin Actividad:</strong> cobradores sin pagos en las últimas 24hs</li>
+          <li><strong>Tabla de pendientes:</strong> agrupados por cobrador con totales y acceso directo</li>
+          <li><strong>Tabla de riesgo:</strong> top 15 créditos más atrasados con días y cobrador asignado</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FEATURE J -->
+    <div class="feature-card" id="feat-j">
+      <div class="feature-card-header">
+        <div class="feature-letter" style="background:rgba(16,185,129,.15);color:var(--success)">J</div>
+        <div>
+          <h3>Análisis de Cohortes de Clientes</h3>
+          <div>
+            <span class="tag tag-new">Nuevo</span>
+            <span class="file-path">admin/cohortes.php</span>
+          </div>
+        </div>
+      </div>
+      <p>Agrupa a los clientes por el mes en que tomaron su <strong>primer crédito</strong> y analiza el comportamiento de pago de cada generación. Permite identificar si los clientes de cierto período pagan mejor que otros, y ajustar la política crediticia en consecuencia.</p>
+      <div class="how-to">
+        <div class="how-label">¿Cómo leer la tabla?</div>
+        <ul>
+          <li><strong>Cohorte:</strong> mes y año del primer crédito del grupo</li>
+          <li><strong>% Éxito:</strong> porcentaje de créditos finalizados con pago completo</li>
+          <li><strong>% Mora:</strong> porcentaje de créditos activos que están en mora</li>
+          <li><strong>Calidad:</strong> etiqueta automática según los dos indicadores anteriores:
+            <ul style="margin-top:4px">
+              <li><span style="color:var(--success)">Excelente:</span> éxito ≥60% y mora ≤10%</li>
+              <li><span style="color:var(--primary-light)">Buena:</span> éxito ≥40% y mora ≤25%</li>
+              <li><span style="color:var(--danger)">Riesgo:</span> mora ≥40%</li>
+              <li><span style="color:var(--warning)">Regular:</span> resto de los casos</li>
+            </ul>
+          </li>
+          <li>El gráfico de barras apiladas al pie visualiza la composición de cada cohorte</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- BASE DE DATOS -->
+  <div class="section" id="bd">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(56,189,248,.15);color:var(--info)">🗄️</div>
+      <div>
+        <h2>Tablas Nuevas en Base de Datos</h2>
+        <div style="color:var(--muted);font-size:.85rem">3 tablas nuevas creadas en la base de datos <code>c2881399_credit</code></div>
+      </div>
+    </div>
+
+    <div class="db-table">
+      <h4>ic_notas_cliente <span class="tag tag-db" style="font-size:.65rem">Feature A</span></h4>
+      <table>
+        <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+        <tbody>
+          <tr><td>id</td><td>INT UNSIGNED PK</td><td>Identificador único</td></tr>
+          <tr><td>cliente_id</td><td>INT FK</td><td>Cliente al que pertenece la nota (→ ic_clientes)</td></tr>
+          <tr><td>usuario_id</td><td>INT FK</td><td>Usuario que escribió la nota (→ ic_usuarios)</td></tr>
+          <tr><td>nota</td><td>TEXT</td><td>Contenido de la nota</td></tr>
+          <tr><td>created_at</td><td>DATETIME</td><td>Fecha y hora de creación</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="db-table">
+      <h4>ic_precios_historial <span class="tag tag-db" style="font-size:.65rem">Feature C</span></h4>
+      <table>
+        <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+        <tbody>
+          <tr><td>id</td><td>INT UNSIGNED PK</td><td>Identificador único</td></tr>
+          <tr><td>articulo_id</td><td>INT FK</td><td>Artículo modificado (→ ic_articulos)</td></tr>
+          <tr><td>usuario_id</td><td>INT FK</td><td>Usuario que hizo el cambio (→ ic_usuarios)</td></tr>
+          <tr><td>costo_ant / costo_nuevo</td><td>DECIMAL(10,2)</td><td>Precio costo antes y después</td></tr>
+          <tr><td>venta_ant / venta_nuevo</td><td>DECIMAL(10,2)</td><td>Precio venta antes y después</td></tr>
+          <tr><td>contado_ant / contado_nuevo</td><td>DECIMAL(10,2)</td><td>Precio contado antes y después</td></tr>
+          <tr><td>tarjeta_ant / tarjeta_nuevo</td><td>DECIMAL(10,2)</td><td>Precio tarjeta antes y después</td></tr>
+          <tr><td>created_at</td><td>DATETIME</td><td>Fecha y hora del cambio</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="db-table">
+      <h4>ic_intentos_cobro <span class="tag tag-db" style="font-size:.65rem">Feature E</span></h4>
+      <table>
+        <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+        <tbody>
+          <tr><td>id</td><td>INT UNSIGNED PK</td><td>Identificador único</td></tr>
+          <tr><td>cuota_id</td><td>INT FK</td><td>Cuota que se intentó cobrar (→ ic_cuotas)</td></tr>
+          <tr><td>cobrador_id</td><td>INT FK</td><td>Cobrador que realizó el intento (→ ic_usuarios)</td></tr>
+          <tr><td>motivo</td><td>ENUM</td><td>no_estaba / no_quiso / promesa_pago / otro</td></tr>
+          <tr><td>observacion</td><td>TEXT</td><td>Observación libre (opcional)</td></tr>
+          <tr><td>fecha_intento</td><td>DATE</td><td>Día en que se realizó el intento</td></tr>
+          <tr><td>fecha_promesa</td><td>DATE NULL</td><td>Fecha prometida (solo si motivo = promesa_pago)</td></tr>
+          <tr><td>created_at</td><td>DATETIME</td><td>Timestamp de registro</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RESUMEN DE RUTAS -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(99,102,241,.15);color:var(--primary-light)">🔗</div>
+      <div>
+        <h2>Resumen de URLs del Sistema</h2>
+        <div style="color:var(--muted);font-size:.85rem">Acceso directo a cada nueva sección</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:6px">Supervisor</div>
+        <code style="color:var(--primary-light);font-size:.85rem">localhost/creditos/supervisor/index</code>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:4px">Panel dedicado al supervisor</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:6px">Análisis</div>
+        <code style="color:var(--primary-light);font-size:.85rem">localhost/creditos/admin/cohortes</code>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:4px">Análisis de cohortes de clientes</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:6px">Clientes</div>
+        <code style="color:var(--primary-light);font-size:.85rem">localhost/creditos/clientes/mapa</code>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:4px">Mapa interactivo de clientes</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:6px">PDF</div>
+        <code style="color:var(--primary-light);font-size:.85rem">localhost/creditos/clientes/ficha_pdf?id=X</code>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:4px">PDF de ficha completa del cliente</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div style="margin-bottom:6px">SAS Imperio — Sistema de Gestión de Créditos</div>
+  <div>Manual generado el 20 de abril de 2026 · Versión del sistema: CSS v5</div>
+</footer>
+
+</body>
+</html>

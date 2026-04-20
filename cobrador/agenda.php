@@ -816,6 +816,14 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         class="btn-ic btn-ghost btn-icon" title="Ver artículo" style="width:44px;height:44px;border-radius:8px;font-size:1rem;display:flex;align-items:center;justify-content:center;">
                     <i class="fa fa-box-open"></i>
                 </button>
+                <?php if (!$c['pago_pen']): ?>
+                <button type="button"
+                        onclick="abrirIntento(<?= (int)$c['id'] ?>, '<?= e(addslashes($c['apellidos'].' '.$c['nombres'])) ?>')"
+                        class="btn-ic btn-ghost btn-icon" title="No cobré"
+                        style="width:44px;height:44px;border-radius:8px;font-size:1rem;color:var(--warning);display:flex;align-items:center;justify-content:center;">
+                    <i class="fa fa-user-slash"></i>
+                </button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -1771,5 +1779,64 @@ function renderCronograma(cuotas) {
 }
 </script>
 JS;
-require_once __DIR__ . '/../views/layout_footer.php';
+?>
+<!-- Modal No cobré -->
+<div class="modal-overlay" id="modal-intento">
+    <div class="modal-box" style="max-width:420px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-user-slash"></i> No cobré — registrar intento</div>
+            <button class="modal-close" onclick="closeModal('modal-intento')">✕</button>
+        </div>
+        <div id="intento-cliente" style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px"></div>
+        <form id="form-intento">
+            <input type="hidden" id="intento-cuota-id" name="cuota_id">
+            <div class="form-group mb-3">
+                <label style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Motivo</label>
+                <select name="motivo" id="intento-motivo" style="width:100%;background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;color:var(--text-main);padding:9px 12px;font-family:inherit;font-size:.875rem">
+                    <option value="no_estaba">No estaba en casa</option>
+                    <option value="no_quiso">No quiso pagar</option>
+                    <option value="promesa_pago">Prometió pagar</option>
+                    <option value="otro">Otro</option>
+                </select>
+            </div>
+            <div id="wrap-fecha-promesa" style="display:none" class="form-group mb-3">
+                <label style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Fecha prometida</label>
+                <input type="date" name="fecha_promesa" id="intento-fecha"
+                       style="width:100%;background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;color:var(--text-main);padding:9px 12px;font-family:inherit;font-size:.875rem">
+            </div>
+            <div class="form-group mb-3">
+                <label style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Observación (opcional)</label>
+                <textarea name="observacion" rows="2"
+                    style="width:100%;background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;color:var(--text-main);padding:9px 12px;font-family:inherit;font-size:.875rem;resize:vertical"></textarea>
+            </div>
+            <div style="display:flex;gap:10px">
+                <button type="submit" class="btn-ic btn-warning w-100"><i class="fa fa-save"></i> Registrar</button>
+                <button type="button" onclick="closeModal('modal-intento')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function abrirIntento(cuotaId, nombre) {
+    document.getElementById('intento-cuota-id').value = cuotaId;
+    document.getElementById('intento-cliente').textContent = nombre;
+    document.getElementById('intento-motivo').value = 'no_estaba';
+    document.getElementById('wrap-fecha-promesa').style.display = 'none';
+    openModal('modal-intento');
+}
+document.getElementById('intento-motivo').addEventListener('change', function() {
+    document.getElementById('wrap-fecha-promesa').style.display = this.value === 'promesa_pago' ? '' : 'none';
+});
+document.getElementById('form-intento').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    fetch('registrar_intento', {method:'POST', body: fd})
+        .then(r=>r.json()).then(d=>{
+            if (d.ok) { closeModal('modal-intento'); showToast('Intento registrado', 'success'); }
+            else showToast(d.error || 'Error', 'error');
+        });
+});
+</script>
+
+<?php require_once __DIR__ . '/../views/layout_footer.php';
 ?>
