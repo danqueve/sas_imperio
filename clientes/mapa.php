@@ -57,6 +57,7 @@ require_once __DIR__ . '/../views/layout.php';
         <div style="display:flex;gap:8px">
             <button onclick="seleccionarTodos()" class="btn-ic btn-ghost btn-sm">Ver todos</button>
             <button onclick="limpiarSeleccion()" class="btn-ic btn-ghost btn-sm">Limpiar</button>
+            <a href="mapa_full" target="_blank" class="btn-ic btn-ghost btn-sm"><i class="fa fa-expand"></i> Pantalla completa</a>
             <a href="index" class="btn-ic btn-ghost btn-sm"><i class="fa fa-list"></i> Lista</a>
         </div>
     </div>
