@@ -31,12 +31,14 @@ foreach ($clientes_raw as $cl) {
     }
 }
 
-// Cobradores con al menos un cliente geolocalizado (para el filtro)
+// Cobradores con al menos un cliente geolocalizado
 $cobradores_mapa = $pdo->query("
-    SELECT DISTINCT u.id, CONCAT(u.nombre,' ',u.apellido) AS nombre
+    SELECT DISTINCT u.id, CONCAT(u.nombre,' ',u.apellido) AS nombre,
+           COUNT(c.id) AS total_clientes
     FROM ic_clientes c
     JOIN ic_usuarios u ON c.cobrador_id = u.id
     WHERE c.coordenadas IS NOT NULL AND c.coordenadas != ''
+    GROUP BY u.id, u.nombre, u.apellido
     ORDER BY u.nombre
 ")->fetchAll();
 
@@ -45,26 +47,49 @@ $page_current = 'clientes';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
-<div class="card-ic" style="padding:0;overflow:hidden">
-    <div style="padding:16px 20px;border-bottom:1px solid var(--dark-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <span class="card-title"><i class="fa fa-map-location-dot"></i> Mapa de Clientes
-            <span class="text-muted" style="font-weight:400;font-size:.78rem">(<?= count($clientes_mapa) ?> con coordenadas)</span>
-        </span>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <select id="filtro-cobrador" onchange="filtrarMarcadores()" style="background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;color:var(--text-main);padding:6px 10px;font-size:.82rem;font-family:inherit">
-                <option value="">Todos los cobradores</option>
-                <?php foreach ($cobradores_mapa as $cob): ?>
-                    <option value="<?= $cob['id'] ?>"><?= e($cob['nombre']) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <a href="index" class="btn-ic btn-ghost btn-sm"><i class="fa fa-list"></i> Ver lista</a>
+<!-- Panel de comparativa -->
+<div class="card-ic mb-3" style="padding:16px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div>
+            <span class="card-title" style="font-size:.95rem"><i class="fa fa-code-compare"></i> Comparar Cobradores</span>
+            <span id="contador-sel" style="margin-left:10px;font-size:.75rem;color:var(--text-muted)">0 de 4 seleccionados</span>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button onclick="seleccionarTodos()" class="btn-ic btn-ghost btn-sm">Ver todos</button>
+            <button onclick="limpiarSeleccion()" class="btn-ic btn-ghost btn-sm">Limpiar</button>
+            <a href="index" class="btn-ic btn-ghost btn-sm"><i class="fa fa-list"></i> Lista</a>
         </div>
     </div>
-    <div id="mapa" style="height:600px;width:100%"></div>
+    <div id="panel-cobradores" style="display:flex;flex-wrap:wrap;gap:10px">
+        <?php foreach ($cobradores_mapa as $cob): ?>
+        <label class="cobrador-check" data-id="<?= $cob['id'] ?>" onclick="toggleCobrador(<?= $cob['id'] ?>, this)" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border:1.5px solid var(--dark-border);border-radius:8px;cursor:pointer;user-select:none;transition:all .15s;font-size:.85rem">
+            <span class="check-dot" style="width:13px;height:13px;border-radius:50%;border:2px solid var(--dark-border);flex-shrink:0;transition:all .15s"></span>
+            <span><?= e($cob['nombre']) ?></span>
+            <span style="font-size:.7rem;color:var(--text-muted)">(<?= $cob['total_clientes'] ?>)</span>
+        </label>
+        <?php endforeach; ?>
+    </div>
+    <div id="aviso-maximo" style="display:none;margin-top:10px;font-size:.78rem;color:var(--warning)">
+        <i class="fa fa-triangle-exclamation"></i> Máximo 4 cobradores a la vez. Deseleccioná uno para agregar otro.
+    </div>
 </div>
 
-<!-- Leyenda dinámica generada por JS -->
-<div id="leyenda" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:.78rem;color:var(--text-muted)"></div>
+<!-- Mapa -->
+<div class="card-ic" style="padding:0;overflow:hidden">
+    <div style="padding:12px 20px;border-bottom:1px solid var(--dark-border);display:flex;align-items:center;justify-content:space-between">
+        <span class="card-title" style="font-size:.9rem"><i class="fa fa-map-location-dot"></i> Mapa de Clientes
+            <span class="text-muted" style="font-weight:400;font-size:.78rem">(<?= count($clientes_mapa) ?> con coordenadas)</span>
+        </span>
+        <div id="leyenda-mapa" style="display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--text-muted)"></div>
+    </div>
+    <div id="mapa" style="height:580px;width:100%"></div>
+</div>
+
+<div id="info-cruces" style="display:none;margin-top:10px;padding:12px 16px;background:var(--dark-card);border:1px solid var(--dark-border);border-radius:8px;font-size:.82rem;color:var(--text-muted)">
+    <i class="fa fa-circle-info" style="color:var(--primary-light)"></i>
+    <strong style="color:var(--text-main)">Zonas de cruce detectadas:</strong>
+    Las áreas donde los polígonos se superponen indican que dos o más cobradores visitan clientes en la misma zona geográfica.
+</div>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -81,7 +106,6 @@ const clientes = <?= json_encode(array_map(fn($cl) => [
     'lng'        => $cl['lng'],
 ], $clientes_mapa), JSON_UNESCAPED_UNICODE) ?>;
 
-// Paleta de 12 colores distintos — uno por cobrador
 const PALETA = [
     '#ef4444', // Rojo
     '#eab308', // Amarillo
@@ -91,7 +115,7 @@ const PALETA = [
     '#38bdf8', // Celeste
 ];
 
-// Asignar color fijo a cada cobrador_id (orden de aparición en los datos)
+// Asignar color fijo a cada cobrador_id
 const colorPorCobrador = {};
 let palIdx = 0;
 clientes.forEach(cl => {
@@ -100,79 +124,183 @@ clientes.forEach(cl => {
         colorPorCobrador[key] = PALETA[palIdx++ % PALETA.length];
 });
 
-// Leyenda dinámica
-const leyendaHtml = Object.entries(colorPorCobrador).map(([id, color]) => {
-    const nombre = clientes.find(d => (d.cobrador_id || 0) == id)?.cobrador || 'Sin cobrador';
-    return `<span style="display:flex;align-items:center;gap:5px">
-        <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,.35);flex-shrink:0"></span>
-        ${nombre}
-    </span>`;
-}).join('');
-document.getElementById('leyenda').innerHTML = leyendaHtml;
+// Aplicar colores a los labels del panel
+document.querySelectorAll('.cobrador-check').forEach(label => {
+    const id = parseInt(label.dataset.id);
+    const color = colorPorCobrador[id] || '#64748b';
+    label.querySelector('.check-dot').style.background = color;
+    label.querySelector('.check-dot').style.borderColor = color;
+    label.dataset.color = color;
+});
 
-function makeIcon(color) {
-    return L.divIcon({
-        className: '',
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-    });
-}
-
-// Centro en Argentina (Tucumán aproximado)
+// ── Mapa ──────────────────────────────────────────────────
 const map = L.map('mapa').setView([-26.8, -65.2], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
     maxZoom: 19,
 }).addTo(map);
 
-let markers = [];
+let markers   = [];
+let polygons  = [];
+let seleccionados = []; // array de cobrador_id seleccionados (máx 4)
 
-// Colores de estado del crédito para el popup (badge)
-const ESTADO_COLOR = {
-    'EN_CURSO':    '#10b981',
-    'MOROSO':      '#ef4444',
-    'sin_credito': '#6b7280',
-};
-const ESTADO_LABEL = {
-    'EN_CURSO':    'En Curso',
-    'MOROSO':      'Moroso',
-    'sin_credito': 'Sin crédito activo',
-};
+const ESTADO_COLOR = { 'EN_CURSO':'#10b981', 'MOROSO':'#ef4444', 'sin_credito':'#6b7280' };
+const ESTADO_LABEL = { 'EN_CURSO':'En Curso', 'MOROSO':'Moroso', 'sin_credito':'Sin crédito activo' };
 
-function crearMarcadores(lista) {
+function makeIcon(color, size = 14) {
+    return L.divIcon({
+        className: '',
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`,
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+    });
+}
+
+// ── Convex Hull (Andrew's monotone chain) ─────────────────
+function convexHull(pts) {
+    if (pts.length < 3) return pts;
+    const sorted = [...pts].sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+    const cross = (o,a,b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+    const lower = [], upper = [];
+    for (const p of sorted) {
+        while (lower.length >= 2 && cross(lower.at(-2), lower.at(-1), p) <= 0) lower.pop();
+        lower.push(p);
+    }
+    for (let i = sorted.length-1; i >= 0; i--) {
+        const p = sorted[i];
+        while (upper.length >= 2 && cross(upper.at(-2), upper.at(-1), p) <= 0) upper.pop();
+        upper.push(p);
+    }
+    upper.pop(); lower.pop();
+    return lower.concat(upper);
+}
+
+// ── Renderizar mapa ───────────────────────────────────────
+function renderizar() {
+    // Limpiar markers y polígonos anteriores
     markers.forEach(m => map.removeLayer(m));
-    markers = [];
+    polygons.forEach(p => map.removeLayer(p));
+    markers = []; polygons = [];
+
+    const lista = seleccionados.length
+        ? clientes.filter(cl => seleccionados.includes(cl.cobrador_id))
+        : clientes;
+
+    // Marcadores
     lista.forEach(cl => {
-        const color = colorPorCobrador[cl.cobrador_id || 0] || '#64748b';
+        const color   = colorPorCobrador[cl.cobrador_id || 0] || '#64748b';
         const ecColor = ESTADO_COLOR[cl.estado_cr] || '#6b7280';
         const ecLabel = ESTADO_LABEL[cl.estado_cr] || cl.estado_cr;
-        const m = L.marker([cl.lat, cl.lng], {icon: makeIcon(color)})
+        const m = L.marker([cl.lat, cl.lng], { icon: makeIcon(color) })
             .bindPopup(`
                 <div style="min-width:190px;font-family:Arial,sans-serif;font-size:13px">
                     <strong><a href="../clientes/ver?id=${cl.id}" target="_blank">${cl.nombre}</a></strong><br>
-                    <span style="color:#6b7280;font-size:11px">${cl.zona || '—'} · <span style="color:${color};font-weight:700">${cl.cobrador || '—'}</span></span><br><br>
-                    <span style="padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;
-                          background:${ecColor}22;color:${ecColor}">${ecLabel}</span>
+                    <span style="color:#6b7280;font-size:11px">${cl.zona||'—'} · <span style="color:${color};font-weight:700">${cl.cobrador||'—'}</span></span><br><br>
+                    <span style="padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:${ecColor}22;color:${ecColor}">${ecLabel}</span>
                     ${cl.tel ? `<br><a href="https://wa.me/${cl.tel.replace(/\D/g,'')}">📱 ${cl.tel}</a>` : ''}
                 </div>
             `);
         m.addTo(map);
         markers.push(m);
     });
+
+    // Polígonos convex hull (solo en modo comparativa)
+    if (seleccionados.length >= 2) {
+        seleccionados.forEach(cobId => {
+            const pts = clientes
+                .filter(cl => cl.cobrador_id === cobId)
+                .map(cl => [cl.lat, cl.lng]);
+            if (pts.length < 2) return;
+            const color = colorPorCobrador[cobId] || '#64748b';
+            if (pts.length === 2) {
+                // Solo 2 puntos: línea
+                const poly = L.polyline(pts, { color, weight: 2, opacity: .6 }).addTo(map);
+                polygons.push(poly);
+            } else {
+                const hull = convexHull(pts);
+                const poly = L.polygon(hull, {
+                    color,
+                    weight: 2,
+                    opacity: .8,
+                    fillColor: color,
+                    fillOpacity: .12,
+                }).addTo(map);
+                polygons.push(poly);
+            }
+        });
+        document.getElementById('info-cruces').style.display = seleccionados.length >= 2 ? 'block' : 'none';
+    } else {
+        document.getElementById('info-cruces').style.display = 'none';
+    }
+
+    // Leyenda
+    const visibles = seleccionados.length ? seleccionados : Object.keys(colorPorCobrador).map(Number);
+    document.getElementById('leyenda-mapa').innerHTML = visibles.map(id => {
+        const color  = colorPorCobrador[id] || '#64748b';
+        const nombre = clientes.find(d => d.cobrador_id == id)?.cobrador || 'Sin cobrador';
+        return `<span style="display:flex;align-items:center;gap:5px">
+            <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,.35)"></span>
+            ${nombre}
+        </span>`;
+    }).join('');
+
+    // Ajustar zoom
+    if (markers.length) {
+        map.fitBounds(L.featureGroup(markers).getBounds().pad(0.12));
+    }
 }
 
-function filtrarMarcadores() {
-    const val = document.getElementById('filtro-cobrador').value;
-    const lista = val ? clientes.filter(cl => cl.cobrador_id == val) : clientes;
-    crearMarcadores(lista);
+// ── Lógica de selección ───────────────────────────────────
+function toggleCobrador(id, label) {
+    const idx = seleccionados.indexOf(id);
+    if (idx !== -1) {
+        // Deseleccionar
+        seleccionados.splice(idx, 1);
+        label.style.borderColor = 'var(--dark-border)';
+        label.style.background  = 'transparent';
+        label.querySelector('.check-dot').style.opacity = '1';
+    } else {
+        if (seleccionados.length >= 4) {
+            document.getElementById('aviso-maximo').style.display = 'block';
+            setTimeout(() => document.getElementById('aviso-maximo').style.display = 'none', 3000);
+            return;
+        }
+        seleccionados.push(id);
+        const color = colorPorCobrador[id] || '#64748b';
+        label.style.borderColor = color;
+        label.style.background  = color + '18';
+    }
+    actualizarContador();
+    renderizar();
 }
 
-crearMarcadores(clientes);
-if (clientes.length) {
-    const grupo = L.featureGroup(markers);
-    map.fitBounds(grupo.getBounds().pad(0.1));
+function actualizarContador() {
+    document.getElementById('contador-sel').textContent =
+        seleccionados.length + ' de 4 seleccionados';
 }
+
+function seleccionarTodos() {
+    seleccionados = [];
+    document.querySelectorAll('.cobrador-check').forEach(label => {
+        label.style.borderColor = 'var(--dark-border)';
+        label.style.background  = 'transparent';
+    });
+    actualizarContador();
+    renderizar();
+}
+
+function limpiarSeleccion() {
+    seleccionados = [];
+    document.querySelectorAll('.cobrador-check').forEach(label => {
+        label.style.borderColor = 'var(--dark-border)';
+        label.style.background  = 'transparent';
+    });
+    actualizarContador();
+    renderizar();
+}
+
+// Carga inicial: mostrar todos
+renderizar();
 </script>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>
