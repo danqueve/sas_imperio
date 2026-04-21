@@ -83,9 +83,12 @@ const clientes = <?= json_encode(array_map(fn($cl) => [
 
 // Paleta de 12 colores distintos — uno por cobrador
 const PALETA = [
-    '#6366f1','#f59e0b','#06b6d4','#f97316','#8b5cf6',
-    '#84cc16','#ec4899','#14b8a6','#a855f7','#22c55e',
-    '#ef4444','#64748b'
+    '#ef4444', // Rojo
+    '#eab308', // Amarillo
+    '#22c55e', // Verde
+    '#3b82f6', // Azul
+    '#f97316', // Naranja
+    '#38bdf8', // Celeste
 ];
 
 // Asignar color fijo a cada cobrador_id (orden de aparición en los datos)
