@@ -151,13 +151,14 @@ if (empty($creditos)) {
     $num  = 0;
     foreach ($creditos as $cr) {
         $num++;
+        $activo = in_array($cr['estado'], ['EN_CURSO', 'MOROSO']);
         if ($cr['motivo_finalizacion'] === 'RETIRO_PRODUCTO') {
             $cond = 'Retiro Art.';
             $cr_color = [180, 140, 0];
-        } elseif ($cr['motivo_finalizacion'] === 'PAGO_COMPLETO') {
+        } elseif ($cr['motivo_finalizacion'] === 'PAGO_COMPLETO' || $cr['estado'] === 'FINALIZADO') {
             $cond = 'Pagado';
             $cr_color = [30, 130, 60];
-        } elseif ($cr['cuotas_vencidas'] > 0) {
+        } elseif ($activo && $cr['cuotas_vencidas'] > 0) {
             $cond = 'Atrasado (' . $cr['cuotas_vencidas'] . ')';
             $cr_color = [180, 40, 50];
         } else {

@@ -509,11 +509,12 @@ if ($vendedor_id !== 0) {
                     <tr><td colspan="8" class="text-center text-muted" style="padding:32px">Sin créditos en el período seleccionado.</td></tr>
                 <?php else: ?>
                 <?php foreach ($creditos as $cr):
+                    $activo = in_array($cr['estado'], ['EN_CURSO', 'MOROSO']);
                     if ($cr['motivo_finalizacion'] === 'RETIRO_PRODUCTO') {
                         $cond_label = 'Retiró Artículo'; $cond_badge = 'badge-warning'; $cond_icon = 'fa-box-open'; $row_style = '';
-                    } elseif ($cr['motivo_finalizacion'] === 'PAGO_COMPLETO') {
+                    } elseif ($cr['motivo_finalizacion'] === 'PAGO_COMPLETO' || $cr['estado'] === 'FINALIZADO') {
                         $cond_label = 'Pagado'; $cond_badge = 'badge-success'; $cond_icon = 'fa-circle-check'; $row_style = '';
-                    } elseif ($cr['cuotas_vencidas'] > 0) {
+                    } elseif ($activo && $cr['cuotas_vencidas'] > 0) {
                         $cond_label = 'Atrasado (' . $cr['cuotas_vencidas'] . ')'; $cond_badge = 'badge-danger'; $cond_icon = 'fa-triangle-exclamation'; $row_style = 'background:rgba(211,64,83,.06)';
                     } else {
                         $cond_label = 'Al Día'; $cond_badge = 'badge-success'; $cond_icon = 'fa-check'; $row_style = '';
