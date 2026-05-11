@@ -75,15 +75,7 @@ if ($cobrador_id > 0) {
     if ($cob) $cob_label = $cob['nombre'] . ' ' . $cob['apellido'];
 }
 
-// ── Helpers FPDF ─────────────────────────────────────────────
-function lat(string $s): string {
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
-function fmt(float $v): string {
-    return '$ ' . number_format($v, 0, ',', '.');
-}
-
-require_once __DIR__ . '/../fpdf/fpdf.php';
+require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas: suma = 190mm (margen 10mm c/lado)
 // #(7) Cliente(38) Articulo(28) Cuota(12) Monto Adeudado(25) Dias(14) Ult.Pago(22) Zona(20) Cobrador(24)
@@ -91,7 +83,7 @@ $COLS   = [7, 38, 28, 12, 25, 14, 22, 20, 24];
 $LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Monto Adeudado', 'Dias', 'Ult. Pago', 'Zona', 'Cobrador'];
 $ALIGNS = ['C', 'L',  'L',  'C', 'R', 'C', 'C', 'L', 'L'];
 
-class AtrasadosPDF extends FPDF
+class AtrasadosPDF extends PDFBase
 {
     public string $cobrador_label = '';
     public string $zona_label     = '';
@@ -128,14 +120,6 @@ class AtrasadosPDF extends FPDF
         $this->SetFont('Helvetica', '', 7);
     }
 
-    function Footer()
-    {
-        $this->SetY(-12);
-        $this->SetFont('Helvetica', 'I', 8);
-        $this->SetTextColor(80, 80, 80);
-        $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' / {nb}'), 0, 0, 'C');
-        $this->SetTextColor(0, 0, 0);
-    }
 }
 
 $pdf = new AtrasadosPDF('P', 'mm', 'A4');

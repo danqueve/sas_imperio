@@ -890,6 +890,7 @@ require_once __DIR__ . '/../views/layout.php';
         <div id="info-revertir"
             style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
         <form method="POST" action="gestionar_pago" class="form-ic">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="revertir_confirmado">
             <input type="hidden" name="pago_conf_id" id="rev_pc_id">
             <input type="hidden" name="credito_id" value="<?= $id ?>">
@@ -913,6 +914,7 @@ require_once __DIR__ . '/../views/layout.php';
         <div id="info-sol-baja"
             style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:14px;font-size:.875rem"></div>
         <form method="POST" action="gestionar_pago" class="form-ic">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="solicitar_baja_confirmado">
             <input type="hidden" name="pago_conf_id" id="sol_pc_id">
             <input type="hidden" name="credito_id" value="<?= $id ?>">
@@ -944,6 +946,7 @@ require_once __DIR__ . '/../views/layout.php';
         <div id="info-condonar"
             style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
         <form method="POST" action="condonar_mora" class="form-ic">
+            <?php csrf_input(); ?>
             <input type="hidden" name="cuota_id" id="cond_cuota_id">
             <input type="hidden" name="credito_id" value="<?= $id ?>">
             <div class="d-flex gap-3">
@@ -966,6 +969,7 @@ require_once __DIR__ . '/../views/layout.php';
         <div id="info-pago-dir"
             style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
         <form method="POST" action="pagar_cuota" class="form-ic">
+            <?php csrf_input(); ?>
             <input type="hidden" name="cuota_id" id="dir_cuota_id">
             <input type="hidden" name="credito_id" value="<?= $id ?>">
             <div class="form-grid">
@@ -1141,6 +1145,7 @@ JS;
             </p>
         </div>
         <form method="POST" action="eliminar">
+            <?php csrf_input(); ?>
             <input type="hidden" name="credito_id" value="<?= $id ?>">
             <div class="d-flex gap-3">
                 <button type="submit" class="btn-ic btn-danger w-100" style="justify-content:center">

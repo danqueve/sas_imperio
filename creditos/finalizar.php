@@ -42,6 +42,7 @@ $error = '';
 $finalizado = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $motivo = $_POST['motivo_finalizacion'] ?? '';
 
     $motivos_validos = ['PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA', 'RETIRO_PRODUCTO', 'INCOBRABILIDAD', 'ACUERDO_EXTRAJUDICIAL'];
@@ -160,6 +161,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
+        <?php csrf_input(); ?>
         <div class="card-ic mb-4">
             <div class="card-ic-header">
                 <span class="card-title text-danger"><i class="fa fa-power-off"></i> Finalizar Crédito</span>

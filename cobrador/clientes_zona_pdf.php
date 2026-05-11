@@ -71,16 +71,11 @@ foreach ([1,2,3,4,5,6,0] as $d) {
 }
 $por_dia = $por_dia_ord;
 
-// ── Helpers ──────────────────────────────────────────────────
-function lat(string $s): string {
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
 function fmt(float $v): string {
     return '$ ' . number_format($v, 2, ',', '.');
 }
 
-// ── FPDF ─────────────────────────────────────────────────────
-require_once __DIR__ . '/../fpdf/fpdf.php';
+require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Columnas (total = 190mm):
 // Cliente/Tel(58) + Artículo(50) + Cuota(18) + Monto(30) + Prox.Venc.(34)
@@ -88,21 +83,12 @@ $CA     = [58, 50, 18, 30, 34];
 $LA     = ['Cliente / Tel.', 'Articulo', 'Cuota', 'Monto', 'Prox. Venc.'];
 $ALIGNS = ['L', 'L', 'C', 'R', 'C'];
 
-class ClientesZonaPDF extends FPDF
+class ClientesZonaPDF extends PDFBase
 {
     public string $cobrador_nombre = '';
     public array  $ca  = [];
     public array  $la  = [];
     public array  $ali = [];
-
-    function Footer()
-    {
-        $this->SetY(-12);
-        $this->SetFont('Helvetica', 'I', 8);
-        $this->SetTextColor(100, 100, 100);
-        $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' / {nb}'), 0, 0, 'C');
-        $this->SetTextColor(0, 0, 0);
-    }
 
     function encabezadoColumnas()
     {

@@ -53,6 +53,7 @@ $dstmt = $pdo->prepare("
     LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
     WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?
       AND IFNULL(pt.origen, 'cobrador') = ?
+      AND pc.revertido = 0
     ORDER BY pc.fecha_pago ASC
 ");
 $dstmt->execute([$cobrador_id, $fecha_rendicion, $origen_sel]);
@@ -72,6 +73,11 @@ $page_title = 'Detalle de Rendición';
 $page_current = 'rendiciones';
 $topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-arrow-left"></i> Volver al Historial</a>'
     . ' <a href="historial_rendiciones_pdf?fecha=' . urlencode($fecha_rendicion) . '&cobrador_id=' . $cobrador_id . '&origen=' . urlencode($origen_sel) . '" target="_blank" class="btn-ic btn-danger btn-sm"><i class="fa fa-file-pdf"></i> PDF</a>';
+if (es_admin()) {
+    $topbar_actions .= ' <button type="button" onclick="document.getElementById(\'modal-revertir-ver\').style.display=\'flex\'"'
+        . ' class="btn-ic btn-sm" style="background:#b45309;color:#fff">'
+        . '<i class="fa fa-rotate-left"></i> Revertir Rendición</button>';
+}
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -199,5 +205,68 @@ require_once __DIR__ . '/../views/layout.php';
         <?php endforeach; ?>
     <?php endif; ?>
 </div>
+
+<?php if (es_admin() && !empty($detalle_pagos)): ?>
+<!-- Modal: Revertir Rendición (desde vista de detalle) -->
+<div id="modal-revertir-ver" style="display:none;position:fixed;inset:0;z-index:1050;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:10px;padding:2rem;max-width:480px;width:95%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+        <h5 style="margin:0 0 1rem;color:#b45309"><i class="fa fa-rotate-left"></i> Revertir Rendición</h5>
+        <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:.75rem;margin-bottom:1rem;font-size:.9rem">
+            <strong>Cobrador:</strong> <?= e($cobrador['apellido'] . ', ' . $cobrador['nombre']) ?><br>
+            <strong>Fecha:</strong> <?= date('d/m/Y', strtotime($fecha_rendicion)) ?>
+            &nbsp;|&nbsp; <strong>Origen:</strong> <?= e($origen_sel) ?><br>
+            <strong>Cuotas:</strong> <?= count($detalle_pagos) ?>
+            &nbsp;|&nbsp; <strong>Total:</strong> <?= formato_pesos($total_rendido) ?>
+        </div>
+        <p style="font-size:.88rem;color:#6b7280;margin-bottom:1rem">
+            Esta acción <strong>deshace todos los movimientos</strong> de esta rendición: los pagos volverán a PENDIENTE,
+            se restarán los saldos de las cuotas y se recalculará el estado del crédito. Es irreversible.
+        </p>
+        <form method="POST" action="historial_rendiciones" id="form-revertir-ver">
+            <input type="hidden" name="accion" value="revertir_rendicion">
+            <?php csrf_input(); ?>
+            <input type="hidden" name="fecha" value="<?= e($fecha_rendicion) ?>">
+            <input type="hidden" name="cobrador_id" value="<?= (int)$cobrador_id ?>">
+            <input type="hidden" name="origen" value="<?= e($origen_sel) ?>">
+            <div style="margin-bottom:.75rem">
+                <label style="font-weight:600;font-size:.9rem">Motivo de la reversa <span style="color:red">*</span></label>
+                <textarea name="motivo" id="rv-motivo" rows="3" minlength="10" required
+                    placeholder="Describí el motivo (mín. 10 caracteres)..."
+                    style="width:100%;margin-top:.3rem;padding:.5rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;resize:vertical"></textarea>
+            </div>
+            <div style="margin-bottom:1rem;display:flex;align-items:flex-start;gap:.5rem">
+                <input type="checkbox" id="rv-confirm" style="margin-top:.2rem" required>
+                <label for="rv-confirm" style="font-size:.85rem;color:#374151;cursor:pointer">
+                    Confirmo que esta acción es irreversible y que se desharán todos los movimientos contables asociados a esta rendición.
+                </label>
+            </div>
+            <div style="display:flex;gap:.75rem;justify-content:flex-end">
+                <button type="button" onclick="document.getElementById('modal-revertir-ver').style.display='none'" class="btn-ic btn-ghost">Cancelar</button>
+                <button type="submit" class="btn-ic" style="background:#b45309;color:#fff">
+                    <i class="fa fa-rotate-left"></i> Sí, revertir
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+document.getElementById('form-revertir-ver').addEventListener('submit', function(e) {
+    if (!document.getElementById('rv-confirm').checked) {
+        e.preventDefault();
+        alert('Debés confirmar el checkbox antes de continuar.');
+        return;
+    }
+    var motivo = document.getElementById('rv-motivo').value.trim();
+    if (motivo.length < 10) {
+        e.preventDefault();
+        alert('El motivo debe tener al menos 10 caracteres.');
+        return;
+    }
+});
+document.getElementById('modal-revertir-ver').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+</script>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>

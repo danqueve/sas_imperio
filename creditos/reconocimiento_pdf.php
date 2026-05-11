@@ -8,17 +8,7 @@ require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('ver_agenda');
 
-// ── FPDF ──────────────────────────────────────────────────
-$fpdf_paths = [
-    __DIR__ . '/../fpdf/fpdf.php',
-    __DIR__ . '/../../fpdf/fpdf.php',
-    __DIR__ . '/../../fpdf182/fpdf.php',
-];
-$fpdf_found = false;
-foreach ($fpdf_paths as $p) {
-    if (file_exists($p)) { require_once $p; $fpdf_found = true; break; }
-}
-if (!$fpdf_found) die('Error: FPDF no encontrado.');
+require_once __DIR__ . '/../lib/PDFBase.php';
 
 $pdo = obtener_conexion();
 $credito_id = (int) ($_GET['credito_id'] ?? 0);

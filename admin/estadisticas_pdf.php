@@ -139,15 +139,8 @@ foreach ($cobros_raw as $row) {
     $data[$cid]['totales']['por_tipo'][$freq]['monto_cobrado']        += $mc;
 }
 
-// ── Helpers ───────────────────────────────────────────────────
-function lat(string $s): string
-{
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
-function fmt(float $v): string
-{
-    return '$ ' . number_format($v, 0, ',', '.');
-}
+require_once __DIR__ . '/../lib/PDFBase.php';
+
 function pct_color(int $pct): array // [r, g, b]
 {
     if ($pct >= 80) return [40, 167, 69];
@@ -156,9 +149,8 @@ function pct_color(int $pct): array // [r, g, b]
 }
 
 // ── FPDF ──────────────────────────────────────────────────────
-require_once __DIR__ . '/../fpdf/fpdf.php';
 
-class EstadisticasPDF extends FPDF
+class EstadisticasPDF extends PDFBase
 {
     public string $cobrador    = '';
     public string $semana_lbl  = '';
@@ -194,18 +186,6 @@ class EstadisticasPDF extends FPDF
         $this->SetLineWidth(0.2);
     }
 
-    function Footer(): void
-    {
-        $this->SetY(-12);
-        $this->SetFont('Helvetica', 'I', 7);
-        $this->SetTextColor(100, 100, 100);
-        $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' de {nb}'), 0, 0, 'C');
-        $this->SetTextColor(0, 0, 0);
-    }
-
-    /**
-     * Celda con barra de progreso de fondo + texto encima.
-     */
     function CellProgreso(float $w, float $h, int $pct, string $texto): void
     {
         $x = $this->GetX();

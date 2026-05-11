@@ -1113,6 +1113,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         </div>
 
         <form method="POST" action="registrar_pago" class="form-ic" id="form-pago">
+            <?php csrf_input(); ?>
             <input type="hidden" name="cuota_id" id="input_cuota_id">
 
             <?php if ($es_modo_finde): ?>
@@ -1288,6 +1289,7 @@ $page_scripts = <<<'JS'
 </style>
 
 <script>
+window.CSRF_TOKEN = '<?= csrf_token() ?>';
 let cuota_mora    = 0;
 let cuota_capital = 0;
 
@@ -1564,7 +1566,7 @@ function anularPago(ptId, nombre, btn) {
     closeModal('modal-anular');
     fetch('anular_pago', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': window.CSRF_TOKEN },
       body: 'pt_id=' + ptId
     })
     .then(r => {
@@ -1830,7 +1832,7 @@ document.getElementById('intento-motivo').addEventListener('change', function() 
 document.getElementById('form-intento').addEventListener('submit', function(e) {
     e.preventDefault();
     const fd = new FormData(this);
-    fetch('registrar_intento', {method:'POST', body: fd})
+    fetch('registrar_intento', {method:'POST', body: fd, headers: {'X-CSRF-Token': window.CSRF_TOKEN}})
         .then(r=>r.json()).then(d=>{
             if (d.ok) { closeModal('modal-intento'); showToast('Intento registrado', 'success'); }
             else showToast(d.error || 'Error', 'error');

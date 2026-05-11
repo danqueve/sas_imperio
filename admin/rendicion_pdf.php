@@ -127,14 +127,7 @@ foreach ($pagos as $p) {
     }
 }
 
-function lat(string $s): string {
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
-function fmt(float $v): string {
-    return '$ ' . number_format($v, 0, ',', '.');
-}
-
-require_once __DIR__ . '/../fpdf/fpdf.php';
+require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas: suma = 190mm (portrait A4)
 // #(7) + Cliente(38) + Articulo(30) + Cuota(s)(13) + Vlr.Cuota(20) + Efectivo(22) + Transfer.(22) + Mora(20) + Total(18)
@@ -143,7 +136,7 @@ $LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Tr
 $ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
 $ANCHO_TOTAL = array_sum($COLS); // 190
 
-class RendicionPDF extends FPDF
+class RendicionPDF extends PDFBase
 {
     public string $cobrador_nombre  = '';
     public string $fecha_label     = '';
@@ -192,31 +185,6 @@ class RendicionPDF extends FPDF
         $this->SetFont('Helvetica', '', 8);
     }
 
-    function Footer()
-    {
-        $this->SetY(-12);
-        $this->SetFont('Helvetica', 'I', 8);
-        $this->SetTextColor(80, 80, 80);
-        $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' / {nb}'), 0, 0, 'C');
-        $this->SetTextColor(0, 0, 0);
-    }
-
-    function fitText(string $text, float $maxW, string $suffix = '..'): string
-    {
-        $encoded = lat($text);
-        if ($this->GetStringWidth($encoded) <= $maxW) {
-            return $encoded;
-        }
-        $suffixW = $this->GetStringWidth($suffix);
-        while (mb_strlen($text) > 1) {
-            $text = mb_substr($text, 0, -1);
-            $encoded = lat($text);
-            if ($this->GetStringWidth($encoded . $suffix) <= $maxW) {
-                return $encoded . $suffix;
-            }
-        }
-        return $suffix;
-    }
 }
 
 // ── Preparar label de fecha para el header ──────────────────

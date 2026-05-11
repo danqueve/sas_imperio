@@ -13,6 +13,7 @@ $cobrador_id = (int) ($_GET['cobrador_id'] ?? 0);
 
 // ── POST handler ──────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $accion      = $_POST['accion'] ?? '';
     $cobrador_id = (int) ($_POST['cobrador_id'] ?? 0);
 
@@ -447,6 +448,7 @@ require_once __DIR__ . '/../views/layout.php';
                         </span>
                     </a>
                     <form method="POST">
+                        <?php csrf_input(); ?>
                         <input type="hidden" name="accion" value="aprobar_todas_jornadas">
                         <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
                         <button type="submit" class="btn-ic btn-success"
@@ -486,6 +488,7 @@ require_once __DIR__ . '/../views/layout.php';
             La solicitud será revisada por el administrador, quien decidirá si rechaza el pago.
         </p>
         <form method="POST" class="form-ic">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="solicitar_baja_temporal">
             <input type="hidden" name="pago_id" id="sol_temp_id">
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
@@ -531,6 +534,7 @@ require_once __DIR__ . '/../views/layout.php';
             </div>
         </div>
         <form method="POST" id="form-aprobar-jornada">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="aprobar_todo">
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
             <input type="hidden" name="fecha" id="aprobar-jornada-fecha">
@@ -569,6 +573,7 @@ require_once __DIR__ . '/../views/layout.php';
             </div>
         </div>
         <form method="POST" id="form-rechazar-pago">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="rechazar">
             <input type="hidden" name="pago_id" id="rechazar-pago-id">
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
@@ -594,6 +599,7 @@ require_once __DIR__ . '/../views/layout.php';
             Corregí la distribución entre efectivo y transferencia. El total se recalcula automáticamente.
         </p>
         <form method="POST" class="form-ic">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="editar_pago">
             <input type="hidden" name="pago_id" id="edit_pago_id">
             <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">

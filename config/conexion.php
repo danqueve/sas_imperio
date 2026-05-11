@@ -2,16 +2,46 @@
 // ============================================================
 // Sistema Imperio Comercial — Configuración y Conexión PDO
 // ============================================================
+// Las credenciales se leen de (en orden):
+//   1. Variables de entorno (DB_HOST, DB_NAME, DB_USER, DB_PASS)
+//   2. config/conexion.local.php (gitignored)
+// ============================================================
 
 define('BASE_URL', '/creditos/');
 define('APP_URL',  'https://imperiocomercial.com.ar/creditos/');
 
+(function () {
+    $env = [
+        'host'    => getenv('DB_HOST') ?: null,
+        'name'    => getenv('DB_NAME') ?: null,
+        'user'    => getenv('DB_USER') ?: null,
+        'pass'    => getenv('DB_PASS') ?: null,
+        'charset' => getenv('DB_CHARSET') ?: 'utf8mb4',
+    ];
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'c2881399_credit');       // Nombre de la base de datos
-define('DB_USER', 'c2881399_credit');                  // Usuario MySQL
-define('DB_PASS', '69maninoNO');                      // Contraseña MySQL
-define('DB_CHARSET', 'utf8mb4');
+    $local_file = __DIR__ . '/conexion.local.php';
+    $local = file_exists($local_file) ? require $local_file : [];
+
+    $cfg = [
+        'host'    => $env['host']    ?? ($local['host']    ?? null),
+        'name'    => $env['name']    ?? ($local['name']    ?? null),
+        'user'    => $env['user']    ?? ($local['user']    ?? null),
+        'pass'    => $env['pass']    ?? ($local['pass']    ?? null),
+        'charset' => $env['charset'] ?? ($local['charset'] ?? 'utf8mb4'),
+    ];
+
+    if (!$cfg['host'] || !$cfg['name'] || !$cfg['user']) {
+        http_response_code(500);
+        error_log('Faltan credenciales de BD. Definir env vars o crear config/conexion.local.php (ver conexion.example.php).');
+        die('Error de configuración: credenciales de BD ausentes. Contacte al administrador.');
+    }
+
+    define('DB_HOST',    $cfg['host']);
+    define('DB_NAME',    $cfg['name']);
+    define('DB_USER',    $cfg['user']);
+    define('DB_PASS',    $cfg['pass']);
+    define('DB_CHARSET', $cfg['charset']);
+})();
 
 function obtener_conexion(): PDO
 {

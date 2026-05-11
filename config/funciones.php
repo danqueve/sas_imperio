@@ -367,6 +367,186 @@ function aprobar_todas_jornadas(int $cobrador_id, int $aprobador_id, PDO $pdo): 
     return $resultado;
 }
 
+// ── Reversa de rendición ─────────────────────────────────────
+
+/**
+ * Revierte lógicamente una rendición aprobada (cobrador + fecha + origen).
+ *
+ * - Marca ic_pagos_confirmados como revertido=1 (no borra físicamente).
+ * - Vuelve ic_pagos_temporales a PENDIENTE para re-aprobación.
+ * - Deshace los cambios en ic_cuotas (saldo, estado, fecha_pago).
+ * - Recalcula ic_creditos.estado (puede salir de FINALIZADO).
+ * - Toda la operación es atómica (una transacción para toda la rendición).
+ *
+ * @return array{ok:bool, cuotas:int, error:string}
+ */
+function revertir_rendicion(
+    int    $cobrador_id,
+    string $fecha,
+    string $origen,
+    int    $usuario_id,
+    string $motivo,
+    PDO    $pdo
+): array {
+    // Obtener todos los pagos confirmados del grupo (no revertidos)
+    $stmtPagos = $pdo->prepare("
+        SELECT pc.id, pc.pago_temp_id, pc.cuota_id, pc.monto_total, pc.fecha_aprobacion
+        FROM ic_pagos_confirmados pc
+        LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
+        WHERE pc.cobrador_id = ?
+          AND DATE(pc.fecha_aprobacion) = ?
+          AND IFNULL(pt.origen, 'cobrador') = ?
+          AND pc.revertido = 0
+        ORDER BY pc.id ASC
+    ");
+    $stmtPagos->execute([$cobrador_id, $fecha, $origen]);
+    $pagos = $stmtPagos->fetchAll();
+
+    if (empty($pagos)) {
+        return ['ok' => false, 'cuotas' => 0, 'error' => 'No se encontraron pagos confirmados para esta rendición.'];
+    }
+
+    // ── Validaciones previas (fuera de transacción) ───────────
+    foreach ($pagos as $pago) {
+        // ¿Existe otro pago confirmado posterior sobre la misma cuota?
+        $stmtPost = $pdo->prepare("
+            SELECT COUNT(*) FROM ic_pagos_confirmados
+            WHERE cuota_id = ? AND revertido = 0 AND fecha_aprobacion > ?
+        ");
+        $stmtPost->execute([$pago['cuota_id'], $pago['fecha_aprobacion']]);
+        if ((int) $stmtPost->fetchColumn() > 0) {
+            return ['ok' => false, 'cuotas' => 0,
+                'error' => "La cuota ID {$pago['cuota_id']} tiene un cobro posterior. Revierta ese primero."];
+        }
+
+        // ¿El crédito está CANCELADO?
+        $stmtCr = $pdo->prepare("
+            SELECT cr.estado FROM ic_cuotas cu
+            JOIN ic_creditos cr ON cr.id = cu.credito_id
+            WHERE cu.id = ?
+        ");
+        $stmtCr->execute([$pago['cuota_id']]);
+        $cr = $stmtCr->fetchColumn();
+        if ($cr === 'CANCELADO') {
+            return ['ok' => false, 'cuotas' => 0,
+                'error' => "El crédito asociado a la cuota ID {$pago['cuota_id']} está CANCELADO y no puede revertirse."];
+        }
+
+        // ¿Cuota refinanciada después de este cobro?
+        $stmtRef = $pdo->prepare("
+            SELECT COUNT(*) FROM ic_historial_refinanciaciones hr
+            JOIN ic_cuotas cu ON cu.credito_id = hr.credito_id
+            WHERE cu.id = ? AND hr.fecha_refinanciacion > DATE(?)
+        ");
+        $stmtRef->execute([$pago['cuota_id'], $pago['fecha_aprobacion']]);
+        if ((int) $stmtRef->fetchColumn() > 0) {
+            return ['ok' => false, 'cuotas' => 0,
+                'error' => "La cuota ID {$pago['cuota_id']} pertenece a un crédito refinanciado después del cobro."];
+        }
+    }
+
+    // ── Transacción única para toda la rendición ──────────────
+    try {
+        $pdo->beginTransaction();
+
+        $creditos_afectados = [];
+
+        foreach ($pagos as $pago) {
+            // 1. Marcar pago confirmado como revertido
+            $pdo->prepare("
+                UPDATE ic_pagos_confirmados
+                SET revertido=1, fecha_reversa=NOW(), reverso_por=?, motivo_reversa=?
+                WHERE id=?
+            ")->execute([$usuario_id, $motivo, $pago['id']]);
+
+            // 2. Recalcular cuota: restar monto y recalcular estado
+            $stmtCuota = $pdo->prepare("
+                SELECT cu.monto_cuota, cu.saldo_pagado, cu.monto_mora, cu.fecha_vencimiento,
+                       cu.credito_id, cr.interes_moratorio_pct
+                FROM ic_cuotas cu
+                JOIN ic_creditos cr ON cr.id = cu.credito_id
+                WHERE cu.id = ?
+            ");
+            $stmtCuota->execute([$pago['cuota_id']]);
+            $cuota = $stmtCuota->fetch();
+
+            $nuevo_saldo = (float) max(0, (float) $cuota['saldo_pagado'] - (float) $pago['monto_total']);
+            $mora = (float) $cuota['monto_mora'];
+            if ($mora <= 0) {
+                $mora = calcular_mora(
+                    (float) $cuota['monto_cuota'],
+                    dias_atraso_habiles($cuota['fecha_vencimiento']),
+                    (float) $cuota['interes_moratorio_pct']
+                );
+            }
+            if ($nuevo_saldo <= 0.005) {
+                // Saldo revertido a cero: restablecer según fecha de vencimiento
+                $nuevo_estado = dias_atraso_habiles($cuota['fecha_vencimiento']) > 0 ? 'VENCIDA' : 'PENDIENTE';
+            } else {
+                $nuevo_estado = determinar_estado_cuota((float) $cuota['monto_cuota'], $mora, $nuevo_saldo);
+            }
+            $nueva_fecha_pago = ($nuevo_estado === 'PAGADA') ? date('Y-m-d') : null;
+
+            $pdo->prepare("
+                UPDATE ic_cuotas SET estado=?, saldo_pagado=?, fecha_pago=? WHERE id=?
+            ")->execute([$nuevo_estado, $nuevo_saldo, $nueva_fecha_pago, $pago['cuota_id']]);
+
+            // 3. Volver pago temporal a PENDIENTE
+            $pdo->prepare("
+                UPDATE ic_pagos_temporales SET estado='PENDIENTE' WHERE id=?
+            ")->execute([$pago['pago_temp_id']]);
+
+            $creditos_afectados[$cuota['credito_id']] = true;
+        }
+
+        // 4. Recalcular estado de cada crédito afectado
+        foreach (array_keys($creditos_afectados) as $credito_id) {
+            $stmtCr = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");
+            $stmtCr->execute([$credito_id]);
+            $estado_cr = $stmtCr->fetchColumn();
+
+            if ($estado_cr === 'CANCELADO') continue;
+
+            $check = $pdo->prepare("
+                SELECT
+                    SUM(CASE WHEN estado NOT IN ('PAGADA','CANCELADA') THEN 1 ELSE 0 END) AS pendientes,
+                    SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) AS vencidas
+                FROM ic_cuotas WHERE credito_id = ?
+            ");
+            $check->execute([$credito_id]);
+            $counts = $check->fetch(PDO::FETCH_ASSOC);
+
+            if ((int) $counts['pendientes'] === 0) {
+                // Sigue finalizado (otros pagos lo cerraron)
+                $pdo->prepare("UPDATE ic_creditos SET estado='FINALIZADO' WHERE id=?")->execute([$credito_id]);
+            } elseif ((int) $counts['vencidas'] > 0) {
+                $pdo->prepare("
+                    UPDATE ic_creditos
+                    SET estado='MOROSO', fecha_finalizacion=NULL, motivo_finalizacion=NULL
+                    WHERE id=?
+                ")->execute([$credito_id]);
+            } else {
+                $pdo->prepare("
+                    UPDATE ic_creditos
+                    SET estado='EN_CURSO', fecha_finalizacion=NULL, motivo_finalizacion=NULL
+                    WHERE id=?
+                ")->execute([$credito_id]);
+            }
+        }
+
+        // 5. Log de auditoría
+        registrar_log($pdo, $usuario_id, 'RENDICION_REVERTIDA', 'rendicion', null,
+            "cobrador=$cobrador_id fecha=$fecha origen=$origen cuotas=" . count($pagos) . " motivo=$motivo");
+
+        $pdo->commit();
+        return ['ok' => true, 'cuotas' => count($pagos), 'error' => ''];
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        return ['ok' => false, 'cuotas' => 0, 'error' => 'Error interno al revertir: ' . $e->getMessage()];
+    }
+}
+
 // ── Helpers UI ───────────────────────────────────────────────
 
 function whatsapp_url(string $telefono, string $mensaje = ''): string

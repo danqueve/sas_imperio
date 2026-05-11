@@ -38,14 +38,7 @@ $creditos = $pdo->prepare("
 $creditos->execute([$id]);
 $lista_cr = $creditos->fetchAll();
 
-require_once __DIR__ . '/../fpdf/fpdf.php';
-
-function lat(string $s): string {
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
-function fmt(float $v): string {
-    return '$ ' . number_format($v, 0, ',', '.');
-}
+require_once __DIR__ . '/../lib/PDFBase.php';
 
 $pdf = new FPDF('P', 'mm', 'A4');
 $pdf->SetTitle(lat('Ficha - ' . $c['apellidos'] . ', ' . $c['nombres']));

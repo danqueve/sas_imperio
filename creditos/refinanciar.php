@@ -134,6 +134,7 @@ $f = [
 
 // ── POST ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $f['nuevas_cuotas']      = (int)   ($_POST['nuevas_cuotas']      ?? 0);
     $f['frecuencia']         =         ($_POST['frecuencia']         ?? $cr['frecuencia']);
     $f['primer_vencimiento'] =         ($_POST['primer_vencimiento'] ?? '');
@@ -308,6 +309,7 @@ require_once __DIR__ . '/../views/layout.php';
 
     <!-- FORMULARIO DE REFINANCIACIÓN -->
     <form method="POST" class="form-ic">
+        <?php csrf_input(); ?>
         <div class="card-ic mb-4">
             <div class="card-ic-header">
                 <span class="card-title"><i class="fa fa-sync-alt"></i> Condiciones de la Refinanciación</span>

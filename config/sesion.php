@@ -7,12 +7,32 @@ if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'httponly' => true,
         'samesite' => 'Lax',
-        'secure'  => isset($_SERVER['HTTPS']),
+        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
     ]);
+    // Endurecer ID de sesión
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
     session_start();
 }
 
 define('ROLES', ['admin', 'supervisor', 'cobrador', 'vendedor']);
+define('SESSION_IDLE_TIMEOUT', 2 * 60 * 60); // 2 horas de inactividad
+
+// ── Timeout por inactividad ──────────────────────────────────
+if (!empty($_SESSION['user_id'])) {
+    $now = time();
+    $last = $_SESSION['last_activity'] ?? $now;
+    if ($now - $last > SESSION_IDLE_TIMEOUT) {
+        session_unset();
+        session_destroy();
+        // Forzar nueva sesión vacía con flash
+        session_start();
+        $_SESSION['flash_login'] = 'Tu sesión expiró por inactividad.';
+        header('Location: ' . BASE_URL . 'auth/login');
+        exit;
+    }
+    $_SESSION['last_activity'] = $now;
+}
 
 /**
  * Verifica que el usuario tenga sesión activa.
@@ -105,4 +125,40 @@ function usuario_actual(): array
         'apellido' => $_SESSION['apellido'] ?? '',
         'rol' => $_SESSION['rol'] ?? '',
     ];
+}
+
+// ── CSRF ─────────────────────────────────────────────────────
+
+/**
+ * Devuelve el token CSRF de la sesión actual (lo crea si no existe).
+ * Usar en formularios: <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+ */
+function csrf_token(): string
+{
+    if (empty($_SESSION['_csrf'])) {
+        $_SESSION['_csrf'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['_csrf'];
+}
+
+/**
+ * Imprime un input hidden con el token CSRF. Conveniencia para formularios.
+ */
+function csrf_input(): void
+{
+    echo '<input type="hidden" name="_csrf" value="' . htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') . '">';
+}
+
+/**
+ * Verifica el token CSRF de un request POST. Si falla, aborta con 403.
+ * Llamar al inicio de cada handler que muta estado.
+ */
+function verificar_csrf(): void
+{
+    $enviado = $_POST['_csrf'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    $valido  = $_SESSION['_csrf'] ?? '';
+    if (!$enviado || !$valido || !hash_equals($valido, $enviado)) {
+        http_response_code(403);
+        die('CSRF inválido. Recargá la página e intentalo de nuevo.');
+    }
 }

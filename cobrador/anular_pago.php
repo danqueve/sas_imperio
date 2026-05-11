@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['error' => 'Método no permitido.']);
     exit;
 }
+verificar_csrf();
 
 $pdo   = obtener_conexion();
 $pt_id = (int) ($_POST['pt_id'] ?? 0);

@@ -3,6 +3,7 @@
 # Configuración local (DB and API credentials)
 
 config/whatsapp.php
+config/conexion.local.php
 
 # Archivos subidos por usuarios
 assets/img/uploads/
@@ -28,3 +29,10 @@ Thumbs.db
 
 # Migraciones de datos (datos reales, no subir)
 sql/migration_cobros.sql
+
+# Composer / PHPUnit
+vendor/
+.phpunit.result.cache
+
+# Backups locales
+backups/

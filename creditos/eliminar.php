@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: index');
     exit;
 }
+verificar_csrf();
 
 $id = (int) ($_POST['credito_id'] ?? 0);
 if (!$id) {

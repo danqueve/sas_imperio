@@ -7,24 +7,7 @@ require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 
-// FPDF — buscar en rutas comunes
-$fpdf_paths = [
-    __DIR__ . '/../fpdf/fpdf.php',
-    __DIR__ . '/../../fpdf/fpdf.php',
-    __DIR__ . '/../../fpdf182/fpdf.php',
-    __DIR__ . '/../../vendor/fpdf/fpdf.php',
-];
-$fpdf_found = false;
-foreach ($fpdf_paths as $p) {
-    if (file_exists($p)) {
-        require_once $p;
-        $fpdf_found = true;
-        break;
-    }
-}
-if (!$fpdf_found) {
-    die('Error: FPDF no encontrado.');
-}
+require_once __DIR__ . '/../lib/PDFBase.php';
 
 $pdo = obtener_conexion();
 $id = (int) ($_GET['id'] ?? 0);
@@ -47,10 +30,6 @@ if (!$cr) die('Crédito no encontrado');
 $cuotas = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? ORDER BY numero_cuota");
 $cuotas->execute([$id]);
 $lista_cuotas = $cuotas->fetchAll();
-
-function lat($s) {
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
 
 // ── Generar PDF ───────────────────────────────────────────────
 ob_clean();

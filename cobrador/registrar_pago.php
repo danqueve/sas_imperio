@@ -10,6 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: agenda');
     exit;
 }
+verificar_csrf();
 
 $pdo = obtener_conexion();
 $cuota_id      = (int) ($_POST['cuota_id'] ?? 0);

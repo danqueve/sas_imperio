@@ -53,14 +53,11 @@ foreach ($lista as $a) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────
-function lat(string $s): string {
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
+require_once __DIR__ . '/../lib/PDFBase.php';
+
 function fmtp(float $v): string {
     return '$ ' . number_format($v, 0, ',', '.');
 }
-
-require_once __DIR__ . '/../fpdf/fpdf.php';
 
 // Anchos columnas (A4 landscape = 277mm usable a 10mm margen c/lado)
 // SKU(22) + Descripcion(75) + Categoria(38) + P.Venta(28) + Contado(28) + Tarjeta(28) + Stock(18) = 237
@@ -69,7 +66,7 @@ $LABELS = ['SKU', 'Descripcion', 'Categoria', 'P. Venta', 'Contado', 'Tarjeta', 
 $ALIGNS = ['L', 'L', 'L', 'R', 'R', 'R', 'C'];
 $ANCHO  = array_sum($COLS);
 
-class StockPDF extends FPDF
+class StockPDF extends PDFBase
 {
     public string $titulo_filtro   = '';
     public string $fecha_impresion = '';
@@ -108,28 +105,6 @@ class StockPDF extends FPDF
         $this->SetFont('Helvetica', '', 8);
     }
 
-    function Footer()
-    {
-        $this->SetY(-12);
-        $this->SetFont('Helvetica', 'I', 7);
-        $this->SetTextColor(100, 100, 100);
-        $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' / {nb}'), 0, 0, 'C');
-        $this->SetTextColor(0, 0, 0);
-    }
-
-    function fitText(string $text, float $maxW): string
-    {
-        $enc    = lat($text);
-        $suffix = '..';
-        if ($this->GetStringWidth($enc) <= $maxW) return $enc;
-        $sw = $this->GetStringWidth($suffix);
-        while (mb_strlen($text) > 1) {
-            $text = mb_substr($text, 0, -1);
-            $enc  = lat($text);
-            if ($this->GetStringWidth($enc . $suffix) <= $maxW) return $enc . $suffix;
-        }
-        return $enc;
-    }
 }
 
 $pdf = new StockPDF('L', 'mm', 'A4');

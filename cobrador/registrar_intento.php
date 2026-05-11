@@ -10,6 +10,7 @@ header('Content-Type: application/json');
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['ok' => false, 'error' => 'Método inválido']); exit;
 }
+verificar_csrf();
 
 $pdo       = obtener_conexion();
 $cuota_id  = (int)($_POST['cuota_id'] ?? 0);

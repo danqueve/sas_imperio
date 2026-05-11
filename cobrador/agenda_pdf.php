@@ -75,15 +75,11 @@ foreach ($rows as $r) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
-function lat(string $s): string {
-    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
-}
 function fmt(float $v): string {
     return '$ ' . number_format($v, 2, ',', '.');
 }
 
-// ── FPDF ────────────────────────────────────────────────────────
-require_once __DIR__ . '/../fpdf/fpdf.php';
+require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas = 190mm total (A4 210mm − 10mm izq − 10mm der)
 // Cliente(65) + Articulo(45) + Cuota(15) + Vencim.(22) + Monto(43)
@@ -91,21 +87,12 @@ $COLS   = [65, 45, 15, 22, 43];
 $LABELS = ['Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Monto'];
 $ALIGNS = ['L', 'L', 'C', 'C', 'R'];
 
-class AgendaPDF extends FPDF
+class AgendaPDF extends PDFBase
 {
     public string $cobrador_nombre = '';
     public array  $cols   = [];
     public array  $labels = [];
     public array  $aligns = [];
-
-    function Footer()
-    {
-        $this->SetY(-12);
-        $this->SetFont('Helvetica', 'I', 8);
-        $this->SetTextColor(100, 100, 100);
-        $this->Cell(0, 5, lat('Pagina ' . $this->PageNo() . ' / {nb}'), 0, 0, 'C');
-        $this->SetTextColor(0, 0, 0);
-    }
 
     // Encabezado de tabla reutilizable
     function encabezadoTabla()
