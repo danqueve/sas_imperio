@@ -107,14 +107,22 @@ HTML;
 
 
 // ═══════════════════════════════════════════════════════════
-// VISTA DETALLE — un vendedor específico
+// VISTA DETALLE — un vendedor específico (o sin vendedor: id=-1)
 // ═══════════════════════════════════════════════════════════
-if ($vendedor_id > 0) {
+if ($vendedor_id !== 0) {
 
-    $vend = $pdo->prepare("SELECT * FROM ic_vendedores WHERE id = ?");
-    $vend->execute([$vendedor_id]);
-    $vendedor = $vend->fetch();
-    if (!$vendedor) { header('Location: estadisticas'); exit; }
+    if ($vendedor_id === -1) {
+        $vendedor = ['id' => -1, 'nombre' => 'Asignado', 'apellido' => 'Sin Vendedor', 'activo' => 1, 'telefono' => ''];
+    } else {
+        $vend = $pdo->prepare("SELECT * FROM ic_vendedores WHERE id = ?");
+        $vend->execute([$vendedor_id]);
+        $vendedor = $vend->fetch();
+        if (!$vendedor) { header('Location: estadisticas'); exit; }
+    }
+
+    // WHERE clause y params varían según si es "sin vendedor" o vendedor real
+    $where_vend  = $vendedor_id === -1 ? "cr.vendedor_id IS NULL" : "cr.vendedor_id = ?";
+    $params_vend = $vendedor_id === -1 ? [] : [$vendedor_id];
 
     // ── KPIs principales ────────────────────────────────────
     $kpi_sql = "
@@ -134,23 +142,23 @@ if ($vendedor_id > 0) {
             SELECT cu.credito_id, SUM(pc.monto_total) AS cobrado
             FROM ic_pagos_confirmados pc
             JOIN ic_cuotas cu ON pc.cuota_id = cu.id
-            WHERE pc.revertido = 0
             GROUP BY cu.credito_id
         ) pag ON pag.credito_id = cr.id
         LEFT JOIN $aging_subq aging ON aging.credito_id = cr.id
-        WHERE cr.vendedor_id = ? $where_fecha
+        WHERE $where_vend $where_fecha
     ";
     $kpi_stmt = $pdo->prepare($kpi_sql);
-    $kpi_stmt->execute(array_merge([$vendedor_id], $params_fecha));
+    $kpi_stmt->execute(array_merge($params_vend, $params_fecha));
     $k = $kpi_stmt->fetch();
 
-    // Clientes recurrentes (≥2 créditos con este vendedor en el período)
+    // Clientes recurrentes (≥2 créditos en el período)
+    $where_vend_bare = $vendedor_id === -1 ? "vendedor_id IS NULL" : "vendedor_id = ?";
     $rec_sql = "SELECT COUNT(*) FROM (
-        SELECT cliente_id FROM ic_creditos WHERE vendedor_id = ? $where_fecha
+        SELECT cliente_id FROM ic_creditos WHERE $where_vend_bare $where_fecha
         GROUP BY cliente_id HAVING COUNT(*) >= 2
     ) sub";
     $rec_stmt = $pdo->prepare($rec_sql);
-    $rec_stmt->execute(array_merge([$vendedor_id], $params_fecha));
+    $rec_stmt->execute(array_merge($params_vend, $params_fecha));
     $k['recurrentes'] = (int) $rec_stmt->fetchColumn();
 
     // Métricas derivadas
@@ -174,10 +182,10 @@ if ($vendedor_id > 0) {
                       AND cr.motivo_finalizacion = 'PAGO_COMPLETO'                THEN 1 ELSE 0 END) AS bucket_pagado
         FROM ic_creditos cr
         LEFT JOIN $aging_subq aging ON aging.credito_id = cr.id
-        WHERE cr.vendedor_id = ? $where_fecha
+        WHERE $where_vend $where_fecha
     ";
     $ag_stmt = $pdo->prepare($aging_sql);
-    $ag_stmt->execute(array_merge([$vendedor_id], $params_fecha));
+    $ag_stmt->execute(array_merge($params_vend, $params_fecha));
     $aging = $ag_stmt->fetch();
 
     // ── Top 10 clientes ─────────────────────────────────────
@@ -196,13 +204,13 @@ if ($vendedor_id > 0) {
         FROM ic_creditos cr
         JOIN ic_clientes cl ON cr.cliente_id = cl.id
         LEFT JOIN $aging_subq aging ON aging.credito_id = cr.id
-        WHERE cr.vendedor_id = ? $where_fecha
+        WHERE $where_vend $where_fecha
         GROUP BY cl.id
         ORDER BY monto_total DESC
         LIMIT 10
     ";
     $top_stmt = $pdo->prepare($top_sql);
-    $top_stmt->execute(array_merge([$vendedor_id], $params_fecha));
+    $top_stmt->execute(array_merge($params_vend, $params_fecha));
     $top_clientes = $top_stmt->fetchAll();
 
     // ── Listado de créditos ──────────────────────────────────
@@ -224,11 +232,11 @@ if ($vendedor_id > 0) {
         FROM ic_creditos cr
         JOIN ic_clientes cl ON cr.cliente_id = cl.id
         LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-        WHERE cr.vendedor_id = ? $where_fecha
+        WHERE $where_vend $where_fecha
         ORDER BY cr.estado ASC, cr.fecha_alta DESC
     ";
     $cred_stmt = $pdo->prepare($cred_sql);
-    $cred_stmt->execute(array_merge([$vendedor_id], $params_fecha));
+    $cred_stmt->execute(array_merge($params_vend, $params_fecha));
     $creditos = $cred_stmt->fetchAll();
 
     $page_title   = 'Estadísticas — ' . e($vendedor['nombre'] . ' ' . $vendedor['apellido']);
@@ -242,7 +250,11 @@ if ($vendedor_id > 0) {
         <span>/</span>
         <a href="estadisticas" style="color:var(--text-muted);text-decoration:none">Estadísticas</a>
         <span>/</span>
-        <span style="color:var(--text-main)"><?= e($vendedor['apellido'] . ', ' . $vendedor['nombre']) ?></span>
+        <?php if ($vendedor_id === -1): ?>
+            <span style="color:var(--text-main)"><i class="fa fa-circle-question" style="color:var(--text-muted)"></i> Sin Vendedor Asignado</span>
+        <?php else: ?>
+            <span style="color:var(--text-main)"><?= e($vendedor['apellido'] . ', ' . $vendedor['nombre']) ?></span>
+        <?php endif; ?>
     </div>
 
     <!-- Filtro temporal -->
@@ -465,7 +477,18 @@ if ($vendedor_id > 0) {
                 <i class="fa fa-list"></i>
                 Créditos de <?= e($vendedor['nombre'] . ' ' . $vendedor['apellido']) ?>
             </span>
-            <span class="text-muted" style="font-size:.8rem"><?= count($creditos) ?> registro<?= count($creditos) != 1 ? 's' : '' ?> — <?= e($label_periodo) ?></span>
+            <div style="display:flex;align-items:center;gap:10px">
+                <span class="text-muted" style="font-size:.8rem"><?= count($creditos) ?> registro<?= count($creditos) != 1 ? 's' : '' ?> — <?= e($label_periodo) ?></span>
+                <?php
+                $pdf_url = 'estadisticas_pdf?id=' . ($vendedor_id === -1 ? '-1' : $vendedor_id) . '&periodo=' . urlencode($preset);
+                if ($preset === 'custom' && $tiene_filtro) {
+                    $pdf_url .= '&desde=' . urlencode($f_desde) . '&hasta=' . urlencode($f_hasta);
+                }
+                ?>
+                <a href="<?= $pdf_url ?>" target="_blank" class="btn-ic btn-danger btn-sm">
+                    <i class="fa fa-file-pdf"></i> PDF
+                </a>
+            </div>
         </div>
         <div style="overflow-x:auto">
             <table class="table-ic">
@@ -581,7 +604,6 @@ if ($vendedor_id > 0) {
             SELECT cu.credito_id, SUM(pc.monto_total) AS cobrado
             FROM ic_pagos_confirmados pc
             JOIN ic_cuotas cu ON pc.cuota_id = cu.id
-            WHERE pc.revertido = 0
             GROUP BY cu.credito_id
         ) pag ON pag.credito_id = cr.id
         LEFT JOIN $aging_subq aging ON aging.credito_id = cr.id
@@ -591,6 +613,34 @@ if ($vendedor_id > 0) {
     $rank_stmt = $pdo->prepare($rank_sql);
     $rank_stmt->execute($params_ranking);
     $vendedores = $rank_stmt->fetchAll();
+
+    // Créditos sin vendedor asignado
+    $sv_where = $tiene_filtro ? "AND cr.fecha_alta BETWEEN ? AND ?" : "";
+    $sv_sql = "
+        SELECT
+            COUNT(cr.id)                                                      AS total_creditos,
+            COUNT(DISTINCT cr.cliente_id)                                     AS total_clientes,
+            COALESCE(SUM(cr.monto_total), 0)                                  AS monto_vendido,
+            COALESCE(SUM(COALESCE(pag.cobrado, 0)), 0)                        AS total_cobrado,
+            SUM(CASE WHEN cr.estado IN ('EN_CURSO','MOROSO')
+                      AND COALESCE(aging.max_dias, 0) = 0 THEN 1 ELSE 0 END) AS al_dia,
+            SUM(CASE WHEN cr.estado IN ('EN_CURSO','MOROSO')
+                      AND COALESCE(aging.max_dias, 0) > 0 THEN 1 ELSE 0 END) AS atrasados,
+            SUM(CASE WHEN cr.motivo_finalizacion = 'PAGO_COMPLETO'   THEN 1 ELSE 0 END) AS pagados,
+            SUM(CASE WHEN cr.motivo_finalizacion = 'RETIRO_PRODUCTO'  THEN 1 ELSE 0 END) AS retirados
+        FROM ic_creditos cr
+        LEFT JOIN (
+            SELECT cu.credito_id, SUM(pc.monto_total) AS cobrado
+            FROM ic_pagos_confirmados pc
+            JOIN ic_cuotas cu ON pc.cuota_id = cu.id
+            GROUP BY cu.credito_id
+        ) pag ON pag.credito_id = cr.id
+        LEFT JOIN $aging_subq aging ON aging.credito_id = cr.id
+        WHERE cr.vendedor_id IS NULL $sv_where
+    ";
+    $sv_stmt = $pdo->prepare($sv_sql);
+    $sv_stmt->execute($params_fecha);
+    $sin_vendedor = $sv_stmt->fetch();
 
     $page_title   = 'Estadísticas de Vendedores';
     $page_current = 'vendedores_stats';
@@ -715,6 +765,56 @@ if ($vendedor_id > 0) {
                     </td>
                 </tr>
                 <?php endforeach; ?>
+                <?php endif; ?>
+                <?php if ((int)$sin_vendedor['total_creditos'] > 0):
+                    $sv = $sin_vendedor;
+                    $activos_sv  = (int)$sv['al_dia'] + (int)$sv['atrasados'];
+                    $pct_ok_sv   = $activos_sv > 0 ? round($sv['al_dia'] / $activos_sv * 100) : ($sv['total_creditos'] > 0 ? 100 : 0);
+                    $bar_sv      = $pct_ok_sv >= 80 ? 'var(--success)' : ($pct_ok_sv >= 50 ? 'var(--warning)' : 'var(--danger)');
+                    $pct_cobr_sv = $sv['monto_vendido'] > 0 ? round($sv['total_cobrado'] / $sv['monto_vendido'] * 100) : 0;
+                    $cobr_sv     = $pct_cobr_sv >= 70 ? 'var(--success)' : ($pct_cobr_sv >= 40 ? 'var(--warning)' : 'var(--danger)');
+                    $det_sv_url  = 'estadisticas?id=-1' . ($tiene_filtro ? '&periodo=' . urlencode($preset) . ($preset === 'custom' ? '&desde=' . urlencode($f_desde) . '&hasta=' . urlencode($f_hasta) : '') : '');
+                ?>
+                <tr style="border-top:2px solid var(--dark-border);opacity:.85">
+                    <td>
+                        <div class="fw-bold" style="color:var(--text-muted)">
+                            <i class="fa fa-circle-question" style="font-size:.75rem"></i> Sin vendedor asignado
+                        </div>
+                        <div style="font-size:.7rem;color:var(--text-muted)">créditos legacy / sin asignar</div>
+                    </td>
+                    <td style="text-align:center"><?= $sv['total_creditos'] ?></td>
+                    <td style="text-align:center"><?= $sv['total_clientes'] ?></td>
+                    <td style="text-align:right;font-weight:700;color:var(--primary-light)"><?= formato_pesos($sv['monto_vendido']) ?></td>
+                    <td style="text-align:right">
+                        <span style="font-weight:700;color:<?= $cobr_sv ?>"><?= formato_pesos($sv['total_cobrado']) ?></span>
+                        <div style="font-size:.7rem;color:<?= $cobr_sv ?>"><?= $pct_cobr_sv ?>%</div>
+                    </td>
+                    <td style="text-align:center">
+                        <?= $sv['al_dia'] > 0 ? '<span class="badge-ic badge-success">' . $sv['al_dia'] . '</span>' : '<span class="text-muted">—</span>' ?>
+                    </td>
+                    <td style="text-align:center">
+                        <?= $sv['atrasados'] > 0 ? '<span class="badge-ic badge-danger">' . $sv['atrasados'] . '</span>' : '<span class="text-muted">—</span>' ?>
+                    </td>
+                    <td style="text-align:center">
+                        <?= $sv['pagados'] > 0 ? '<span class="badge-ic badge-primary">' . $sv['pagados'] . '</span>' : '<span class="text-muted">—</span>' ?>
+                    </td>
+                    <td style="text-align:center">
+                        <?= $sv['retirados'] > 0 ? '<span class="badge-ic badge-warning">' . $sv['retirados'] . '</span>' : '<span class="text-muted">—</span>' ?>
+                    </td>
+                    <td style="min-width:110px">
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <div style="flex:1;height:6px;background:var(--dark-border);border-radius:3px;overflow:hidden">
+                                <div style="width:<?= $pct_ok_sv ?>%;height:100%;background:<?= $bar_sv ?>;border-radius:3px"></div>
+                            </div>
+                            <span style="font-size:.75rem;font-weight:700;color:<?= $bar_sv ?>;min-width:32px"><?= $pct_ok_sv ?>%</span>
+                        </div>
+                    </td>
+                    <td>
+                        <a href="<?= $det_sv_url ?>" class="btn-ic btn-ghost btn-sm" title="Ver detalle">
+                            <i class="fa fa-chart-line"></i> Detalle
+                        </a>
+                    </td>
+                </tr>
                 <?php endif; ?>
                 </tbody>
             </table>
