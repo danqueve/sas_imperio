@@ -80,7 +80,16 @@ $cred_sql = "
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
     WHERE $where_vend $where_fecha
-    ORDER BY cuotas_vencidas DESC, cl.apellidos ASC, cl.nombres ASC
+    ORDER BY
+        CASE
+            WHEN cr.motivo_finalizacion IN ('PAGO_COMPLETO','RETIRO_PRODUCTO') OR cr.estado = 'FINALIZADO' THEN 3
+            WHEN cr.estado IN ('EN_CURSO','MOROSO') AND (SELECT COUNT(*) FROM ic_cuotas
+                WHERE credito_id=cr.id AND estado IN ('VENCIDA','PENDIENTE')
+                AND fecha_vencimiento < CURDATE()) = 0 THEN 2
+            ELSE 1
+        END ASC,
+        cuotas_vencidas DESC,
+        cl.apellidos ASC, cl.nombres ASC
 ";
 $stmt = $pdo->prepare($cred_sql);
 $stmt->execute(array_merge($params_vend, $params_fecha));
