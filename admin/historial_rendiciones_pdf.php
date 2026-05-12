@@ -47,7 +47,7 @@ $dstmt = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id   = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
     LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
-    WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?
+    WHERE pc.cobrador_id = ? AND pc.fecha_jornada = ?
       AND COALESCE(pc.origen, IFNULL(pt.origen, 'cobrador')) = ?
     ORDER BY cl.apellidos ASC, cl.nombres ASC, numero_cuota ASC
 ");

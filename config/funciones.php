@@ -201,7 +201,7 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 $pago['cuota_id'],
                 $pago['cobrador_id'],
                 $aprobador_id,
-                $fecha,
+                $pago['fecha_registro'] ?: ($pago['fecha_jornada'] . ' 00:00:00'),
                 $pago['monto_efectivo'],
                 $pago['monto_transferencia'],
                 $pago['monto_total'],
@@ -394,7 +394,7 @@ function revertir_rendicion(
         FROM ic_pagos_confirmados pc
         LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
         WHERE pc.cobrador_id = ?
-          AND DATE(pc.fecha_aprobacion) = ?
+          AND pc.fecha_jornada = ?
           AND IFNULL(pt.origen, 'cobrador') = ?
           AND pc.revertido = 0
         ORDER BY pc.id ASC

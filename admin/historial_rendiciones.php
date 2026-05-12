@@ -51,11 +51,11 @@ if ($cobrador_id > 0) {
     $params[] = $cobrador_id;
 }
 if ($fecha_desde) {
-    $where[]  = 'DATE(p.fecha_aprobacion) >= ?';
+    $where[]  = 'p.fecha_jornada >= ?';
     $params[] = $fecha_desde;
 }
 if ($fecha_hasta) {
-    $where[]  = 'DATE(p.fecha_aprobacion) <= ?';
+    $where[]  = 'p.fecha_jornada <= ?';
     $params[] = $fecha_hasta;
 }
 if ($origen_sel) {
@@ -68,7 +68,7 @@ $whereStr = implode(' AND ', $where);
 // Contar el total de grupos (rendiciones) para la paginación
 // Una rendición se define como un conjunto de pagos de mismo día + cobrador + origen
 $countSql = "
-    SELECT COUNT(DISTINCT CONCAT(DATE(p.fecha_aprobacion), '_', p.cobrador_id, '_', IFNULL(pt.origen, 'cobrador')))
+    SELECT COUNT(DISTINCT CONCAT(p.fecha_jornada, '_', p.cobrador_id, '_', IFNULL(pt.origen, 'cobrador')))
     FROM ic_pagos_confirmados p
     LEFT JOIN ic_pagos_temporales pt ON pt.id = p.pago_temp_id
     WHERE $whereStr
@@ -81,7 +81,8 @@ $totalPags = max(1, (int) ceil($total / $limit));
 // Consultar los datos agrupados
 $sql = "
     SELECT
-        DATE(p.fecha_aprobacion) AS fecha_rendicion,
+        p.fecha_jornada,
+        MAX(p.fecha_aprobacion) AS fecha_aprobacion,
         p.cobrador_id,
         IFNULL(pt.origen, 'cobrador') AS origen,
         u.nombre AS cob_nombre, u.apellido AS cob_apellido,
@@ -96,8 +97,8 @@ $sql = "
     LEFT JOIN ic_usuarios a ON p.aprobador_id = a.id
     LEFT JOIN ic_pagos_temporales pt ON pt.id = p.pago_temp_id
     WHERE $whereStr
-    GROUP BY DATE(p.fecha_aprobacion), p.cobrador_id, u.nombre, u.apellido, IFNULL(pt.origen, 'cobrador')
-    ORDER BY fecha_rendicion DESC, u.apellido ASC
+    GROUP BY p.fecha_jornada, p.cobrador_id, u.nombre, u.apellido, IFNULL(pt.origen, 'cobrador')
+    ORDER BY p.fecha_jornada DESC, u.apellido ASC
     LIMIT $limit OFFSET $offset
 ";
 $stmt = $pdo->prepare($sql);
@@ -157,7 +158,8 @@ require_once __DIR__ . '/../views/layout.php';
         <table class="table-ic">
             <thead>
                 <tr>
-                    <th class="text-center">Fecha Aprobación</th>
+                    <th class="text-center">Fecha Jornada</th>
+                    <th class="text-center" style="font-size:.78rem;color:var(--text-muted)">Aprobada el</th>
                     <th>Cobrador</th>
                     <th class="text-center">Origen</th>
                     <th class="text-center">Cuotas Rendidas</th>
@@ -171,7 +173,7 @@ require_once __DIR__ . '/../views/layout.php';
             <tbody>
                 <?php if (empty($historial)): ?>
                     <tr>
-                        <td colspan="9" class="text-center text-muted" style="padding:40px">
+                        <td colspan="10" class="text-center text-muted" style="padding:40px">
                             No se encontraron rendiciones en el historial.
                         </td>
                     </tr>
@@ -179,7 +181,10 @@ require_once __DIR__ . '/../views/layout.php';
                     <?php foreach ($historial as $r): ?>
                         <tr>
                             <td class="text-center fw-bold">
-                                <?= date('d/m/Y', strtotime($r['fecha_rendicion'])) ?>
+                                <?= date('d/m/Y', strtotime($r['fecha_jornada'])) ?>
+                            </td>
+                            <td class="text-center text-muted" style="font-size:.82rem">
+                                <?= $r['fecha_aprobacion'] ? date('d/m/Y H:i', strtotime($r['fecha_aprobacion'])) : '—' ?>
                             </td>
                             <td>
                                 <?= e($r['cob_apellido'] . ', ' . $r['cob_nombre']) ?>
@@ -207,15 +212,15 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?= $r['apr_nombre'] ? e($r['apr_nombre'] . ' ' . $r['apr_apellido']) : '—' ?>
                             </td>
                             <td class="nowrap">
-                                <a href="historial_rendiciones_ver?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= urlencode($r['origen']) ?>"
+                                <a href="historial_rendiciones_ver?fecha=<?= urlencode($r['fecha_jornada']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= urlencode($r['origen']) ?>"
                                    class="btn-ic btn-ghost btn-sm btn-icon" title="Ver Detalle de Rendición">
                                     <i class="fa fa-eye"></i>
                                 </a>
-                                <a href="historial_rendiciones_pdf?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= urlencode($r['origen']) ?>"
+                                <a href="historial_rendiciones_pdf?fecha=<?= urlencode($r['fecha_jornada']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= urlencode($r['origen']) ?>"
                                    target="_blank" class="btn-ic btn-danger btn-sm btn-icon" title="Exportar PDF">
                                     <i class="fa fa-file-pdf"></i>
                                 </a>
-                                <a href="historial_rendiciones_pdf?fecha=<?= urlencode($r['fecha_rendicion']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= urlencode($r['origen']) ?>&export=csv"
+                                <a href="historial_rendiciones_pdf?fecha=<?= urlencode($r['fecha_jornada']) ?>&cobrador_id=<?= $r['cobrador_id'] ?>&origen=<?= urlencode($r['origen']) ?>&export=csv"
                                    class="btn-ic btn-success btn-sm btn-icon" title="Exportar CSV">
                                     <i class="fa fa-file-csv"></i>
                                 </a>
@@ -225,7 +230,7 @@ require_once __DIR__ . '/../views/layout.php';
                                     style="background:#f59e0b;color:#fff;border:none"
                                     title="Revertir Rendición"
                                     onclick="abrirModalRevertir(
-                                        '<?= e($r['fecha_rendicion']) ?>',
+                                        '<?= e($r['fecha_jornada']) ?>',
                                         <?= (int)$r['cobrador_id'] ?>,
                                         '<?= e($r['origen']) ?>',
                                         '<?= e($r['cob_apellido'] . ', ' . $r['cob_nombre']) ?>',

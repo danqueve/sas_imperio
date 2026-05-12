@@ -51,7 +51,7 @@ $dstmt = $pdo->prepare("
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
     LEFT JOIN ic_usuarios u ON pc.aprobador_id = u.id
     LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
-    WHERE pc.cobrador_id = ? AND DATE(pc.fecha_aprobacion) = ?
+    WHERE pc.cobrador_id = ? AND pc.fecha_jornada = ?
       AND IFNULL(pt.origen, 'cobrador') = ?
       AND pc.revertido = 0
     ORDER BY pc.fecha_pago ASC
@@ -66,8 +66,9 @@ foreach ($detalle_pagos as $p) {
     $total_transferencia += (float) $p['monto_transferencia'];
 }
 $total_rendido = $total_efectivo + $total_transferencia;
-$aprobador_nombre = $detalle_pagos[0]['apr_nombre'] ?? '';
+$aprobador_nombre   = $detalle_pagos[0]['apr_nombre'] ?? '';
 $aprobador_apellido = $detalle_pagos[0]['apr_apellido'] ?? '';
+$fecha_aprobacion   = $detalle_pagos[0]['fecha_aprobacion'] ?? '';
 
 $page_title = 'Detalle de Rendición';
 $page_current = 'rendiciones';
@@ -88,9 +89,12 @@ require_once __DIR__ . '/../views/layout.php';
         <div class="kpi-value"><?= e($cobrador['apellido'] . ' ' . $cobrador['nombre']) ?></div>
     </div>
     <div class="kpi-card" style="var(--kpi-color:var(--text-main))">
-        <i class="fa fa-calendar-check kpi-icon"></i>
-        <div class="kpi-label">Fecha de Aprobación</div>
+        <i class="fa fa-calendar-day kpi-icon"></i>
+        <div class="kpi-label">Fecha de Jornada</div>
         <div class="kpi-value text-primary"><?= date('d/m/Y', strtotime($fecha_rendicion)) ?></div>
+        <?php if ($fecha_aprobacion): ?>
+        <div class="kpi-sub" style="font-size:.75rem;color:var(--text-muted)">Aprobada: <?= date('d/m/Y H:i', strtotime($fecha_aprobacion)) ?></div>
+        <?php endif; ?>
     </div>
     <div class="kpi-card" style="var(--kpi-color:var(--text-main))">
         <i class="fa fa-<?= $origen_sel === 'manual' ? 'keyboard' : 'motorcycle' ?> kpi-icon"></i>
@@ -151,7 +155,7 @@ require_once __DIR__ . '/../views/layout.php';
             <table class="table-ic" style="margin-bottom:0">
                 <thead>
                     <tr>
-                        <th>Fecha Cobro</th>
+                        <th>Fecha/Hora Cobro</th>
                         <th>Cliente</th>
                         <th>Artículo</th>
                         <th class="text-center">Cuota</th>
