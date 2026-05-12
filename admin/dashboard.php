@@ -15,9 +15,9 @@ $clientes_activos  = (int)$pdo->query("SELECT COUNT(*) FROM ic_clientes WHERE es
 $total_clientes    = (int)$pdo->query("SELECT COUNT(*) FROM ic_clientes")->fetchColumn();
 $creditos_en_curso = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos WHERE estado='EN_CURSO'")->fetchColumn();
 $total_creditos    = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos")->fetchColumn();
-$cobrado_hoy       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_pago=CURDATE()")->fetchColumn();
-$pagos_hoy         = (int)$pdo->query("SELECT COUNT(*) FROM ic_pagos_confirmados WHERE fecha_pago=CURDATE()")->fetchColumn();
-$cobrado_mes       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_pago>=DATE_FORMAT(CURDATE(),'%Y-%m-01')")->fetchColumn();
+$cobrado_hoy       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada=CURDATE()")->fetchColumn();
+$pagos_hoy         = (int)$pdo->query("SELECT COUNT(*) FROM ic_pagos_confirmados WHERE fecha_jornada=CURDATE()")->fetchColumn();
+$cobrado_mes       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada>=DATE_FORMAT(CURDATE(),'%Y-%m-01')")->fetchColumn();
 $rend_pend         = (int)$pdo->query("SELECT COUNT(DISTINCT cobrador_id) FROM ic_pagos_temporales WHERE estado='PENDIENTE'")->fetchColumn();
 
 // ── Nuevos KPIs ───────────────────────────────────────────────
@@ -51,12 +51,12 @@ $clientes_dormidos = (int)$pdo->query("
 // ── Comparativas MoM ─────────────────────────────────────────
 $cobrado_mes_ant    = (float)$pdo->query("
     SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados
-    WHERE fecha_pago >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
-      AND fecha_pago <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
+    WHERE fecha_jornada >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
+      AND fecha_jornada <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
 ")->fetchColumn();
 $cobrado_hoy_sem_ant = (float)$pdo->query("
     SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados
-    WHERE fecha_pago = DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+    WHERE fecha_jornada = DATE_SUB(CURDATE(), INTERVAL 7 DAY)
 ")->fetchColumn();
 $finalizados_mes_ant = (int)$pdo->query("
     SELECT COUNT(*) FROM ic_creditos
@@ -168,7 +168,6 @@ $g_clientes = $total_clientes  > 0 ? min(99,(int)round($clientes_activos  / $tot
 $g_creditos = $total_creditos  > 0 ? min(99,(int)round($creditos_en_curso / $total_creditos  * 100)) : 0;
 $total_pend = $cartera['vigentes'] + $cartera['vencidas'];
 $g_al_dia   = $total_pend > 0 ? min(99,(int)round($cartera['vigentes'] / $total_pend * 100)) : 100;
-$g_cobro    = $cobrado_mes > 0 ? min(99,(int)round($cobrado_hoy / $cobrado_mes * 100)) : 0;
 
 // ── Semana de cobros: Lunes → Sábado (+ domingo como tardío de sábado) ───────
 $dow_hoy        = (int)date('N');                          // 1=Lun … 6=Sáb, 7=Dom
@@ -190,14 +189,14 @@ for ($i = 0; $i < 6; $i++) {
 
 // Trae totales agrupados por día y cobrador
 $stmt_cob = $pdo->prepare("
-    SELECT DATE(pc.fecha_pago) AS d,
+    SELECT pc.fecha_jornada AS d,
            pc.cobrador_id,
            CONCAT(u.nombre, ' ', u.apellido) AS nombre_cob,
            COALESCE(SUM(pc.monto_total),0) AS total
     FROM ic_pagos_confirmados pc
     JOIN ic_usuarios u ON pc.cobrador_id = u.id
-    WHERE pc.fecha_pago BETWEEN ? AND ?
-    GROUP BY DATE(pc.fecha_pago), pc.cobrador_id
+    WHERE pc.fecha_jornada BETWEEN ? AND ?
+    GROUP BY pc.fecha_jornada, pc.cobrador_id
     ORDER BY pc.cobrador_id
 ");
 $stmt_cob->execute([$semana_inicio, $semana_fin_ext]);
@@ -231,7 +230,7 @@ foreach ($rows_cob as $r) {
 $chart_vals = array_values($chart_map);
 
 // Total cobrado en la semana (incluye entradas tardías del domingo = sábado)
-$stmt_sem = $pdo->prepare("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_pago BETWEEN ? AND ?");
+$stmt_sem = $pdo->prepare("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada BETWEEN ? AND ?");
 $stmt_sem->execute([$semana_inicio, $semana_fin_ext]);
 $cobrado_semana = (float)$stmt_sem->fetchColumn();
 
@@ -240,7 +239,7 @@ $stmt_rank = $pdo->prepare("
     SELECT u.nombre, u.apellido, COUNT(*) AS pagos, COALESCE(SUM(pc.monto_total),0) AS total
     FROM ic_pagos_confirmados pc
     JOIN ic_usuarios u ON pc.cobrador_id = u.id
-    WHERE pc.fecha_pago BETWEEN ? AND ?
+    WHERE pc.fecha_jornada BETWEEN ? AND ?
     GROUP BY pc.cobrador_id ORDER BY total DESC LIMIT 5
 ");
 $stmt_rank->execute([$semana_inicio, $semana_fin_ext]);
