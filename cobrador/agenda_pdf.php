@@ -225,6 +225,8 @@ foreach ($dias_sel as $dia) {
     $clientes_dia = $por_dia[$dia] ?? [];
     $nombre_dia   = [1=>'Lunes',2=>'Martes',3=>'Miercoles',4=>'Jueves',5=>'Viernes',6=>'Sabado'][$dia];
 
+    if (empty($clientes_dia)) continue;
+
     // Pre-calcular total del día
     $total_dia = 0;
     foreach ($clientes_dia as $r) {
@@ -240,14 +242,6 @@ foreach ($dias_sel as $dia) {
     $pdf->Cell(100, 7, lat($nombre_dia . ' — ' . $cant . ' cuota(s)'), 0, 0, 'L');
     $pdf->SetFont('Helvetica', '', 9);
     $pdf->Cell(90, 7, lat('Total del dia: ' . fmt($total_dia)), 0, 1, 'R');
-
-    if (empty($clientes_dia)) {
-        $pdf->SetFont('Helvetica', 'I', 8);
-        $pdf->Cell(190, 6, lat('Sin clientes para este dia.'), 1, 1, 'C', false);
-        $pdf->Ln(3);
-        $resumen[] = ['tipo' => 'dia', 'label' => $nombre_dia, 'cant' => 0, 'total' => 0.0];
-        continue;
-    }
 
     $pdf->encabezadoTabla();
     $pdf->SetFont('Helvetica', '', 7);
