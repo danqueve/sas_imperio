@@ -82,10 +82,10 @@ function fmt(float $v): string {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas = 190mm total (A4 210mm − 10mm izq − 10mm der)
-// Cliente(65) + Articulo(45) + Cuota(15) + Vencim.(22) + Monto(43)
-$COLS   = [65, 45, 15, 22, 43];
-$LABELS = ['Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Monto'];
-$ALIGNS = ['L', 'L', 'C', 'C', 'R'];
+// #(8) + Cliente(57) + Articulo(45) + Cuota(15) + Vencim.(22) + Monto(43)
+$COLS   = [8, 57, 45, 15, 22, 43];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Monto'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'C', 'R'];
 
 class AgendaPDF extends PDFBase
 {
@@ -125,7 +125,8 @@ class AgendaPDF extends PDFBase
         string $venc,
         float  $monto_cuota,
         float  $total_cobrar,
-        int    $dias_atraso
+        int    $dias_atraso,
+        int    $num = 0
     ): float {
         $cols = $this->cols;
         $x0   = $this->GetX();
@@ -136,38 +137,39 @@ class AgendaPDF extends PDFBase
         $row_h      = ($has_phone || $has_monto2) ? 9 : 6;
         $es_moroso  = ($r['credito_estado'] ?? '') === 'MOROSO';
 
-        $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 36, '..');
+        $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 32, '..');
         if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
         $articulo = mb_strimwidth($r['articulo'] ?? '-', 0, 35, '..');
 
         // Dibujar celdas con bordes
-        $this->Cell($cols[0], $row_h, '', 1, 0, 'L', false);            // cliente (solo borde)
-        $this->Cell($cols[1], $row_h, lat($articulo), 1, 0, 'L', false);
-        $this->Cell($cols[2], $row_h, lat($cuota_label), 1, 0, 'C', false);
-        $this->Cell($cols[3], $row_h, $venc, 1, 0, 'C', false);
-        $this->Cell($cols[4], $row_h, '', 1, 0, 'R', false);            // monto (solo borde)
+        $this->Cell($cols[0], $row_h, $num > 0 ? (string)$num : '', 1, 0, 'C', false); // número
+        $this->Cell($cols[1], $row_h, '', 1, 0, 'L', false);                            // cliente (solo borde)
+        $this->Cell($cols[2], $row_h, lat($articulo), 1, 0, 'L', false);
+        $this->Cell($cols[3], $row_h, lat($cuota_label), 1, 0, 'C', false);
+        $this->Cell($cols[4], $row_h, $venc, 1, 0, 'C', false);
+        $this->Cell($cols[5], $row_h, '', 1, 0, 'R', false);                            // monto (solo borde)
         $this->Ln();
 
         // Texto cliente — línea 1
         $this->SetFont('Helvetica', $es_moroso ? 'B' : '', 7);
-        $this->SetXY($x0 + 0.8, $y0 + 0.8);
-        $this->Cell($cols[0] - 1, 4, lat($cliente_name), 0, 0, 'L', false);
+        $this->SetXY($x0 + $cols[0] + 0.8, $y0 + 0.8);
+        $this->Cell($cols[1] - 1, 4, lat($cliente_name), 0, 0, 'L', false);
 
         // Texto cliente — línea 2 (teléfono)
         if ($has_phone) {
             $this->SetFont('Helvetica', 'I', 6);
             $this->SetTextColor(80, 80, 80);
-            $this->SetXY($x0 + 0.8, $y0 + 4.5);
-            $this->Cell($cols[0] - 1, 3.5, lat('Tel: ' . mb_strimwidth($r['telefono'], 0, 24, '')), 0, 0, 'L', false);
+            $this->SetXY($x0 + $cols[0] + 0.8, $y0 + 4.5);
+            $this->Cell($cols[1] - 1, 3.5, lat('Tel: ' . mb_strimwidth($r['telefono'], 0, 24, '')), 0, 0, 'L', false);
             $this->SetTextColor(0, 0, 0);
         }
 
         // Texto monto — línea 1: monto de la cuota
-        $mx        = $x0 + $cols[0] + $cols[1] + $cols[2] + $cols[3];
+        $mx        = $x0 + $cols[0] + $cols[1] + $cols[2] + $cols[3] + $cols[4];
         $y_monto1  = $has_monto2 ? $y0 + 0.8 : $y0 + 1.5;
         $this->SetFont('Helvetica', '', 7);
         $this->SetXY($mx + 0.5, $y_monto1);
-        $this->Cell($cols[4] - 1, 4, lat(fmt($monto_cuota)), 0, 0, 'R', false);
+        $this->Cell($cols[5] - 1, 4, lat(fmt($monto_cuota)), 0, 0, 'R', false);
 
         // Texto monto — línea 2: días atraso + monto adeudado
         if ($has_monto2) {
@@ -180,7 +182,7 @@ class AgendaPDF extends PDFBase
             $this->SetFont('Helvetica', 'I', 6);
             $this->SetTextColor(80, 80, 80);
             $this->SetXY($mx + 0.5, $y0 + 4.5);
-            $this->Cell($cols[4] - 1, 3.5, lat($detalle), 0, 0, 'R', false);
+            $this->Cell($cols[5] - 1, 3.5, lat($detalle), 0, 0, 'R', false);
             $this->SetTextColor(0, 0, 0);
         }
 
@@ -247,6 +249,7 @@ foreach ($dias_sel as $dia) {
     $pdf->SetFont('Helvetica', '', 7);
 
     $zona_actual = null;
+    $num = 0;
 
     foreach ($clientes_dia as $r) {
         // Salto de página si hace falta (zona header ~5mm + fila máxima 9mm)
@@ -259,14 +262,17 @@ foreach ($dias_sel as $dia) {
             $zona_actual = null;
         }
 
-        // Mejora 4: encabezado de zona cuando cambia
+        // Encabezado de zona cuando cambia + reinicio de contador
         $zona_fila = $r['zona'] ?? '';
         if ($zona_fila !== $zona_actual) {
             $zona_actual = $zona_fila;
+            $num = 0;
             if (!empty($zona_fila)) {
                 $pdf->zonaHeader($zona_fila);
             }
         }
+
+        $num++;
 
         // Mejora 2: cuota X/Y
         $cuota_label = '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'];
@@ -279,14 +285,14 @@ foreach ($dias_sel as $dia) {
         $dias_atraso  = dias_atraso_habiles($r['fecha_vencimiento']);
 
         $venc = date('d/m', strtotime($r['fecha_vencimiento']));
-        $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $total_cobrar, $dias_atraso);
+        $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $total_cobrar, $dias_atraso, $num);
     }
 
     // Fila total del día
     $pdf->SetFont('Helvetica', 'B', 7);
-    $ancho = array_sum(array_slice($COLS, 0, 4));
+    $ancho = array_sum(array_slice($COLS, 0, 5));
     $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($nombre_dia)), 1, 0, 'R', false);
-    $pdf->Cell($COLS[4], 6, fmt($total_dia), 1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 6, fmt($total_dia), 1, 0, 'R', false);
     $pdf->Ln();
     $pdf->Ln(3);
 
@@ -359,6 +365,7 @@ if (!empty($rows_qm)) {
         $pdf->SetFont('Helvetica', '', 7);
 
         $zona_actual = null;
+        $num = 0;
 
         foreach ($lista as $r) {
             if ($pdf->GetY() + 16 > $pdf->GetPageHeight() - 18) {
@@ -370,31 +377,30 @@ if (!empty($rows_qm)) {
                 $zona_actual = null;
             }
 
-            // Mejora 4: encabezado de zona
+            // Encabezado de zona cuando cambia + reinicio de contador
             $zona_fila = $r['zona'] ?? '';
             if ($zona_fila !== $zona_actual) {
                 $zona_actual = $zona_fila;
+                $num = 0;
                 if (!empty($zona_fila)) {
                     $pdf->zonaHeader($zona_fila);
                 }
             }
 
+            $num++;
             $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
 
-            // Mejora 2: cuota X/Y (o "N u." si tiene múltiples)
-            $cuota_label = ($r['cant_ven'] > 1)
-                ? $r['cant_ven'] . ' u.'
-                : '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'];
+            $cuota_label = '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'];
 
             $venc = date('d/m/y', strtotime($r['fecha_vencimiento']));
-            $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], (float)$r['total_final'], $dias_atraso);
+            $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], (float)$r['total_final'], $dias_atraso, $num);
         }
 
         // Fila total de frecuencia
         $pdf->SetFont('Helvetica', 'B', 7);
-        $ancho = array_sum(array_slice($COLS, 0, 4));
+        $ancho = array_sum(array_slice($COLS, 0, 5));
         $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($titulo)), 1, 0, 'R', false);
-        $pdf->Cell($COLS[4], 6, fmt($total_frec), 1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 6, fmt($total_frec), 1, 0, 'R', false);
         $pdf->Ln();
         $pdf->Ln(3);
 
