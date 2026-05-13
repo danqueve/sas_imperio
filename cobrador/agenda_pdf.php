@@ -343,9 +343,6 @@ if (!empty($rows_qm)) {
             $r['total_final'] = $total_cobrar;
             $r['cant_ven']    = 1;
             $qm_aux[$r['frecuencia']][$key] = $r;
-        } else {
-            $qm_aux[$r['frecuencia']][$key]['total_final'] += $total_cobrar;
-            $qm_aux[$r['frecuencia']][$key]['cant_ven']++;
         }
     }
     $qm_grupos = [
