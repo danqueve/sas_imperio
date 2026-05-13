@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 // admin/historial_rendiciones_pdf.php — Exportación PDF del Historial
-// A4 horizontal (landscape), blanco y negro, sin rellenos
+// A4 vertical (portrait), blanco y negro, sin rellenos
 // ============================================================
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
@@ -171,9 +171,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 
 require_once __DIR__ . '/../lib/PDFBase.php';
 
-// Anchos columnas: suma = 257mm
-// #(10) + Cliente(55) + Articulo(48) + Cuota(s)(18) + Vlr.Cuota(25) + Efectivo(25) + Transfer.(25) + Mora(30) + Total(21)
-$COLS   = [10, 55, 48, 18, 25, 25, 25, 30, 21];
+// Anchos columnas: suma = 190mm (A4 portrait 210mm − 10mm izq − 10mm der)
+// #(8) + Cliente(42) + Articulo(35) + Cuota(s)(14) + Vlr.Cuota(20) + Efectivo(20) + Transfer.(20) + Mora(18) + Total(13)
+$COLS   = [8, 42, 35, 14, 20, 20, 20, 18, 13];
 $LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Mora', 'Total'];
 $ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
 
@@ -194,38 +194,38 @@ class RendicionHistorialPDF extends PDFBase
         $this->SetFillColor(255, 255, 255);
 
         // Título
-        $this->SetFont('Helvetica', 'B', 16);
+        $this->SetFont('Helvetica', 'B', 14);
         $this->SetXY(10, 8);
-        $this->Cell(257, 8, lat('Imperio Comercial - Rendicion Historica'), 0, 1, 'L');
+        $this->Cell(190, 8, lat('Imperio Comercial - Rendicion Historica'), 0, 1, 'L');
 
         // Subtítulo explicativo
-        $this->SetFont('Helvetica', 'I', 9);
+        $this->SetFont('Helvetica', 'I', 8);
         $this->SetX(10);
-        $this->Cell(257, 5, lat('Detalle de pagos aprobados — Tipo: ' . $this->tipo_origen), 0, 1, 'L');
+        $this->Cell(190, 5, lat('Detalle de pagos aprobados — Tipo: ' . $this->tipo_origen), 0, 1, 'L');
 
         // Datos del cobrador y fecha
-        $this->SetFont('Helvetica', '', 9);
+        $this->SetFont('Helvetica', '', 8);
         $this->SetX(10);
-        $this->Cell(128, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
-        $this->Cell(129, 5, lat('Fecha Aprobacion: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
+        $this->Cell(95, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
+        $this->Cell(95, 5, lat('Fecha Aprobacion: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
 
         // Línea separadora
         $this->SetLineWidth(0.4);
-        $this->Line(10, $this->GetY() + 2, 267, $this->GetY() + 2);
+        $this->Line(10, $this->GetY() + 2, 200, $this->GetY() + 2);
         $this->Ln(5);
 
         // Encabezado de tabla
-        $this->SetFont('Helvetica', 'B', 9);
+        $this->SetFont('Helvetica', 'B', 7);
         foreach ($this->cols as $i => $w) {
-            $this->Cell($w, 7, lat($this->labels[$i]), 1, 0, $this->aligns[$i], false);
+            $this->Cell($w, 6, lat($this->labels[$i]), 1, 0, $this->aligns[$i], false);
         }
         $this->Ln();
-        $this->SetFont('Helvetica', '', 9);
+        $this->SetFont('Helvetica', '', 7);
     }
 
 }
 
-$pdf = new RendicionHistorialPDF('L', 'mm', 'A4');
+$pdf = new RendicionHistorialPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->cobrador_nombre = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
 $pdf->fecha_label     = date('d/m/Y', strtotime($fecha_sel));
@@ -239,7 +239,7 @@ $pdf->SetAutoPageBreak(true, 16);
 $pdf->AddPage();
 
 // ── Filas de datos ─────────────────────────────────────────────
-$pdf->SetFont('Helvetica', '', 10);
+$pdf->SetFont('Helvetica', '', 8);
 $pdf->SetTextColor(0, 0, 0);
 $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
@@ -265,10 +265,10 @@ foreach ($secciones as $sec) {
     if (empty($sec['datos'])) continue;
 
     // Sub-encabezado de sección
-    $pdf->SetFont('Helvetica', 'BI', 9);
+    $pdf->SetFont('Helvetica', 'BI', 8);
     $pdf->SetTextColor(80, 80, 80);
     $ancho_total_seccion = array_sum($COLS);
-    $pdf->Cell($ancho_total_seccion, 7, lat($sec['titulo']), 1, 1, 'L', false);
+    $pdf->Cell($ancho_total_seccion, 6, lat($sec['titulo']), 1, 1, 'L', false);
     $pdf->SetTextColor(0, 0, 0);
 
     $sec_efectivo = 0.0;
@@ -302,46 +302,46 @@ foreach ($secciones as $sec) {
         $sec_total    += (float)$p['monto_total'];
         $sec_mora     += $es_pura ? 0.0 : $mora_val;
 
-        $pdf->SetFont('Helvetica', '', 10);
-        $pdf->Cell($COLS[0], 7, $index,                                      1, 0, 'C', false);
-        $pdf->Cell($COLS[1], 7, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
-        $pdf->Cell($COLS[2], 7, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
-        $pdf->Cell($COLS[3], 7, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
-        $pdf->Cell($COLS[4], 7, fmt($vlr_cuota),                 1, 0, 'R', false);
-        $pdf->Cell($COLS[5], 7, fmt((float)$p['monto_efectivo']),       1, 0, 'R', false);
-        $pdf->Cell($COLS[6], 7, fmt((float)$p['monto_transferencia']),  1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', '', 8);
+        $pdf->Cell($COLS[0], 6, $index,                                      1, 0, 'C', false);
+        $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
+        $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
+        $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
+        $pdf->Cell($COLS[4], 6, fmt($vlr_cuota),                 1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 6, fmt((float)$p['monto_efectivo']),       1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 6, fmt((float)$p['monto_transferencia']),  1, 0, 'R', false);
 
         if ($es_pura && $mora_val > 0) {
-            $pdf->SetFont('Helvetica', 'I', 9);
+            $pdf->SetFont('Helvetica', 'I', 7);
         }
-        $pdf->Cell($COLS[7], 7, lat($mora_str),                  1, 0, 'R', false);
-        $pdf->SetFont('Helvetica', '', 10);
+        $pdf->Cell($COLS[7], 6, lat($mora_str),                  1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', '', 8);
 
-        $pdf->Cell($COLS[8], 7, fmt((float)$p['monto_total']),   1, 0, 'R', false);
+        $pdf->Cell($COLS[8], 6, fmt((float)$p['monto_total']),   1, 0, 'R', false);
         $pdf->Ln();
         $index++;
     }
 
     // Fila SUBTOTAL de sección
-    $pdf->SetFont('Helvetica', 'B', 9);
+    $pdf->SetFont('Helvetica', 'B', 7);
     $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
     $label_total = 'SUBTOTAL ' . mb_strtoupper($sec['titulo'], 'UTF-8');
-    $pdf->Cell($ancho_label, 7, lat($label_total), 1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 7, fmt($sec_efectivo), 1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 7, fmt($sec_transfer), 1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 7, fmt($sec_mora),     1, 0, 'R', false);
-    $pdf->Cell($COLS[8], 7, fmt($sec_total),    1, 0, 'R', false);
+    $pdf->Cell($ancho_label, 6, lat($label_total), 1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 6, fmt($sec_efectivo), 1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 6, fmt($sec_transfer), 1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 6, fmt($sec_mora),     1, 0, 'R', false);
+    $pdf->Cell($COLS[8], 6, fmt($sec_total),    1, 0, 'R', false);
     $pdf->Ln();
 }
 
 // ── Fila TOTALES ────────────────────────────────────────────────
-$pdf->SetFont('Helvetica', 'B', 10);
+$pdf->SetFont('Helvetica', 'B', 8);
 $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
-$pdf->Cell($ancho_label, 8, lat('TOTALES'), 1, 0, 'R', false);
-$pdf->Cell($COLS[5], 8, fmt($total_efectivo),      1, 0, 'R', false);
-$pdf->Cell($COLS[6], 8, fmt($total_transferencia), 1, 0, 'R', false);
-$pdf->Cell($COLS[7], 8, fmt($total_mora_cobrada),  1, 0, 'R', false);
-$pdf->Cell($COLS[8], 8, fmt($total_general),       1, 0, 'R', false);
+$pdf->Cell($ancho_label, 7, lat('TOTALES'), 1, 0, 'R', false);
+$pdf->Cell($COLS[5], 7, fmt($total_efectivo),      1, 0, 'R', false);
+$pdf->Cell($COLS[6], 7, fmt($total_transferencia), 1, 0, 'R', false);
+$pdf->Cell($COLS[7], 7, fmt($total_mora_cobrada),  1, 0, 'R', false);
+$pdf->Cell($COLS[8], 7, fmt($total_general),       1, 0, 'R', false);
 $pdf->Ln();
 
 // ── Resumen al pie ──────────────────────────────────────────────
@@ -349,9 +349,9 @@ $pdf->Ln(10);
 $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
 
-$bx  = 160;
+$bx  = 90;
 $bw1 = 55;
-$bw2 = 42;
+$bw2 = 45;
 
 $resumen = [
     ['Total Efectivo',               fmt($total_efectivo)],
@@ -367,11 +367,11 @@ $resumen[] = ['TOTAL RENDIDO', fmt($total_general)];
 
 foreach ($resumen as $i => [$label, $valor]) {
     $es_total = ($i === count($resumen) - 1);
-    $pdf->SetFont('Helvetica', $es_total ? 'B' : '', 11);
+    $pdf->SetFont('Helvetica', $es_total ? 'B' : '', 9);
     $pdf->SetX($bx);
-    $pdf->Cell($bw1, 8, lat($label), 1, 0, 'L', false);
-    $pdf->SetFont('Helvetica', 'B', 11);
-    $pdf->Cell($bw2, 8, lat($valor), 1, 1, 'R', false);
+    $pdf->Cell($bw1, 7, lat($label), 1, 0, 'L', false);
+    $pdf->SetFont('Helvetica', 'B', 9);
+    $pdf->Cell($bw2, 7, lat($valor), 1, 1, 'R', false);
 }
 
 // ── Nota al pie sobre mora pendiente ─────────────────────────
