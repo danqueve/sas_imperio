@@ -248,8 +248,9 @@ foreach ($dias_sel as $dia) {
     $pdf->encabezadoTabla();
     $pdf->SetFont('Helvetica', '', 7);
 
-    $zona_actual = null;
-    $num = 0;
+    $zona_actual    = null;
+    $num            = 0;
+    $reprint_zona   = false;
 
     foreach ($clientes_dia as $r) {
         // Salto de página si hace falta (zona header ~5mm + fila máxima 9mm)
@@ -259,14 +260,20 @@ foreach ($dias_sel as $dia) {
             $pdf->Cell(190, 6, lat($nombre_dia . ' (continuacion)'), 0, 1, 'L');
             $pdf->encabezadoTabla();
             $pdf->SetFont('Helvetica', '', 7);
-            $zona_actual = null;
+            $reprint_zona = true;
         }
 
-        // Encabezado de zona cuando cambia + reinicio de contador
+        // Encabezado de zona: resetear num solo cuando la zona realmente cambia
         $zona_fila = $r['zona'] ?? '';
         if ($zona_fila !== $zona_actual) {
-            $zona_actual = $zona_fila;
-            $num = 0;
+            $zona_actual  = $zona_fila;
+            $num          = 0;
+            $reprint_zona = false;
+            if (!empty($zona_fila)) {
+                $pdf->zonaHeader($zona_fila);
+            }
+        } elseif ($reprint_zona) {
+            $reprint_zona = false;
             if (!empty($zona_fila)) {
                 $pdf->zonaHeader($zona_fila);
             }
@@ -364,8 +371,9 @@ if (!empty($rows_qm)) {
         $pdf->encabezadoTabla();
         $pdf->SetFont('Helvetica', '', 7);
 
-        $zona_actual = null;
-        $num = 0;
+        $zona_actual  = null;
+        $num          = 0;
+        $reprint_zona = false;
 
         foreach ($lista as $r) {
             if ($pdf->GetY() + 16 > $pdf->GetPageHeight() - 18) {
@@ -374,14 +382,20 @@ if (!empty($rows_qm)) {
                 $pdf->Cell(190, 6, lat($titulo . ' (continuacion)'), 0, 1, 'L');
                 $pdf->encabezadoTabla();
                 $pdf->SetFont('Helvetica', '', 7);
-                $zona_actual = null;
+                $reprint_zona = true;
             }
 
-            // Encabezado de zona cuando cambia + reinicio de contador
+            // Encabezado de zona: resetear num solo cuando la zona realmente cambia
             $zona_fila = $r['zona'] ?? '';
             if ($zona_fila !== $zona_actual) {
-                $zona_actual = $zona_fila;
-                $num = 0;
+                $zona_actual  = $zona_fila;
+                $num          = 0;
+                $reprint_zona = false;
+                if (!empty($zona_fila)) {
+                    $pdf->zonaHeader($zona_fila);
+                }
+            } elseif ($reprint_zona) {
+                $reprint_zona = false;
                 if (!empty($zona_fila)) {
                     $pdf->zonaHeader($zona_fila);
                 }
