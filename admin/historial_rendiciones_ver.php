@@ -31,25 +31,30 @@ if (!$cobrador) {
 // Obtener el detalle individual de pagos de esa fecha, cobrador y origen
 $dstmt = $pdo->prepare("
     SELECT pc.*,
-           cl.nombres, cl.apellidos, cl.id AS cliente_id,
-           cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
-           COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
+           COALESCE(pc.cliente_nombres_snap,   cl.nombres)    AS nombres,
+           COALESCE(pc.cliente_apellidos_snap, cl.apellidos)  AS apellidos,
+           cl.id AS cliente_id,
+           COALESCE(pc.numero_cuota,     cu.numero_cuota)     AS numero_cuota,
+           COALESCE(pc.monto_cuota_orig, cu.monto_cuota)      AS monto_cuota,
+           COALESCE(pc.fecha_vcto_orig,  cu.fecha_vencimiento) AS fecha_vencimiento,
+           COALESCE(pc.articulo_snap, cr.articulo_desc, a.descripcion) AS articulo,
            u.nombre AS apr_nombre, u.apellido AS apr_apellido,
            (SELECT COUNT(*)
             FROM ic_cuotas cu2
             JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
             WHERE cr2.cliente_id = cl.id
+              AND cl.id IS NOT NULL
               AND cu2.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
               AND cr2.estado IN ('EN_CURSO','MOROSO')
               AND cu2.fecha_vencimiento < CURDATE()
               AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
            ) AS cuotas_atrasadas_cliente
     FROM ic_pagos_confirmados pc
-    JOIN ic_cuotas cu ON pc.cuota_id = cu.id
-    JOIN ic_creditos cr ON cu.credito_id = cr.id
-    JOIN ic_clientes cl ON cr.cliente_id = cl.id
-    LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-    LEFT JOIN ic_usuarios u ON pc.aprobador_id = u.id
+    LEFT JOIN ic_cuotas cu      ON pc.cuota_id      = cu.id
+    LEFT JOIN ic_creditos cr    ON cu.credito_id    = cr.id
+    LEFT JOIN ic_clientes cl    ON cr.cliente_id    = cl.id
+    LEFT JOIN ic_articulos a    ON cr.articulo_id   = a.id
+    LEFT JOIN ic_usuarios u     ON pc.aprobador_id  = u.id
     LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
     WHERE pc.cobrador_id = ? AND pc.fecha_jornada = ?
       AND IFNULL(pt.origen, 'cobrador') = ?

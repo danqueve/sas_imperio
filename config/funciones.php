@@ -171,7 +171,8 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                cu.fecha_vencimiento, cu.estado AS cuota_estado, cu.numero_cuota,
                cr.interes_moratorio_pct,
                COALESCE(cr.articulo_desc, a.descripcion, '') AS articulo_snap,
-               cl.telefono AS cliente_tel, cl.nombres AS cliente_nombres
+               cl.telefono AS cliente_tel, cl.nombres AS cliente_nombres,
+               cl.apellidos AS cliente_apellidos
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu   ON pt.cuota_id    = cu.id
         JOIN ic_creditos cr ON cu.credito_id  = cr.id
@@ -193,8 +194,9 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                     (pago_temp_id, cuota_id, cobrador_id, aprobador_id, fecha_pago,
                      monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada,
                      es_cuota_pura, observaciones, fecha_jornada, semana_lunes, origen,
-                     monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap,
+                     cliente_nombres_snap, cliente_apellidos_snap)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $ins->execute([
                 $pago['id'],
@@ -216,6 +218,8 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 $pago['numero_cuota'],
                 $pago['fecha_vencimiento'],
                 $pago['articulo_snap'],
+                $pago['cliente_nombres'],
+                $pago['cliente_apellidos'],
             ]);
 
             // 2. Calcular nuevo saldo y estado de la cuota
