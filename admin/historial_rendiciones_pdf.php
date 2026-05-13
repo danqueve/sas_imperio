@@ -34,6 +34,8 @@ $dstmt = $pdo->prepare("
            COALESCE(pc.monto_cuota_orig, cu.monto_cuota)      AS monto_cuota,
            COALESCE(pc.articulo_snap, cr.articulo_desc, a.descripcion) AS articulo,
            COALESCE(pc.es_cuota_pura, pt.es_cuota_pura, 0)   AS es_cuota_pura,
+           apr.nombre AS apr_nombre, apr.apellido AS apr_apellido,
+           pc.fecha_aprobacion,
            (SELECT COUNT(*)
             FROM ic_cuotas cu2
             JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
@@ -45,11 +47,12 @@ $dstmt = $pdo->prepare("
               AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
            ) AS cuotas_atrasadas_cliente
     FROM ic_pagos_confirmados pc
-    LEFT JOIN ic_cuotas cu   ON pc.cuota_id     = cu.id
-    LEFT JOIN ic_creditos cr ON cu.credito_id   = cr.id
-    LEFT JOIN ic_clientes cl ON cr.cliente_id   = cl.id
-    LEFT JOIN ic_articulos a ON cr.articulo_id  = a.id
-    LEFT JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
+    LEFT JOIN ic_cuotas cu      ON pc.cuota_id     = cu.id
+    LEFT JOIN ic_creditos cr    ON cu.credito_id   = cr.id
+    LEFT JOIN ic_clientes cl    ON cr.cliente_id   = cl.id
+    LEFT JOIN ic_articulos a    ON cr.articulo_id  = a.id
+    LEFT JOIN ic_pagos_temporales pt ON pt.id      = pc.pago_temp_id
+    LEFT JOIN ic_usuarios apr   ON apr.id          = pc.aprobador_id
     WHERE pc.cobrador_id = ? AND pc.fecha_jornada = ?
       AND COALESCE(pc.origen, IFNULL(pt.origen, 'cobrador')) = ?
     ORDER BY apellidos ASC, nombres ASC, numero_cuota ASC
@@ -78,6 +81,13 @@ foreach ($pagos_raw as $p) {
     }
 }
 $pagos = array_values($agrupado);
+
+// Datos del aprobador (primer registro, todos tienen el mismo)
+$primer = $pagos_raw[0];
+$apr_nombre = trim(($primer['apr_nombre'] ?? '') . ' ' . ($primer['apr_apellido'] ?? '')) ?: '—';
+$apr_fecha  = !empty($primer['fecha_aprobacion'])
+    ? date('d/m/Y H:i', strtotime($primer['fecha_aprobacion']))
+    : '—';
 
 // ── Totales ─────────────────────────────────────────────────
 $total_efectivo      = 0.0;
@@ -179,10 +189,11 @@ $ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
 
 class RendicionHistorialPDF extends PDFBase
 {
-    public string $cobrador_nombre = '';
-    public string $fecha_label    = '';
-    public string $tipo_origen    = '';
-    public int    $num_pagos      = 0;
+    public string $cobrador_nombre  = '';
+    public string $fecha_label     = '';
+    public string $tipo_origen     = '';
+    public int    $num_pagos       = 0;
+    public string $aprobador_label = '';
     public array  $cols   = [];
     public array  $labels = [];
     public array  $aligns = [];
@@ -207,7 +218,11 @@ class RendicionHistorialPDF extends PDFBase
         $this->SetFont('Helvetica', '', 8);
         $this->SetX(10);
         $this->Cell(95, 5, lat('Cobrador: ' . $this->cobrador_nombre), 0, 0, 'L');
-        $this->Cell(95, 5, lat('Fecha Aprobacion: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
+        $this->Cell(95, 5, lat('Fecha Jornada: ' . $this->fecha_label . '   |   Pagos: ' . $this->num_pagos), 0, 1, 'R');
+
+        // Aprobador
+        $this->SetX(10);
+        $this->Cell(190, 5, lat('Aprobado por: ' . $this->aprobador_label), 0, 1, 'L');
 
         // Línea separadora
         $this->SetLineWidth(0.4);
@@ -227,10 +242,11 @@ class RendicionHistorialPDF extends PDFBase
 
 $pdf = new RendicionHistorialPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
-$pdf->cobrador_nombre = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
-$pdf->fecha_label     = date('d/m/Y', strtotime($fecha_sel));
-$pdf->tipo_origen     = $origen_sel === 'manual' ? 'Manual (Admin)' : 'Cobrador';
-$pdf->num_pagos       = count($pagos);
+$pdf->cobrador_nombre  = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
+$pdf->fecha_label      = date('d/m/Y', strtotime($fecha_sel));
+$pdf->tipo_origen      = $origen_sel === 'manual' ? 'Manual (Admin)' : 'Cobrador';
+$pdf->num_pagos        = count($pagos);
+$pdf->aprobador_label  = $apr_nombre . '   |   ' . $apr_fecha;
 $pdf->cols            = $COLS;
 $pdf->labels          = $LABELS;
 $pdf->aligns          = $ALIGNS;
