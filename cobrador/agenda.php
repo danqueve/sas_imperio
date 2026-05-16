@@ -1567,7 +1567,7 @@ function anularPago(ptId, nombre, btn) {
     fetch('anular_pago', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': window.CSRF_TOKEN },
-      body: 'pt_id=' + ptId
+      body: 'pt_id=' + ptId + '&_csrf=' + encodeURIComponent(window.CSRF_TOKEN)
     })
     .then(r => {
       if (!r.ok) throw new Error('HTTP ' + r.status);

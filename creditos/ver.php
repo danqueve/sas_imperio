@@ -72,6 +72,7 @@ $hist_stmt = $pdo->prepare("
         pc.id AS pc_id,
         cu.numero_cuota,
         cu.monto_cuota,
+        cu.fecha_vencimiento,
         cu.estado AS estado_cuota,
         pt.monto_efectivo,
         pt.monto_transferencia,
@@ -767,6 +768,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <th>#</th>
                     <th>Fecha Jornada</th>
                     <th>Cuota</th>
+                    <th style="text-align:right">Días atraso</th>
                     <th style="text-align:right">Efectivo</th>
                     <th style="text-align:right">Transferencia</th>
                     <th style="text-align:right">Mora</th>
@@ -790,6 +792,20 @@ require_once __DIR__ . '/../views/layout.php';
                             <br><span style="font-size:.7rem;color:var(--warning)">parcial</span>
                         <?php elseif ($h['estado_cuota'] === 'CAP_PAGADA'): ?>
                             <br><span style="font-size:.7rem;color:#60a5fa">cap. pagado</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="text-align:right">
+                        <?php
+                            $dias_at = (!empty($h['fecha_vencimiento']) && !empty($h['fecha_jornada']))
+                                ? dias_atraso_habiles($h['fecha_vencimiento'], $h['fecha_jornada'])
+                                : 0;
+                        ?>
+                        <?php if ($dias_at <= 0): ?>
+                            <span class="text-muted">—</span>
+                        <?php else: ?>
+                            <span style="color:<?= $dias_at >= 5 ? 'var(--danger)' : 'var(--warning)' ?>;font-weight:600">
+                                <?= $dias_at ?> háb.
+                            </span>
                         <?php endif; ?>
                     </td>
                     <td style="text-align:right">
@@ -818,7 +834,7 @@ require_once __DIR__ . '/../views/layout.php';
             </tbody>
             <tfoot>
                 <tr style="background:rgba(79,70,229,.08);font-weight:700">
-                    <td colspan="3" style="text-align:right;font-size:.8rem;padding-right:10px">TOTAL</td>
+                    <td colspan="4" style="text-align:right;font-size:.8rem;padding-right:10px">TOTAL</td>
                     <td style="text-align:right;color:var(--success)"><?= formato_pesos($hist_total_ef) ?></td>
                     <td style="text-align:right;color:var(--primary-light)"><?= formato_pesos($hist_total_tr) ?></td>
                     <td style="text-align:right;color:var(--danger)"><?= $hist_total_mora > 0 ? formato_pesos($hist_total_mora) : '—' ?></td>
