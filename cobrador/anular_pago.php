@@ -6,10 +6,8 @@ require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('registrar_pagos');
 
-header('Content-Type: application/json');
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['error' => 'Método no permitido.']);
+    header('Location: ' . BASE_URL . 'cobrador/agenda');
     exit;
 }
 verificar_csrf();
@@ -20,7 +18,8 @@ $uid   = (int) $_SESSION['user_id'];
 $rol   = $_SESSION['rol'] ?? '';
 
 if (!$pt_id) {
-    echo json_encode(['error' => 'ID inválido.']);
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'ID de pago inválido.'];
+    header('Location: ' . BASE_URL . 'cobrador/agenda');
     exit;
 }
 
@@ -46,7 +45,8 @@ if (in_array($rol, ['admin', 'supervisor'], true)) {
 $row = $stmt->fetch();
 
 if (!$row) {
-    echo json_encode(['error' => 'Pago no encontrado o ya fue aprobado por el supervisor.']);
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Pago no encontrado o ya fue aprobado por el supervisor.'];
+    header('Location: ' . BASE_URL . 'cobrador/agenda');
     exit;
 }
 
@@ -58,4 +58,6 @@ $pdo->prepare("
 registrar_log($pdo, $uid, 'PAGO_ANULADO', 'pago_temporal', $pt_id,
     'Cuota #' . $row['numero_cuota'] . ' — pago anulado por ' . $rol);
 
-echo json_encode(['ok' => true]);
+$_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago de cuota #' . $row['numero_cuota'] . ' anulado correctamente.'];
+header('Location: ' . BASE_URL . 'cobrador/agenda');
+exit;

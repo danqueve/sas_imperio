@@ -784,7 +784,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         </span>
                         <?php if (!empty($c['pt_id'])): ?>
                         <button type="button"
-                            onclick='anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>, this)'
+                            onclick='anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'
                             class="btn-ic btn-ghost" title="Anular pago y corregir"
                             style="font-size:.78rem;padding:5px 10px;height:auto;color:var(--danger);border-color:rgba(220,53,69,.3);gap:5px">
                             <i class="fa fa-xmark"></i> Anular
@@ -1031,18 +1031,22 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
     <div class="modal-box" style="max-width:400px">
         <div class="modal-header">
             <div class="modal-title" style="color:var(--danger)"><i class="fa fa-triangle-exclamation"></i> Anular Pago</div>
-            <button class="modal-close" onclick="closeModal('modal-anular')">&#10005;</button>
+            <button type="button" class="modal-close" onclick="closeModal('modal-anular')">&#10005;</button>
         </div>
         <div style="padding:4px 0 18px;font-size:.9rem;color:var(--text);line-height:1.5">
             Se anulará el pago de <strong id="anular-nombre"></strong>.<br>
             <span style="color:var(--text-muted);font-size:.82rem">El cobro volverá a la agenda para registrarlo nuevamente.</span>
         </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end">
-            <button class="btn-ic btn-ghost" onclick="closeModal('modal-anular')" style="padding:8px 18px">Cancelar</button>
-            <button class="btn-ic" id="anular-confirmar-btn" style="padding:8px 18px;background:var(--danger);color:#fff;border-color:var(--danger);gap:6px">
-                <i class="fa fa-xmark"></i> Sí, anular
-            </button>
-        </div>
+        <form method="POST" action="anular_pago">
+            <?php csrf_input(); ?>
+            <input type="hidden" name="pt_id" id="anular-pt-id" value="">
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+                <button type="button" class="btn-ic btn-ghost" onclick="closeModal('modal-anular')" style="padding:8px 18px">Cancelar</button>
+                <button type="submit" class="btn-ic" style="padding:8px 18px;background:var(--danger);color:#fff;border-color:var(--danger);gap:6px">
+                    <i class="fa fa-xmark"></i> Sí, anular
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -1552,41 +1556,9 @@ function renderHistorial(pagos, hist_total) {
 }
 
 // ── Anular pago pendiente ────────────────────────────────────
-function anularPago(ptId, nombre, btn) {
+function anularPago(ptId, nombre) {
   document.getElementById('anular-nombre').textContent = nombre;
-  const confirmBtn = document.getElementById('anular-confirmar-btn');
-  // Clonar para eliminar listeners previos
-  const nuevoBtn = confirmBtn.cloneNode(true);
-  confirmBtn.parentNode.replaceChild(nuevoBtn, confirmBtn);
-  nuevoBtn.onclick = function () {
-    nuevoBtn.disabled = true;
-    nuevoBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Anulando...';
-    const card = btn ? btn.closest('.agenda-card') : null;
-    if (card) card.style.opacity = '.4';
-    closeModal('modal-anular');
-    fetch('anular_pago', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': window.CSRF_TOKEN },
-      body: 'pt_id=' + ptId + '&_csrf=' + encodeURIComponent(window.CSRF_TOKEN)
-    })
-    .then(r => {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(d => {
-      if (d.ok) {
-        sessionStorage.setItem('agenda_scroll', window.scrollY);
-        window.location.reload();
-      } else {
-        if (card) card.style.opacity = '';
-        alert('Error: ' + (d.error || 'No se pudo anular.'));
-      }
-    })
-    .catch(e => {
-      if (card) card.style.opacity = '';
-      alert('Error al anular el pago: ' + e.message);
-    });
-  };
+  document.getElementById('anular-pt-id').value = ptId;
   openModal('modal-anular');
 }
 
