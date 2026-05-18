@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verificar_csrf();
     $motivo = $_POST['motivo_finalizacion'] ?? '';
 
-    $motivos_validos = ['PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA', 'RETIRO_PRODUCTO', 'INCOBRABILIDAD', 'ACUERDO_EXTRAJUDICIAL'];
+    $motivos_validos = ['PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA', 'RETIRO_PRODUCTO', 'INCOBRABILIDAD', 'ACUERDO_EXTRAJUDICIAL', 'FINALIZADO_CREDITO'];
     if (!in_array($motivo, $motivos_validos)) {
         $error = 'Debe seleccionar un motivo válido para finalizar el crédito.';
     } else {
@@ -62,8 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $upd->execute([$motivo, $id]);
 
-            // Si es retiro de producto, cancelar cuotas pendientes
-            if ($motivo === 'RETIRO_PRODUCTO' || $motivo === 'INCOBRABILIDAD') {
+            // Si es retiro de producto, incobrable o mala reputación, cancelar cuotas pendientes
+            if ($motivo === 'RETIRO_PRODUCTO' || $motivo === 'INCOBRABILIDAD' || $motivo === 'FINALIZADO_CREDITO') {
                 $pdo->prepare("UPDATE ic_cuotas SET estado = 'CANCELADA' WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA')")
                     ->execute([$id]);
             }
@@ -75,14 +75,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'RETIRO_PRODUCTO'         => 'Retiro de producto',
                 'INCOBRABILIDAD'          => 'Declarado incobrable',
                 'ACUERDO_EXTRAJUDICIAL'   => 'Acuerdo extrajudicial',
+                'FINALIZADO_CREDITO'      => 'Finalizado (mala reputación)',
             ];
             $desc_motivo = $desc_motivo_map[$motivo] ?? $motivo;
             registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_FINALIZADO', 'credito', $id, "Finalizado por: $desc_motivo");
 
             $pdo->commit();
 
-            // Recalcular puntaje del cliente si fue un pago (no retiro ni incobrable)
-            if (in_array($motivo, ['PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA'])) {
+            // Actualizar puntaje del cliente según motivo
+            if ($motivo === 'FINALIZADO_CREDITO') {
+                $pdo->prepare("UPDATE ic_clientes SET puntaje_pago = 4 WHERE id = ?")
+                    ->execute([(int)$cr['cliente_id']]);
+            } elseif (in_array($motivo, ['PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA'])) {
                 actualizar_puntaje_cliente((int)$cr['cliente_id'], $pdo);
             }
 
@@ -116,7 +120,13 @@ require_once __DIR__ . '/../views/layout.php';
 
                 <?php
                 $motivo_post = $_POST['motivo_finalizacion'] ?? '';
-                if (in_array($motivo_post, ['PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA']) && $cr['telefono']):
+                if ($motivo_post === 'FINALIZADO_CREDITO'): ?>
+                <div class="alert-ic alert-danger" style="text-align:left;margin-bottom:8px;">
+                    <i class="fa fa-ban"></i>
+                    <strong>Reputación actualizada a Malo.</strong>
+                    El puntaje de este cliente fue marcado como <strong>Malo</strong> en el sistema.
+                </div>
+                <?php elseif (in_array($motivo_post, ['PAGO_COMPLETO', 'PAGO_COMPLETO_CON_MORA']) && $cr['telefono']):
                     $wa_url = whatsapp_finalizacion_url($cr['telefono'], $cr['nombres'], $cr['articulo']);
                 ?>
                 <a href="<?= e($wa_url) ?>" target="_blank"
@@ -127,6 +137,7 @@ require_once __DIR__ . '/../views/layout.php';
                 </a>
                 <?php endif; ?>
 
+                <?php if ($motivo_post !== 'FINALIZADO_CREDITO'): ?>
                 <a href="../creditos/nuevo?cliente_id=<?= (int)$cr['cliente_id'] ?>"
                    class="btn-ic btn-primary"
                    style="display:inline-flex;align-items:center;gap:8px;min-width:240px;justify-content:center">
@@ -140,6 +151,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <i class="fa fa-stamp"></i>
                     Descargar Libre Deuda
                 </a>
+                <?php endif; ?>
 
                 <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost"
                    style="min-width:240px;text-align:center">
@@ -204,6 +216,9 @@ require_once __DIR__ . '/../views/layout.php';
                     <option value="ACUERDO_EXTRAJUDICIAL">
                         🤝 Acuerdo Extrajudicial
                     </option>
+                    <option value="FINALIZADO_CREDITO">
+                        🚫 Finalizado Crédito (Mala Reputación)
+                    </option>
                 </select>
                 <?php if ($motivo_sugerido === 'PAGO_COMPLETO_CON_MORA'): ?>
                 <small class="text-warning"><i class="fa fa-triangle-exclamation"></i>
@@ -212,6 +227,11 @@ require_once __DIR__ . '/../views/layout.php';
                 <?php else: ?>
                 <small class="text-muted"><i class="fa fa-info-circle"></i> Esta acción no se puede deshacer.</small>
                 <?php endif; ?>
+                <div id="aviso-mala-rep" style="display:none; margin-top:10px;"
+                     class="alert-ic alert-danger">
+                    <i class="fa fa-ban"></i>
+                    <strong>Atención:</strong> Este motivo marcará al cliente con <strong>MALA reputación</strong> (puntaje Malo). Las cuotas pendientes serán canceladas.
+                </div>
             </div>
 
             <div class="d-flex gap-3 mt-4">
@@ -225,4 +245,14 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 <?php endif; ?>
 
+<script>
+(function () {
+    var sel = document.querySelector('select[name="motivo_finalizacion"]');
+    var aviso = document.getElementById('aviso-mala-rep');
+    if (!sel || !aviso) return;
+    sel.addEventListener('change', function () {
+        aviso.style.display = this.value === 'FINALIZADO_CREDITO' ? 'block' : 'none';
+    });
+})();
+</script>
 <?php require_once __DIR__ . '/../views/layout_footer.php'; ?>

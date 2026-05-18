@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   `dia_cobro` TINYINT COMMENT 'Solo para frecuencia semanal: 1=Lun…6=Sab',
   `primer_vencimiento` DATE NOT NULL,
   `estado` ENUM('EN_CURSO','FINALIZADO','MOROSO','CANCELADO') DEFAULT 'EN_CURSO',
-  `motivo_finalizacion` ENUM('PAGO_COMPLETO','PAGO_COMPLETO_CON_MORA','RETIRO_PRODUCTO','INCOBRABILIDAD','ACUERDO_EXTRAJUDICIAL') DEFAULT NULL,
+  `motivo_finalizacion` ENUM('PAGO_COMPLETO','PAGO_COMPLETO_CON_MORA','RETIRO_PRODUCTO','INCOBRABILIDAD','ACUERDO_EXTRAJUDICIAL','FINALIZADO_CREDITO') DEFAULT NULL,
   `fecha_finalizacion` DATE NULL DEFAULT NULL COMMENT 'Fecha en que se finalizó el crédito',
   `articulo_desc` VARCHAR(255) COMMENT 'Snapshot descripción al momento del crédito',
   `observaciones` TEXT,
@@ -310,5 +310,18 @@ CREATE TABLE IF NOT EXISTS `ic_reconocimientos` (
   UNIQUE KEY `uq_recon_credito` (`credito_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci
   COMMENT='Reconocimientos de Deuda vinculados a créditos';
+
+-- ------------------------------------------------------------
+-- Migración: ic_creditos — agregar FINALIZADO_CREDITO al ENUM motivo_finalizacion
+-- ------------------------------------------------------------
+ALTER TABLE ic_creditos
+  MODIFY COLUMN motivo_finalizacion ENUM(
+    'PAGO_COMPLETO',
+    'PAGO_COMPLETO_CON_MORA',
+    'RETIRO_PRODUCTO',
+    'INCOBRABILIDAD',
+    'ACUERDO_EXTRAJUDICIAL',
+    'FINALIZADO_CREDITO'
+  ) DEFAULT NULL;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -711,6 +711,18 @@ function calcular_puntaje_credito(int $credito_id, PDO $pdo): int
 function actualizar_puntaje_cliente(int $cliente_id, PDO $pdo): void
 {
     try {
+        // Si existe algún crédito con mala reputación, forzar puntaje = 4
+        $bad_stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM ic_creditos
+            WHERE cliente_id = ? AND motivo_finalizacion = 'FINALIZADO_CREDITO'
+        ");
+        $bad_stmt->execute([$cliente_id]);
+        if ((int)$bad_stmt->fetchColumn() > 0) {
+            $pdo->prepare("UPDATE ic_clientes SET puntaje_pago = 4 WHERE id = ?")
+                ->execute([$cliente_id]);
+            return;
+        }
+
         // Obtener todos los créditos finalizados con pago del cliente
         $stmt = $pdo->prepare("
             SELECT id FROM ic_creditos
