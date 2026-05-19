@@ -109,6 +109,10 @@ require_once __DIR__ . '/../views/layout.php';
         <button type="submit" class="btn-ic btn-primary" style="align-self:flex-end">
             <i class="fa fa-filter"></i> Filtrar
         </button>
+        <a href="proximos_cerrar_pdf?cuotas_max=<?= $cuotas_f ?>&cobrador_id=<?= $cobrador_f ?>"
+           target="_blank" class="btn-ic btn-ghost btn-icon" title="Exportar PDF" style="align-self:flex-end">
+            <i class="fa fa-file-pdf"></i>
+        </a>
     </div>
 </form>
 
