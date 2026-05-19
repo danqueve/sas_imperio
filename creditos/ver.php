@@ -98,6 +98,20 @@ $hist_total_tr   = array_sum(array_column($historial_pagos, 'monto_transferencia
 $hist_total_mora = array_sum(array_column($historial_pagos, 'monto_mora_cobrada'));
 $hist_total      = array_sum(array_column($historial_pagos, 'monto_total'));
 
+// ── Crédito origen (si este es una refinanciación) ───────────
+$credito_origen = null;
+if (!empty($cr['credito_origen_id'])) {
+    $s = $pdo->prepare("SELECT id FROM ic_creditos WHERE id=?");
+    $s->execute([$cr['credito_origen_id']]);
+    $credito_origen = $s->fetch();
+}
+
+// ── Crédito sucesor (si este fue refinanciado) ────────────────
+$credito_sucesor_id = null;
+$s = $pdo->prepare("SELECT id FROM ic_creditos WHERE credito_origen_id=? LIMIT 1");
+$s->execute([$id]);
+$credito_sucesor_id = $s->fetchColumn() ?: null;
+
 // ── Historial de Refinanciaciones ────────────────────────────
 $ref_historial = [];
 try {
@@ -313,6 +327,26 @@ require_once __DIR__ . '/../views/layout.php';
         <?= e($_SESSION['flash']['msg']) ?>
     </div>
     <?php unset($_SESSION['flash']); ?>
+<?php endif; ?>
+
+<?php if ($credito_origen): ?>
+    <div class="alert-ic alert-info" style="margin-bottom:16px">
+        <i class="fa fa-sync-alt"></i>
+        <strong>Refinanciación</strong> — Este crédito fue creado como refinanciación del
+        <a href="ver?id=<?= (int)$credito_origen['id'] ?>" style="color:inherit;text-decoration:underline;font-weight:700">
+            Crédito #<?= (int)$credito_origen['id'] ?>
+        </a>
+    </div>
+<?php endif; ?>
+
+<?php if ($credito_sucesor_id): ?>
+    <div class="alert-ic alert-warning" style="margin-bottom:16px">
+        <i class="fa fa-triangle-exclamation"></i>
+        <strong>Refinanciado</strong> — Este crédito fue cerrado por refinanciación.
+        <a href="ver?id=<?= (int)$credito_sucesor_id ?>" style="color:inherit;text-decoration:underline;font-weight:700">
+            Ver Nuevo Crédito #<?= (int)$credito_sucesor_id ?> →
+        </a>
+    </div>
 <?php endif; ?>
 
 <!-- KPI CARDS -->

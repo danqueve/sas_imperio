@@ -325,6 +325,13 @@ require_once __DIR__ . '/../views/layout.php';
                                             <i class="fa fa-triangle-exclamation"></i> Anulación
                                         </span>
                                     <?php endif; ?>
+                                    <?php if (!empty($cr['credito_origen_id'])): ?>
+                                        <span class="badge-ic badge-info"
+                                              title="Refinanciación del Crédito #<?= (int)$cr['credito_origen_id'] ?>"
+                                              style="font-size:.6rem;padding:2px 6px">
+                                            <i class="fa fa-sync-alt"></i> Ref.
+                                        </span>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="text-muted" style="font-size:.75rem">
                                     <?= e($cr['telefono']) ?>

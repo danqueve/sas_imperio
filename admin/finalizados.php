@@ -103,6 +103,8 @@ $motivos_labels  = [
     'RETIRO_PRODUCTO'        => '📦 Retiro producto',
     'INCOBRABILIDAD'         => '❌ Incobrable',
     'ACUERDO_EXTRAJUDICIAL'  => '🤝 Acuerdo extraj.',
+    'FINALIZADO_CREDITO'     => '🔒 Fin. manual',
+    'REFINANCIACION'         => '🔄 Refinanciación',
 ];
 
 $page_title   = 'Créditos Finalizados';
@@ -148,6 +150,10 @@ require_once __DIR__ . '/../views/layout.php';
             <a href="?desde=<?= e($fecha_desde) ?>&hasta=<?= e($fecha_hasta) ?>&motivo=<?= e($motivo_f) ?>&cobrador_id=<?= $cobrador_f ?>&export=1"
                class="btn-ic btn-ghost btn-icon" title="Exportar CSV">
                 <i class="fa fa-download"></i>
+            </a>
+            <a href="finalizados_pdf?desde=<?= e($fecha_desde) ?>&hasta=<?= e($fecha_hasta) ?>&motivo=<?= e($motivo_f) ?>&cobrador_id=<?= $cobrador_f ?>"
+               target="_blank" class="btn-ic btn-ghost btn-icon" title="Exportar PDF">
+                <i class="fa fa-file-pdf"></i>
             </a>
         </div>
     </div>

@@ -321,7 +321,29 @@ ALTER TABLE ic_creditos
     'RETIRO_PRODUCTO',
     'INCOBRABILIDAD',
     'ACUERDO_EXTRAJUDICIAL',
-    'FINALIZADO_CREDITO'
+    'FINALIZADO_CREDITO',
+    'REFINANCIACION'
   ) DEFAULT NULL;
+
+-- ------------------------------------------------------------
+-- Migración: ic_creditos — vinculación entre crédito original y refinanciado
+-- ------------------------------------------------------------
+ALTER TABLE ic_creditos
+  ADD COLUMN IF NOT EXISTS credito_origen_id INT NULL AFTER observaciones,
+  ADD INDEX IF NOT EXISTS idx_credito_origen (credito_origen_id);
+
+ALTER TABLE ic_creditos
+  ADD CONSTRAINT IF NOT EXISTS fk_credito_origen
+    FOREIGN KEY (credito_origen_id) REFERENCES ic_creditos(id) ON DELETE SET NULL;
+
+-- ------------------------------------------------------------
+-- Migración: ic_historial_refinanciaciones — agregar credito_nuevo_id
+-- ------------------------------------------------------------
+ALTER TABLE ic_historial_refinanciaciones
+  ADD COLUMN IF NOT EXISTS credito_nuevo_id INT NULL AFTER credito_id;
+
+ALTER TABLE ic_historial_refinanciaciones
+  ADD CONSTRAINT IF NOT EXISTS fk_histref_nuevo
+    FOREIGN KEY (credito_nuevo_id) REFERENCES ic_creditos(id) ON DELETE SET NULL;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -660,6 +660,7 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
 .badge-success  { background: rgba(33,150,83,.15);  color: var(--success-light); }
 .badge-danger   { background: rgba(211,64,83,.15);  color: var(--danger-light); }
 .badge-warning  { background: rgba(255,167,11,.15); color: var(--warning); }
+.badge-info     { background: rgba(60,80,224,.15);  color: var(--primary-light); }
 .badge-muted    { background: rgba(100,116,139,.12);color: var(--text-muted); }
 .badge-primary  { background: rgba(60,80,224,.18);  color: var(--primary-light); }
 
