@@ -163,8 +163,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->beginTransaction();
 
                 // 1. Eliminar cuotas PENDIENTE y VENCIDA del crédito original.
+                //    Primero borrar pagos_temporales RECHAZADOS que referencian esas cuotas
+                //    (los PENDIENTES ya están bloqueados por $tiene_pagos_pendientes arriba).
                 //    CAP_PAGADA se mantiene (tiene FK en ic_pagos_confirmados),
                 //    pero si capitalizamos mora, la condonamos en ellas (#12).
+                $pdo->prepare("
+                    DELETE pt FROM ic_pagos_temporales pt
+                    JOIN ic_cuotas c ON c.id = pt.cuota_id
+                    WHERE c.credito_id = ? AND c.estado IN ('PENDIENTE','VENCIDA') AND pt.estado = 'RECHAZADO'
+                ")->execute([$id]);
+
                 $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA')")
                     ->execute([$id]);
 
