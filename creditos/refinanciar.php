@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          fecha_alta, precio_articulo, monto_total, interes_pct, interes_moratorio_pct,
                          frecuencia, cant_cuotas, monto_cuota, dia_cobro, primer_vencimiento,
                          credito_origen_id, observaciones, created_by)
-                    VALUES (?, ?, ?, ?, ?, CURDATE(), ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, CURDATE(), ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ")->execute([
                     $cr['cliente_id'],
                     $cr['articulo_id'],
