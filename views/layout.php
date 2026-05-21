@@ -284,19 +284,6 @@ if ($rol === 'admin') {
                         <i class="fa fa-users"></i>
                         <span class="nav-text">Mis Clientes</span>
                     </a>
-                    <div class="nav-label">Ventas</div>
-                    <a class="nav-item <?= ($page_current ?? '') === 'ventas_nueva' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>ventas/nueva"
-                       data-tooltip="Nueva Venta">
-                        <i class="fa fa-cart-plus"></i>
-                        <span class="nav-text">Nueva Venta</span>
-                    </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'ventas' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>ventas/index"
-                       data-tooltip="Mis Ventas">
-                        <i class="fa fa-receipt"></i>
-                        <span class="nav-text">Mis Ventas</span>
-                    </a>
                 <?php endif; ?>
 
                 <?php if ($rol === 'admin'): ?>
@@ -327,7 +314,8 @@ if ($rol === 'admin') {
                     </a>
                 <?php endif; ?>
 
-                <!-- Soporte — visible para todos los roles -->
+                <!-- Soporte — visible para todos los roles excepto vendedor -->
+                <?php if ($rol !== 'vendedor'): ?>
                 <div class="nav-label">Soporte</div>
                 <a class="nav-item <?= ($page_current ?? '') === 'tickets' ? 'active' : '' ?>"
                    href="<?= BASE_URL ?>tickets/index"
@@ -335,6 +323,7 @@ if ($rol === 'admin') {
                     <i class="fa fa-ticket-simple"></i>
                     <span class="nav-text">Tickets</span>
                 </a>
+                <?php endif; ?>
 
             </nav>
 

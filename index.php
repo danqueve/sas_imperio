@@ -11,7 +11,7 @@ if (!empty($_SESSION['user_id'])) {
     if (es_cobrador()) {
         header('Location: cobrador/agenda');
     } elseif (es_vendedor()) {
-        header('Location: ventas/index');
+        header('Location: ventas/mis_clientes');
     } else {
         header('Location: admin/dashboard');
     }
