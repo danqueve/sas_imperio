@@ -91,20 +91,43 @@ $hist_tr   = array_sum(array_column($historial_pagos, 'monto_transferencia'));
 $hist_mora = array_sum(array_column($historial_pagos, 'monto_mora_cobrada'));
 $hist_tot  = array_sum(array_column($historial_pagos, 'monto_total'));
 
-// Mapa de colores por estado de cuota
+// Mapa de colores por estado de cuota (sistema .badge-ic del proyecto)
 $cuota_badge = [
     'PAGADA'     => 'success',
-    'PENDIENTE'  => 'secondary',
+    'PENDIENTE'  => 'muted',
     'VENCIDA'    => 'danger',
     'PARCIAL'    => 'warning',
     'CAP_PAGADA' => 'info',
-    'CANCELADA'  => 'secondary',
+    'CANCELADA'  => 'muted',
 ];
+
+// Progreso general del crédito
+$total_cuotas  = count($lista_cuotas);
+$pagadas_count = count(array_filter($lista_cuotas, fn($c) => in_array($c['estado'], ['PAGADA', 'CAP_PAGADA'])));
+$pct_global    = $total_cuotas > 0 ? round($pagadas_count / $total_cuotas * 100) : 0;
+if ($cr['estado'] === 'MOROSO') {
+    $bar_color_global = 'var(--danger)';
+} elseif ($pct_global >= 75) {
+    $bar_color_global = 'var(--success)';
+} elseif ($pct_global >= 40) {
+    $bar_color_global = 'var(--primary-light)';
+} else {
+    $bar_color_global = 'var(--text-muted)';
+}
 
 $page_title   = 'Crédito #' . $id . ' — ' . $cr['apellidos'] . ', ' . $cr['nombres'];
 $page_current = 'mis_clientes';
 require __DIR__ . '/../views/layout.php';
 ?>
+
+<style>
+@media (max-width: 600px) {
+    .hide-mobile { display: none; }
+    .info-grid   { grid-template-columns: 1fr !important; }
+    .info-col-left { border-right: none !important; border-bottom: 1px solid var(--dark-border); }
+    .table-ic td, .table-ic th { padding: 10px 8px; }
+}
+</style>
 
 <!-- Breadcrumb -->
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:.82rem;color:var(--text-muted)">
@@ -128,14 +151,40 @@ require __DIR__ . '/../views/layout.php';
     </div>
 </div>
 
+<!-- Barra de progreso global -->
+<div class="card-ic" style="margin-bottom:20px;padding:16px 20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">
+            Progreso del crédito
+        </span>
+        <span style="font-size:.8rem;color:<?= $bar_color_global ?>;font-weight:700">
+            <?= $pct_global ?>%
+        </span>
+    </div>
+    <div style="background:rgba(255,255,255,.08);border-radius:99px;height:9px;overflow:hidden;margin-bottom:6px">
+        <div style="width:<?= $pct_global ?>%;height:100%;border-radius:99px;
+                    background:<?= $bar_color_global ?>;transition:width .4s ease"></div>
+    </div>
+    <div style="font-size:.75rem;color:var(--text-muted)">
+        <?= $pagadas_count ?> de <?= $total_cuotas ?> cuotas pagadas
+        <?php if ($cuotas_pendientes > 0): ?>
+            &nbsp;·&nbsp;
+            <span style="color:<?= $cuotas_pendientes <= 3 ? 'var(--warning)' : 'var(--text-muted)' ?>">
+                <?= $cuotas_pendientes ?> pendiente<?= $cuotas_pendientes !== 1 ? 's' : '' ?>
+            </span>
+        <?php endif; ?>
+    </div>
+</div>
+
 <!-- Banner "por cerrar" -->
 <?php if ($cuotas_pendientes > 0 && $cuotas_pendientes <= 3): ?>
-<div style="background:var(--warning);color:#1a1a1a;border-radius:8px;padding:14px 20px;
+<div style="background:rgba(255,167,11,.15);border:1px solid rgba(255,167,11,.35);
+            border-radius:var(--radius);padding:14px 20px;
             display:flex;align-items:center;gap:12px;margin-bottom:20px">
-    <i class="fa fa-hourglass-end" style="font-size:1.3rem;flex-shrink:0"></i>
+    <i class="fa fa-hourglass-end" style="color:var(--warning);font-size:1.3rem;flex-shrink:0"></i>
     <div>
-        <strong>Crédito próximo a finalizar</strong>
-        <div style="font-size:.83rem;margin-top:2px">
+        <strong style="color:var(--warning)">Crédito próximo a finalizar</strong>
+        <div style="font-size:.83rem;color:var(--text-body);margin-top:2px">
             Quedan <?= $cuotas_pendientes ?> cuota<?= $cuotas_pendientes !== 1 ? 's' : '' ?> pendiente<?= $cuotas_pendientes !== 1 ? 's' : '' ?>.
         </div>
     </div>
@@ -144,45 +193,52 @@ require __DIR__ . '/../views/layout.php';
 
 <!-- Info crédito + cliente -->
 <div class="card-ic" style="margin-bottom:20px">
-    <div class="card-header-ic">
-        <h2 class="card-title-ic"><i class="fa fa-circle-info"></i> Información del Crédito</h2>
+    <div class="card-ic-header">
+        <span class="card-title"><i class="fa fa-circle-info"></i> Información del Crédito</span>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:4px 0">
+    <div class="info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:4px 0">
 
         <!-- Col izquierda: datos del cliente -->
-        <div style="padding:16px 20px;border-right:1px solid var(--dark-border)">
-            <div style="font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:12px">
-                Cliente
-            </div>
-            <?php
-            $info_cliente = [
-                'Nombre'    => e($cr['apellidos'] . ', ' . $cr['nombres']),
-                'DNI'       => e($cr['dni'] ?? '—'),
-                'Teléfono'  => e($cr['telefono'] ?? '—'),
-            ];
-            foreach ($info_cliente as $lbl => $val): ?>
+        <div class="info-col-left" style="padding:16px 20px;border-right:1px solid var(--dark-border)">
+            <div style="font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;
+                        color:var(--text-muted);margin-bottom:12px">Cliente</div>
             <div style="display:flex;justify-content:space-between;padding:6px 0;
                         border-bottom:1px solid var(--dark-border-2);font-size:.85rem">
-                <span style="color:var(--text-muted)"><?= $lbl ?></span>
-                <span style="font-weight:500"><?= $val ?></span>
+                <span style="color:var(--text-muted)">Nombre</span>
+                <span style="font-weight:500"><?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?></span>
             </div>
-            <?php endforeach; ?>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;
+                        border-bottom:1px solid var(--dark-border-2);font-size:.85rem">
+                <span style="color:var(--text-muted)">DNI</span>
+                <span style="font-weight:500"><?= e($cr['dni'] ?? '—') ?></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                        padding:6px 0;font-size:.85rem">
+                <span style="color:var(--text-muted)">Teléfono</span>
+                <?php if (!empty($cr['telefono'])): ?>
+                    <a href="tel:<?= e($cr['telefono']) ?>"
+                       style="font-weight:500;color:var(--primary-light);text-decoration:none">
+                        <?= e($cr['telefono']) ?>
+                    </a>
+                <?php else: ?>
+                    <span style="font-weight:500">—</span>
+                <?php endif; ?>
+            </div>
         </div>
 
         <!-- Col derecha: datos del crédito -->
         <div style="padding:16px 20px">
-            <div style="font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:12px">
-                Crédito
-            </div>
+            <div style="font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;
+                        color:var(--text-muted);margin-bottom:12px">Crédito</div>
             <?php
             $info_credito = [
-                'Artículo'   => e($cr['articulo'] ?? '—'),
-                'Fecha alta' => date('d/m/Y', strtotime($cr['fecha_alta'])),
-                'Monto total'=> formato_pesos((float)$cr['monto_total']),
-                'Cuota'      => formato_pesos((float)$cr['monto_cuota']),
-                'Frecuencia' => ucfirst($cr['frecuencia']),
-                'Estado'     => badge_estado_credito($cr['estado']),
-                'Cobrador'   => e($cr['cobrador_a'] . ', ' . $cr['cobrador_n']),
+                'Artículo'    => e($cr['articulo'] ?? '—'),
+                'Fecha alta'  => date('d/m/Y', strtotime($cr['fecha_alta'])),
+                'Monto total' => formato_pesos((float)$cr['monto_total']),
+                'Cuota'       => formato_pesos((float)$cr['monto_cuota']),
+                'Frecuencia'  => ucfirst($cr['frecuencia']),
+                'Estado'      => badge_estado_credito($cr['estado']),
+                'Cobrador'    => e($cr['cobrador_a'] . ', ' . $cr['cobrador_n']),
             ];
             foreach ($info_credito as $lbl => $val): ?>
             <div style="display:flex;justify-content:space-between;align-items:center;
@@ -198,47 +254,47 @@ require __DIR__ . '/../views/layout.php';
 
 <!-- Cronograma -->
 <div class="card-ic" style="margin-bottom:20px">
-    <div class="card-header-ic">
-        <h2 class="card-title-ic">
+    <div class="card-ic-header">
+        <span class="card-title">
             <i class="fa fa-calendar-days"></i> Cronograma de Cuotas
-        </h2>
+        </span>
         <span style="font-size:.78rem;color:var(--text-muted)">
-            <?= count(array_filter($lista_cuotas, fn($c) => $c['estado'] === 'PAGADA' || $c['estado'] === 'CAP_PAGADA')) ?>
-            / <?= count($lista_cuotas) ?> pagadas
+            <?= $pagadas_count ?> / <?= $total_cuotas ?> pagadas
         </span>
     </div>
     <div class="table-responsive">
         <table class="table-ic">
             <thead>
                 <tr>
-                    <th style="width:50px">N°</th>
+                    <th style="width:44px">N°</th>
                     <th>Vencimiento</th>
                     <th style="text-align:right">Monto</th>
-                    <th style="text-align:right">Mora</th>
+                    <th class="hide-mobile" style="text-align:right">Mora</th>
                     <th>Estado</th>
-                    <th style="text-align:right">Pagado</th>
+                    <th class="hide-mobile" style="text-align:right">Pagado</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($lista_cuotas as $cu): ?>
                 <?php
-                    $color_badge = $cuota_badge[$cu['estado']] ?? 'secondary';
+                    $badge_class = $cuota_badge[$cu['estado']] ?? 'muted';
                     $hoy = date('Y-m-d');
                     $mora = 0;
                     if (!in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA', 'CANCELADA']) && $cu['fecha_vencimiento'] < $hoy) {
                         $dias = dias_atraso_habiles($cu['fecha_vencimiento'], $hoy);
                         $mora = calcular_mora((float)$cu['monto_cuota'] - (float)($cu['saldo_pagado'] ?? 0), $dias, 15);
                     }
+                    $es_pagada = in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA', 'CANCELADA']);
                 ?>
-                <tr>
+                <tr style="<?= $es_pagada ? 'opacity:.6' : '' ?>">
                     <td style="text-align:center;font-weight:600"><?= (int)$cu['numero_cuota'] ?></td>
                     <td style="white-space:nowrap"><?= date('d/m/Y', strtotime($cu['fecha_vencimiento'])) ?></td>
                     <td style="text-align:right"><?= formato_pesos((float)$cu['monto_cuota']) ?></td>
-                    <td style="text-align:right;color:<?= $mora > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
+                    <td class="hide-mobile" style="text-align:right;color:<?= $mora > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
                         <?= $mora > 0 ? formato_pesos($mora) : '—' ?>
                     </td>
-                    <td><span class="badge bg-<?= $color_badge ?>"><?= e($cu['estado']) ?></span></td>
-                    <td style="text-align:right">
+                    <td><span class="badge-ic badge-<?= $badge_class ?>"><?= e($cu['estado']) ?></span></td>
+                    <td class="hide-mobile" style="text-align:right">
                         <?= (float)($cu['saldo_pagado'] ?? 0) > 0
                             ? formato_pesos((float)$cu['saldo_pagado'])
                             : '<span style="color:var(--text-muted)">—</span>' ?>
@@ -252,34 +308,34 @@ require __DIR__ . '/../views/layout.php';
 
 <!-- Historial de pagos -->
 <div class="card-ic">
-    <div class="card-header-ic">
-        <h2 class="card-title-ic">
+    <div class="card-ic-header">
+        <span class="card-title">
             <i class="fa fa-clock-rotate-left"></i> Historial de Pagos
-        </h2>
+        </span>
         <?php if ($hist_tot > 0): ?>
         <span style="font-size:.78rem;color:var(--text-muted)">
-            Total cobrado: <strong style="color:var(--success)"><?= formato_pesos($hist_tot) ?></strong>
+            Total: <strong style="color:var(--success)"><?= formato_pesos($hist_tot) ?></strong>
         </span>
         <?php endif; ?>
     </div>
 
     <?php if (empty($historial_pagos)): ?>
-        <div style="text-align:center;padding:32px 20px;color:var(--text-muted);font-size:.85rem">
-            <i class="fa fa-receipt" style="font-size:1.8rem;margin-bottom:8px;display:block"></i>
-            Sin pagos registrados aún.
+        <div style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+            <i class="fa fa-receipt" style="font-size:2.5rem;margin-bottom:12px;display:block;color:var(--dark-border)"></i>
+            <div style="font-size:.85rem">Sin pagos registrados aún.</div>
         </div>
     <?php else: ?>
     <div class="table-responsive">
         <table class="table-ic">
             <thead>
                 <tr>
-                    <th>Cuota N°</th>
-                    <th>Fecha jornada</th>
-                    <th style="text-align:right">Efectivo</th>
-                    <th style="text-align:right">Transferencia</th>
-                    <th style="text-align:right">Mora</th>
+                    <th>Cuota</th>
+                    <th>Fecha</th>
+                    <th class="hide-mobile" style="text-align:right">Efectivo</th>
+                    <th class="hide-mobile" style="text-align:right">Transfer.</th>
+                    <th class="hide-mobile" style="text-align:right">Mora</th>
                     <th style="text-align:right">Total</th>
-                    <th>Cobrador</th>
+                    <th class="hide-mobile">Cobrador</th>
                 </tr>
             </thead>
             <tbody>
@@ -287,28 +343,28 @@ require __DIR__ . '/../views/layout.php';
                 <tr>
                     <td style="text-align:center;font-weight:600"><?= (int)$hp['numero_cuota'] ?></td>
                     <td style="white-space:nowrap"><?= date('d/m/Y', strtotime($hp['fecha_jornada'])) ?></td>
-                    <td style="text-align:right">
+                    <td class="hide-mobile" style="text-align:right">
                         <?= (float)$hp['monto_efectivo'] > 0 ? formato_pesos((float)$hp['monto_efectivo']) : '<span style="color:var(--text-muted)">—</span>' ?>
                     </td>
-                    <td style="text-align:right">
+                    <td class="hide-mobile" style="text-align:right">
                         <?= (float)$hp['monto_transferencia'] > 0 ? formato_pesos((float)$hp['monto_transferencia']) : '<span style="color:var(--text-muted)">—</span>' ?>
                     </td>
-                    <td style="text-align:right;color:var(--danger)">
+                    <td class="hide-mobile" style="text-align:right;color:var(--danger)">
                         <?= (float)$hp['monto_mora_cobrada'] > 0 ? formato_pesos((float)$hp['monto_mora_cobrada']) : '<span style="color:var(--text-muted)">—</span>' ?>
                     </td>
-                    <td style="text-align:right;font-weight:600"><?= formato_pesos((float)$hp['monto_total']) ?></td>
-                    <td style="font-size:.82rem;color:var(--text-muted)"><?= e($hp['cobrador_nombre']) ?></td>
+                    <td style="text-align:right;font-weight:600;color:var(--success)"><?= formato_pesos((float)$hp['monto_total']) ?></td>
+                    <td class="hide-mobile" style="font-size:.82rem;color:var(--text-muted)"><?= e($hp['cobrador_nombre']) ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
             <tfoot>
                 <tr style="font-weight:700;border-top:2px solid var(--dark-border)">
                     <td colspan="2" style="color:var(--text-muted)">Totales</td>
-                    <td style="text-align:right"><?= formato_pesos($hist_ef) ?></td>
-                    <td style="text-align:right"><?= formato_pesos($hist_tr) ?></td>
-                    <td style="text-align:right;color:var(--danger)"><?= $hist_mora > 0 ? formato_pesos($hist_mora) : '—' ?></td>
+                    <td class="hide-mobile" style="text-align:right"><?= formato_pesos($hist_ef) ?></td>
+                    <td class="hide-mobile" style="text-align:right"><?= formato_pesos($hist_tr) ?></td>
+                    <td class="hide-mobile" style="text-align:right;color:var(--danger)"><?= $hist_mora > 0 ? formato_pesos($hist_mora) : '—' ?></td>
                     <td style="text-align:right;color:var(--success)"><?= formato_pesos($hist_tot) ?></td>
-                    <td></td>
+                    <td class="hide-mobile"></td>
                 </tr>
             </tfoot>
         </table>
