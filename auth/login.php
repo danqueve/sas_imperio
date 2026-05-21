@@ -9,7 +9,7 @@ require_once __DIR__ . '/../config/funciones.php';
 if (!empty($_SESSION['user_id'])) {
     $destino_ini = match($_SESSION['rol'] ?? '') {
         'cobrador' => BASE_URL . 'cobrador/agenda',
-        'vendedor' => BASE_URL . 'ventas/index',
+        'vendedor' => BASE_URL . 'ventas/mis_clientes',
         default    => BASE_URL . 'admin/dashboard',
     };
     header('Location: ' . $destino_ini);
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $destino = match($user['rol']) {
                     'cobrador' => BASE_URL . 'cobrador/agenda',
-                    'vendedor' => BASE_URL . 'ventas/index',
+                    'vendedor' => BASE_URL . 'ventas/mis_clientes',
                     default    => BASE_URL . 'admin/dashboard',
                 };
                 header("Location: $destino");
