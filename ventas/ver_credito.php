@@ -125,7 +125,46 @@ require __DIR__ . '/../views/layout.php';
     .hide-mobile { display: none; }
     .info-grid   { grid-template-columns: 1fr !important; }
     .info-col-left { border-right: none !important; border-bottom: 1px solid var(--dark-border); }
-    .table-ic td, .table-ic th { padding: 10px 8px; }
+
+    /* Card-per-row para tablas de cuotas e historial */
+    .tabla-cards-mobile { border: none; background: transparent; }
+    .tabla-cards-mobile thead { display: none; }
+    .tabla-cards-mobile tbody tr {
+        display: block;
+        border: 1px solid var(--dark-border);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        margin-bottom: 8px;
+    }
+    .tabla-cards-mobile td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+        border: none !important;
+        font-size: .83rem;
+        text-align: left;
+        white-space: normal;
+    }
+    .tabla-cards-mobile td[data-label]::before {
+        content: attr(data-label);
+        color: var(--text-muted);
+        font-size: .72rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-right: 12px;
+        flex-shrink: 0;
+    }
+    .tabla-cards-mobile td.td-header {
+        font-size: .9rem;
+        font-weight: 700;
+        padding-bottom: 7px;
+        margin-bottom: 2px;
+        border-bottom: 1px solid var(--dark-border-2) !important;
+        justify-content: space-between;
+    }
+    .tabla-cards-mobile td.td-header::before { content: none; }
+    .tabla-cards-mobile tfoot { display: none; }
 }
 </style>
 
@@ -263,15 +302,14 @@ require __DIR__ . '/../views/layout.php';
         </span>
     </div>
     <div class="table-responsive">
-        <table class="table-ic">
+        <table class="table-ic tabla-cards-mobile">
             <thead>
                 <tr>
-                    <th style="width:44px">N°</th>
+                    <th>Cuota</th>
                     <th>Vencimiento</th>
                     <th style="text-align:right">Monto</th>
-                    <th class="hide-mobile" style="text-align:right">Mora</th>
-                    <th>Estado</th>
-                    <th class="hide-mobile" style="text-align:right">Pagado</th>
+                    <th style="text-align:right">Mora</th>
+                    <th style="text-align:right">Pagado</th>
                 </tr>
             </thead>
             <tbody>
@@ -285,19 +323,20 @@ require __DIR__ . '/../views/layout.php';
                         $mora = calcular_mora((float)$cu['monto_cuota'] - (float)($cu['saldo_pagado'] ?? 0), $dias, 15);
                     }
                     $es_pagada = in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA', 'CANCELADA']);
+                    $pagado    = (float)($cu['saldo_pagado'] ?? 0);
                 ?>
-                <tr style="<?= $es_pagada ? 'opacity:.6' : '' ?>">
-                    <td style="text-align:center;font-weight:600"><?= (int)$cu['numero_cuota'] ?></td>
-                    <td style="white-space:nowrap"><?= date('d/m/Y', strtotime($cu['fecha_vencimiento'])) ?></td>
-                    <td style="text-align:right"><?= formato_pesos((float)$cu['monto_cuota']) ?></td>
-                    <td class="hide-mobile" style="text-align:right;color:<?= $mora > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
+                <tr style="<?= $es_pagada ? 'opacity:.55' : '' ?>">
+                    <td class="td-header">
+                        <span style="font-weight:700">#<?= (int)$cu['numero_cuota'] ?></span>
+                        <span class="badge-ic badge-<?= $badge_class ?>"><?= e($cu['estado']) ?></span>
+                    </td>
+                    <td data-label="Vcto." style="white-space:nowrap"><?= date('d/m/Y', strtotime($cu['fecha_vencimiento'])) ?></td>
+                    <td data-label="Monto" style="text-align:right"><?= formato_pesos((float)$cu['monto_cuota']) ?></td>
+                    <td data-label="Mora" style="text-align:right;color:<?= $mora > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
                         <?= $mora > 0 ? formato_pesos($mora) : '—' ?>
                     </td>
-                    <td><span class="badge-ic badge-<?= $badge_class ?>"><?= e($cu['estado']) ?></span></td>
-                    <td class="hide-mobile" style="text-align:right">
-                        <?= (float)($cu['saldo_pagado'] ?? 0) > 0
-                            ? formato_pesos((float)$cu['saldo_pagado'])
-                            : '<span style="color:var(--text-muted)">—</span>' ?>
+                    <td data-label="Pagado" style="text-align:right">
+                        <?= $pagado > 0 ? formato_pesos($pagado) : '<span style="color:var(--text-muted)">—</span>' ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -326,45 +365,46 @@ require __DIR__ . '/../views/layout.php';
         </div>
     <?php else: ?>
     <div class="table-responsive">
-        <table class="table-ic">
+        <table class="table-ic tabla-cards-mobile">
             <thead>
                 <tr>
-                    <th>Cuota</th>
-                    <th>Fecha</th>
-                    <th class="hide-mobile" style="text-align:right">Efectivo</th>
-                    <th class="hide-mobile" style="text-align:right">Transfer.</th>
-                    <th class="hide-mobile" style="text-align:right">Mora</th>
+                    <th>Cuota / Fecha</th>
+                    <th style="text-align:right">Efectivo</th>
+                    <th style="text-align:right">Transfer.</th>
+                    <th style="text-align:right">Mora</th>
                     <th style="text-align:right">Total</th>
-                    <th class="hide-mobile">Cobrador</th>
+                    <th>Cobrador</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($historial_pagos as $hp): ?>
                 <tr>
-                    <td style="text-align:center;font-weight:600"><?= (int)$hp['numero_cuota'] ?></td>
-                    <td style="white-space:nowrap"><?= date('d/m/Y', strtotime($hp['fecha_jornada'])) ?></td>
-                    <td class="hide-mobile" style="text-align:right">
+                    <td class="td-header">
+                        <span style="font-weight:700">#<?= (int)$hp['numero_cuota'] ?></span>
+                        <span style="font-size:.8rem;color:var(--text-muted)"><?= date('d/m/Y', strtotime($hp['fecha_jornada'])) ?></span>
+                    </td>
+                    <td data-label="Efectivo" style="text-align:right">
                         <?= (float)$hp['monto_efectivo'] > 0 ? formato_pesos((float)$hp['monto_efectivo']) : '<span style="color:var(--text-muted)">—</span>' ?>
                     </td>
-                    <td class="hide-mobile" style="text-align:right">
+                    <td data-label="Transfer." style="text-align:right">
                         <?= (float)$hp['monto_transferencia'] > 0 ? formato_pesos((float)$hp['monto_transferencia']) : '<span style="color:var(--text-muted)">—</span>' ?>
                     </td>
-                    <td class="hide-mobile" style="text-align:right;color:var(--danger)">
-                        <?= (float)$hp['monto_mora_cobrada'] > 0 ? formato_pesos((float)$hp['monto_mora_cobrada']) : '<span style="color:var(--text-muted)">—</span>' ?>
+                    <td data-label="Mora" style="text-align:right;color:<?= (float)$hp['monto_mora_cobrada'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
+                        <?= (float)$hp['monto_mora_cobrada'] > 0 ? formato_pesos((float)$hp['monto_mora_cobrada']) : '—' ?>
                     </td>
-                    <td style="text-align:right;font-weight:600;color:var(--success)"><?= formato_pesos((float)$hp['monto_total']) ?></td>
-                    <td class="hide-mobile" style="font-size:.82rem;color:var(--text-muted)"><?= e($hp['cobrador_nombre']) ?></td>
+                    <td data-label="Total" style="text-align:right;font-weight:700;color:var(--success)"><?= formato_pesos((float)$hp['monto_total']) ?></td>
+                    <td data-label="Cobrador" style="font-size:.82rem;color:var(--text-muted)"><?= e($hp['cobrador_nombre']) ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
             <tfoot>
                 <tr style="font-weight:700;border-top:2px solid var(--dark-border)">
-                    <td colspan="2" style="color:var(--text-muted)">Totales</td>
-                    <td class="hide-mobile" style="text-align:right"><?= formato_pesos($hist_ef) ?></td>
-                    <td class="hide-mobile" style="text-align:right"><?= formato_pesos($hist_tr) ?></td>
-                    <td class="hide-mobile" style="text-align:right;color:var(--danger)"><?= $hist_mora > 0 ? formato_pesos($hist_mora) : '—' ?></td>
+                    <td style="color:var(--text-muted)">Totales</td>
+                    <td style="text-align:right"><?= formato_pesos($hist_ef) ?></td>
+                    <td style="text-align:right"><?= formato_pesos($hist_tr) ?></td>
+                    <td style="text-align:right;color:var(--danger)"><?= $hist_mora > 0 ? formato_pesos($hist_mora) : '—' ?></td>
                     <td style="text-align:right;color:var(--success)"><?= formato_pesos($hist_tot) ?></td>
-                    <td class="hide-mobile"></td>
+                    <td></td>
                 </tr>
             </tfoot>
         </table>
