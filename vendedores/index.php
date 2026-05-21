@@ -242,173 +242,170 @@ require_once __DIR__ . '/../views/layout.php';
 
 <?php if (es_admin()): ?>
 <!-- ── Modal: Dar acceso ───────────────────────────────────── -->
-<div class="modal fade" id="modal-crear-acceso" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:420px">
-        <div class="modal-content" style="background:var(--dark-card);border:1px solid var(--dark-border);border-radius:12px">
-            <div class="modal-header" style="border-bottom:1px solid var(--dark-border);padding:16px 20px">
-                <h5 class="modal-title" style="font-size:1rem;font-weight:700">
-                    <i class="fa fa-user-plus" style="color:var(--primary-light)"></i>
-                    Dar acceso al sistema
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="modal-overlay" id="modal-crear-acceso">
+    <div class="modal-box" style="max-width:420px">
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fa fa-user-plus" style="color:var(--primary-light)"></i>
+                Dar acceso al sistema
             </div>
-            <form method="POST">
-                <?php csrf_input(); ?>
-                <input type="hidden" name="accion" value="crear_acceso">
-                <input type="hidden" name="vendedor_id" id="crear-vendedor-id">
-                <div class="modal-body" style="padding:20px">
-                    <div style="background:var(--dark-2);border-radius:8px;padding:10px 14px;
-                                margin-bottom:16px;font-size:.83rem;color:var(--text-muted)">
-                        <i class="fa fa-user" style="color:var(--primary-light)"></i>
-                        <span id="crear-nombre-vendedor" style="color:var(--text-main);font-weight:600;margin-left:4px"></span>
-                    </div>
-                    <div class="form-group mb-3">
-                        <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
-                            Usuario (nombre de login) *
-                        </label>
-                        <input type="text" name="usuario" class="form-control" required autocomplete="off"
-                               placeholder="Ej: jperez">
-                    </div>
-                    <div class="form-group mb-3">
-                        <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
-                            Contraseña * <span style="font-size:.75rem">(mín. 8 caracteres)</span>
-                        </label>
-                        <div style="position:relative">
-                            <input type="password" name="password" id="crear-pwd" class="form-control" required
-                                   minlength="8" autocomplete="new-password" placeholder="••••••••">
-                            <button type="button" class="toggle-pwd"
-                                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                           background:none;border:none;color:var(--text-muted);cursor:pointer"
-                                    onclick="togglePwd('crear-pwd',this)">
-                                <i class="fa fa-eye"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
-                            Repetir contraseña *
-                        </label>
-                        <div style="position:relative">
-                            <input type="password" name="password2" id="crear-pwd2" class="form-control" required
-                                   minlength="8" autocomplete="new-password" placeholder="••••••••">
-                            <button type="button" class="toggle-pwd"
-                                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                           background:none;border:none;color:var(--text-muted);cursor:pointer"
-                                    onclick="togglePwd('crear-pwd2',this)">
-                                <i class="fa fa-eye"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer" style="border-top:1px solid var(--dark-border);padding:14px 20px;gap:10px">
-                    <button type="button" class="btn-ic btn-ghost" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn-ic btn-primary">
-                        <i class="fa fa-user-plus"></i> Crear acceso
-                    </button>
-                </div>
-            </form>
+            <button class="modal-close" onclick="closeModal('modal-crear-acceso')">✕</button>
         </div>
+        <form method="POST">
+            <?php csrf_input(); ?>
+            <input type="hidden" name="accion" value="crear_acceso">
+            <input type="hidden" name="vendedor_id" id="crear-vendedor-id">
+            <div style="padding:20px">
+                <div style="background:var(--dark-2);border-radius:8px;padding:10px 14px;
+                            margin-bottom:16px;font-size:.83rem;color:var(--text-muted)">
+                    <i class="fa fa-user" style="color:var(--primary-light)"></i>
+                    <span id="crear-nombre-vendedor" style="color:var(--text-main);font-weight:600;margin-left:4px"></span>
+                </div>
+                <div class="form-group mb-3">
+                    <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
+                        Usuario (nombre de login) *
+                    </label>
+                    <input type="text" name="usuario" class="form-control" required autocomplete="off"
+                           placeholder="Ej: jperez">
+                </div>
+                <div class="form-group mb-3">
+                    <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
+                        Contraseña * <span style="font-size:.75rem">(mín. 8 caracteres)</span>
+                    </label>
+                    <div style="position:relative">
+                        <input type="password" name="password" id="crear-pwd" class="form-control" required
+                               minlength="8" autocomplete="new-password" placeholder="••••••••">
+                        <button type="button"
+                                style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                       background:none;border:none;color:var(--text-muted);cursor:pointer"
+                                onclick="togglePwd('crear-pwd',this)">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
+                        Repetir contraseña *
+                    </label>
+                    <div style="position:relative">
+                        <input type="password" name="password2" id="crear-pwd2" class="form-control" required
+                               minlength="8" autocomplete="new-password" placeholder="••••••••">
+                        <button type="button"
+                                style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                       background:none;border:none;color:var(--text-muted);cursor:pointer"
+                                onclick="togglePwd('crear-pwd2',this)">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div style="border-top:1px solid var(--dark-border);padding:14px 20px;
+                        display:flex;gap:10px;justify-content:flex-end">
+                <button type="button" class="btn-ic btn-ghost" onclick="closeModal('modal-crear-acceso')">Cancelar</button>
+                <button type="submit" class="btn-ic btn-primary">
+                    <i class="fa fa-user-plus"></i> Crear acceso
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
 <!-- ── Modal: Cambiar contraseña ──────────────────────────── -->
-<div class="modal fade" id="modal-cambiar-clave" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:420px">
-        <div class="modal-content" style="background:var(--dark-card);border:1px solid var(--dark-border);border-radius:12px">
-            <div class="modal-header" style="border-bottom:1px solid var(--dark-border);padding:16px 20px">
-                <h5 class="modal-title" style="font-size:1rem;font-weight:700">
-                    <i class="fa fa-key" style="color:var(--warning)"></i>
-                    Cambiar contraseña
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="modal-overlay" id="modal-cambiar-clave">
+    <div class="modal-box" style="max-width:420px">
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fa fa-key" style="color:var(--warning)"></i>
+                Cambiar contraseña
             </div>
-            <form method="POST">
-                <?php csrf_input(); ?>
-                <input type="hidden" name="accion" value="cambiar_password">
-                <input type="hidden" name="vendedor_id" id="clave-vendedor-id">
-                <div class="modal-body" style="padding:20px">
-                    <div style="background:var(--dark-2);border-radius:8px;padding:10px 14px;
-                                margin-bottom:16px;font-size:.83rem;color:var(--text-muted)">
-                        <i class="fa fa-user" style="color:var(--warning)"></i>
-                        <span id="clave-nombre-vendedor" style="color:var(--text-main);font-weight:600;margin-left:4px"></span>
-                        &nbsp;·&nbsp;
-                        <span id="clave-usuario" style="font-family:monospace;color:var(--primary-light)"></span>
-                    </div>
-                    <div class="form-group mb-3">
-                        <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
-                            Nueva contraseña * <span style="font-size:.75rem">(mín. 8 caracteres)</span>
-                        </label>
-                        <div style="position:relative">
-                            <input type="password" name="password" id="clave-pwd" class="form-control" required
-                                   minlength="8" autocomplete="new-password" placeholder="••••••••">
-                            <button type="button"
-                                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                           background:none;border:none;color:var(--text-muted);cursor:pointer"
-                                    onclick="togglePwd('clave-pwd',this)">
-                                <i class="fa fa-eye"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
-                            Repetir nueva contraseña *
-                        </label>
-                        <div style="position:relative">
-                            <input type="password" name="password2" id="clave-pwd2" class="form-control" required
-                                   minlength="8" autocomplete="new-password" placeholder="••••••••">
-                            <button type="button"
-                                    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                           background:none;border:none;color:var(--text-muted);cursor:pointer"
-                                    onclick="togglePwd('clave-pwd2',this)">
-                                <i class="fa fa-eye"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer" style="border-top:1px solid var(--dark-border);padding:14px 20px;gap:10px">
-                    <button type="button" class="btn-ic btn-ghost" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn-ic btn-warning" style="color:#000">
-                        <i class="fa fa-key"></i> Guardar contraseña
-                    </button>
-                </div>
-            </form>
+            <button class="modal-close" onclick="closeModal('modal-cambiar-clave')">✕</button>
         </div>
+        <form method="POST">
+            <?php csrf_input(); ?>
+            <input type="hidden" name="accion" value="cambiar_password">
+            <input type="hidden" name="vendedor_id" id="clave-vendedor-id">
+            <div style="padding:20px">
+                <div style="background:var(--dark-2);border-radius:8px;padding:10px 14px;
+                            margin-bottom:16px;font-size:.83rem;color:var(--text-muted)">
+                    <i class="fa fa-user" style="color:var(--warning)"></i>
+                    <span id="clave-nombre-vendedor" style="color:var(--text-main);font-weight:600;margin-left:4px"></span>
+                    &nbsp;·&nbsp;
+                    <span id="clave-usuario" style="font-family:monospace;color:var(--primary-light)"></span>
+                </div>
+                <div class="form-group mb-3">
+                    <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
+                        Nueva contraseña * <span style="font-size:.75rem">(mín. 8 caracteres)</span>
+                    </label>
+                    <div style="position:relative">
+                        <input type="password" name="password" id="clave-pwd" class="form-control" required
+                               minlength="8" autocomplete="new-password" placeholder="••••••••">
+                        <button type="button"
+                                style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                       background:none;border:none;color:var(--text-muted);cursor:pointer"
+                                onclick="togglePwd('clave-pwd',this)">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px;display:block">
+                        Repetir nueva contraseña *
+                    </label>
+                    <div style="position:relative">
+                        <input type="password" name="password2" id="clave-pwd2" class="form-control" required
+                               minlength="8" autocomplete="new-password" placeholder="••••••••">
+                        <button type="button"
+                                style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                       background:none;border:none;color:var(--text-muted);cursor:pointer"
+                                onclick="togglePwd('clave-pwd2',this)">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div style="border-top:1px solid var(--dark-border);padding:14px 20px;
+                        display:flex;gap:10px;justify-content:flex-end">
+                <button type="button" class="btn-ic btn-ghost" onclick="closeModal('modal-cambiar-clave')">Cancelar</button>
+                <button type="submit" class="btn-ic btn-warning" style="color:#000">
+                    <i class="fa fa-key"></i> Guardar contraseña
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
 <!-- ── Modal: Quitar acceso ───────────────────────────────── -->
-<div class="modal fade" id="modal-quitar-acceso" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
-        <div class="modal-content" style="background:var(--dark-card);border:1px solid var(--dark-border);border-radius:12px">
-            <div class="modal-header" style="border-bottom:1px solid var(--dark-border);padding:16px 20px">
-                <h5 class="modal-title" style="font-size:1rem;font-weight:700">
-                    <i class="fa fa-user-xmark" style="color:var(--danger)"></i>
-                    Quitar acceso
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="modal-overlay" id="modal-quitar-acceso">
+    <div class="modal-box" style="max-width:380px">
+        <div class="modal-header">
+            <div class="modal-title" style="color:var(--danger)">
+                <i class="fa fa-user-xmark"></i>
+                Quitar acceso
             </div>
-            <form method="POST">
-                <?php csrf_input(); ?>
-                <input type="hidden" name="accion" value="quitar_acceso">
-                <input type="hidden" name="vendedor_id" id="quitar-vendedor-id">
-                <div class="modal-body" style="padding:20px;font-size:.9rem">
-                    <p style="color:var(--text-body)">
-                        ¿Eliminás el acceso de
-                        <strong id="quitar-nombre-vendedor" style="color:var(--text-main)"></strong>?
-                    </p>
-                    <p style="color:var(--text-muted);font-size:.82rem">
-                        El usuario <code id="quitar-usuario" style="color:var(--danger)"></code>
-                        será eliminado del sistema. Esta acción no se puede deshacer.
-                    </p>
-                </div>
-                <div class="modal-footer" style="border-top:1px solid var(--dark-border);padding:14px 20px;gap:10px">
-                    <button type="button" class="btn-ic btn-ghost" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn-ic btn-danger">
-                        <i class="fa fa-trash"></i> Eliminar acceso
-                    </button>
-                </div>
-            </form>
+            <button class="modal-close" onclick="closeModal('modal-quitar-acceso')">✕</button>
         </div>
+        <form method="POST">
+            <?php csrf_input(); ?>
+            <input type="hidden" name="accion" value="quitar_acceso">
+            <input type="hidden" name="vendedor_id" id="quitar-vendedor-id">
+            <div style="padding:20px;font-size:.9rem">
+                <p style="color:var(--text-body)">
+                    ¿Eliminás el acceso de
+                    <strong id="quitar-nombre-vendedor" style="color:var(--text-main)"></strong>?
+                </p>
+                <p style="color:var(--text-muted);font-size:.82rem">
+                    El usuario <code id="quitar-usuario" style="color:var(--danger)"></code>
+                    será eliminado del sistema. Esta acción no se puede deshacer.
+                </p>
+            </div>
+            <div style="border-top:1px solid var(--dark-border);padding:14px 20px;
+                        display:flex;gap:10px;justify-content:flex-end">
+                <button type="button" class="btn-ic btn-ghost" onclick="closeModal('modal-quitar-acceso')">Cancelar</button>
+                <button type="submit" class="btn-ic btn-danger">
+                    <i class="fa fa-trash"></i> Eliminar acceso
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -417,20 +414,22 @@ function abrirCrearAcceso(vendedorId, nombre) {
     document.getElementById('crear-vendedor-id').value = vendedorId;
     document.getElementById('crear-nombre-vendedor').textContent = nombre;
     document.querySelector('#modal-crear-acceso form').reset();
-    new bootstrap.Modal(document.getElementById('modal-crear-acceso')).show();
+    document.getElementById('crear-vendedor-id').value = vendedorId;
+    openModal('modal-crear-acceso');
 }
 function abrirCambiarClave(vendedorId, nombre, usuario) {
     document.getElementById('clave-vendedor-id').value = vendedorId;
     document.getElementById('clave-nombre-vendedor').textContent = nombre;
     document.getElementById('clave-usuario').textContent = usuario;
     document.querySelector('#modal-cambiar-clave form').reset();
-    new bootstrap.Modal(document.getElementById('modal-cambiar-clave')).show();
+    document.getElementById('clave-vendedor-id').value = vendedorId;
+    openModal('modal-cambiar-clave');
 }
 function confirmarQuitarAcceso(vendedorId, nombre, usuario) {
     document.getElementById('quitar-vendedor-id').value = vendedorId;
     document.getElementById('quitar-nombre-vendedor').textContent = nombre;
     document.getElementById('quitar-usuario').textContent = usuario;
-    new bootstrap.Modal(document.getElementById('modal-quitar-acceso')).show();
+    openModal('modal-quitar-acceso');
 }
 function togglePwd(inputId, btn) {
     const inp = document.getElementById(inputId);
