@@ -188,6 +188,16 @@ require __DIR__ . '/../views/layout.php';
             &nbsp;·&nbsp; <?= badge_estado_credito($cr['estado']) ?>
         </div>
     </div>
+    <?php if (!empty($cr['telefono'])): ?>
+    <a href="<?= whatsapp_url($cr['telefono'], 'Hola ' . $cr['nombres'] . ', te contacto por tu crédito #' . $id . ' en Imperio Comercial.') ?>"
+       target="_blank" rel="noopener"
+       class="btn-ic btn-sm"
+       style="background:#25D366;color:#fff;border:none;display:flex;align-items:center;gap:7px;
+              font-size:.85rem;font-weight:600;white-space:nowrap;min-height:44px;padding:0 16px">
+        <i class="fa-brands fa-whatsapp" style="font-size:1.1rem"></i>
+        <span>WhatsApp</span>
+    </a>
+    <?php endif; ?>
 </div>
 
 <!-- Barra de progreso global -->
@@ -255,10 +265,21 @@ require __DIR__ . '/../views/layout.php';
                         padding:6px 0;font-size:.85rem">
                 <span style="color:var(--text-muted)">Teléfono</span>
                 <?php if (!empty($cr['telefono'])): ?>
-                    <a href="tel:<?= e($cr['telefono']) ?>"
-                       style="font-weight:500;color:var(--primary-light);text-decoration:none">
-                        <?= e($cr['telefono']) ?>
-                    </a>
+                    <span style="display:flex;align-items:center;gap:8px">
+                        <a href="tel:<?= e($cr['telefono']) ?>"
+                           style="font-weight:500;color:var(--primary-light);text-decoration:none">
+                            <?= e($cr['telefono']) ?>
+                        </a>
+                        <a href="<?= whatsapp_url($cr['telefono']) ?>"
+                           target="_blank" rel="noopener"
+                           title="Contactar por WhatsApp"
+                           style="display:flex;align-items:center;justify-content:center;
+                                  width:30px;height:30px;border-radius:50%;
+                                  background:#25D366;color:#fff;text-decoration:none;
+                                  font-size:.95rem;flex-shrink:0">
+                            <i class="fa-brands fa-whatsapp"></i>
+                        </a>
+                    </span>
                 <?php else: ?>
                     <span style="font-weight:500">—</span>
                 <?php endif; ?>
