@@ -77,8 +77,9 @@ $permisos = [
     'gestionar_usuarios' => ['admin'],
     'ver_reportes' => ['admin', 'supervisor'],
     'ver_estadisticas' => ['admin', 'supervisor'],
-    'registrar_ventas' => ['admin', 'supervisor', 'vendedor'],
-    'ver_ventas'       => ['admin', 'supervisor', 'vendedor'],
+    'registrar_ventas'       => ['admin', 'supervisor', 'vendedor'],
+    'ver_ventas'             => ['admin', 'supervisor', 'vendedor'],
+    'ver_clientes_vendedor'  => ['admin', 'supervisor', 'vendedor'],
 ];
 
 function verificar_permiso(string $accion): void

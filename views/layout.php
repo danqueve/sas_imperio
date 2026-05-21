@@ -277,6 +277,13 @@ if ($rol === 'admin') {
                 <?php endif; ?>
 
                 <?php if ($rol === 'vendedor'): ?>
+                    <div class="nav-label">Mis Clientes</div>
+                    <a class="nav-item <?= ($page_current ?? '') === 'mis_clientes' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>ventas/mis_clientes"
+                       data-tooltip="Mis Clientes">
+                        <i class="fa fa-users"></i>
+                        <span class="nav-text">Mis Clientes</span>
+                    </a>
                     <div class="nav-label">Ventas</div>
                     <a class="nav-item <?= ($page_current ?? '') === 'ventas_nueva' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>ventas/nueva"
