@@ -116,6 +116,10 @@ $niveles_meta = [
         </select>
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
         <a href="riesgo_cartera" class="btn-ic btn-ghost">Limpiar</a>
+        <a href="riesgo_cartera_pdf?<?= http_build_query(['cobrador_id' => $cobrador_id, 'riesgo' => $riesgo_sel]) ?>"
+           target="_blank" class="btn-ic btn-ghost" style="margin-left:auto">
+            <i class="fa fa-file-pdf"></i> Exportar PDF
+        </a>
     </form>
 </div>
 
