@@ -26,9 +26,9 @@ $stmt = $pdo->prepare("
 $stmt->execute([$id]);
 $cr = $stmt->fetch();
 
-if (!$cr || !in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])) {
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'El crédito no existe o no se puede modificar su vendedor en su estado actual.'];
-    header("Location: ver?id=$id");
+if (!$cr) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'El crédito no existe.'];
+    header("Location: index");
     exit;
 }
 

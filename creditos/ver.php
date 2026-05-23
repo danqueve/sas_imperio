@@ -538,7 +538,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <td class="text-muted" style="padding:5px 0">Vendedor</td>
                     <td>
                         <?= !empty($cr['vendedor_n']) ? e($cr['vendedor_n'] . ' ' . $cr['vendedor_a']) : '<span class="text-muted">No asignado</span>' ?>
-                        <?php if (in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])): ?>
+                        <?php if (es_admin() || es_supervisor()): ?>
                             <a href="cambiar_vendedor?id=<?= $id ?>" class="btn-ic btn-ghost btn-sm" title="Cambiar vendedor" style="padding:2px 5px; font-size:.7rem; margin-left:10px;"><i class="fa fa-edit"></i></a>
                         <?php endif; ?>
                     </td>
