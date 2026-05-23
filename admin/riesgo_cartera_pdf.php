@@ -30,6 +30,7 @@ $stmt = $pdo->prepare("
         cl.apellidos, cl.nombres, cl.zona,
         COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
         CONCAT(u.nombre, ' ', u.apellido)              AS cobrador,
+        COALESCE(CONCAT(v.nombre, ' ', v.apellido), '—') AS vendedor,
         COALESCE(cr.veces_refinanciado, 0)              AS refinanciado,
         COUNT(CASE WHEN cu.estado IN ('VENCIDA','PARCIAL') AND cu.fecha_vencimiento < CURDATE() THEN 1 END) AS cuotas_vencidas,
         COALESCE(AVG(CASE WHEN cu.fecha_vencimiento < CURDATE() AND cu.estado IN ('VENCIDA','PARCIAL')
@@ -42,10 +43,11 @@ $stmt = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     JOIN ic_cuotas cu   ON cu.credito_id = cr.id
     JOIN ic_usuarios u  ON cr.cobrador_id = u.id
+    LEFT JOIN ic_vendedores v ON cr.vendedor_id = v.id
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
     WHERE $whereStr
     GROUP BY cr.id, cl.apellidos, cl.nombres, cl.zona, cr.articulo_desc, a.descripcion,
-             u.nombre, u.apellido, cr.veces_refinanciado
+             u.nombre, u.apellido, v.nombre, v.apellido, cr.veces_refinanciado
     ORDER BY max_dias DESC, cl.apellidos ASC
 ");
 $stmt->execute($params);
@@ -152,11 +154,11 @@ $pdf->Ln(9);
 $pdf->SetTextColor(0, 0, 0);
 
 // ── Encabezado tabla ───────────────────────────────────────
-// Anchos (suma = 267mm en landscape A4 con márgenes 10)
-// Cliente(52) | Artículo(48) | Cobrador(38) | Zona(22) | Venc.(18) | Máx.Días(18) | Saldo(30) | Riesgo(24) = 250
-$cols   = [55, 50, 38, 22, 18, 20, 32, 22];
-$labels = ['Cliente', 'Articulo', 'Cobrador', 'Zona', 'Cuotas Venc.', 'Max Dias', 'Saldo Pend.', 'Riesgo'];
-$aligns = ['L',  'L',  'L',  'C',  'C',       'C',        'R',          'C'];
+// Anchos (landscape A4: 277mm - 20 márgenes = 257mm útiles)
+// Cliente(48) | Artículo(40) | Cobrador(30) | Vendedor(30) | Zona(18) | Venc.(16) | Máx.Días(18) | Saldo(30) | Riesgo(22) = 252
+$cols   = [48, 40, 30, 30, 18, 16, 18, 30, 22];
+$labels = ['Cliente', 'Articulo', 'Cobrador', 'Vendedor', 'Zona', 'Cuotas Venc.', 'Max Dias', 'Saldo Pend.', 'Riesgo'];
+$aligns = ['L',  'L',  'L',  'L',  'C',  'C',           'C',         'R',           'C'];
 
 $pdf->SetFont('Helvetica', 'B', 7);
 $pdf->SetFillColor(220, 220, 230);
@@ -190,15 +192,16 @@ if (empty($rows)) {
         $pdf->Cell($cols[0], 5.5, $pdf->fitText($r['apellidos'] . ', ' . $r['nombres'], $cols[0] - 2), 1, 0, 'L', true);
         $pdf->Cell($cols[1], 5.5, $pdf->fitText($r['articulo'],  $cols[1] - 2), 1, 0, 'L', true);
         $pdf->Cell($cols[2], 5.5, $pdf->fitText($r['cobrador'],  $cols[2] - 2), 1, 0, 'L', true);
-        $pdf->Cell($cols[3], 5.5, $pdf->fitText($r['zona'] ?: '—', $cols[3] - 2), 1, 0, 'C', true);
-        $pdf->Cell($cols[4], 5.5, lat((int)$r['cuotas_vencidas'] > 0 ? (string)(int)$r['cuotas_vencidas'] : '—'), 1, 0, 'C', true);
-        $pdf->Cell($cols[5], 5.5, lat((int)$r['max_dias'] > 0 ? $r['max_dias'] . ' d.' : '—'), 1, 0, 'C', true);
-        $pdf->Cell($cols[6], 5.5, lat(fmt((float)$r['saldo_pendiente'])), 1, 0, 'R', true);
+        $pdf->Cell($cols[3], 5.5, $pdf->fitText($r['vendedor'],  $cols[3] - 2), 1, 0, 'L', true);
+        $pdf->Cell($cols[4], 5.5, $pdf->fitText($r['zona'] ?: '—', $cols[4] - 2), 1, 0, 'C', true);
+        $pdf->Cell($cols[5], 5.5, lat((int)$r['cuotas_vencidas'] > 0 ? (string)(int)$r['cuotas_vencidas'] : '—'), 1, 0, 'C', true);
+        $pdf->Cell($cols[6], 5.5, lat((int)$r['max_dias'] > 0 ? $r['max_dias'] . ' d.' : '—'), 1, 0, 'C', true);
+        $pdf->Cell($cols[7], 5.5, lat(fmt((float)$r['saldo_pendiente'])), 1, 0, 'R', true);
 
         // Celda Riesgo con color del nivel
         $pdf->SetTextColor($rc[0], $rc[1], $rc[2]);
         $pdf->SetFont('Helvetica', 'B', 7);
-        $pdf->Cell($cols[7], 5.5, lat($niveles_meta[$r['riesgo']]['label']), 1, 0, 'C', true);
+        $pdf->Cell($cols[8], 5.5, lat($niveles_meta[$r['riesgo']]['label']), 1, 0, 'C', true);
         $pdf->SetTextColor(0, 0, 0);
 
         $pdf->Ln();
