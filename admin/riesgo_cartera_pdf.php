@@ -48,7 +48,7 @@ $stmt = $pdo->prepare("
     WHERE $whereStr
     GROUP BY cr.id, cl.apellidos, cl.nombres, cl.zona, cr.articulo_desc, a.descripcion,
              u.nombre, u.apellido, v.nombre, v.apellido, cr.veces_refinanciado
-    ORDER BY max_dias DESC, cl.apellidos ASC
+    ORDER BY cobrador ASC, saldo_pendiente DESC
 ");
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
@@ -124,7 +124,7 @@ class RiesgoCarteraPDF extends PDFBase
     }
 }
 
-$pdf = new RiesgoCarteraPDF('L', 'mm', 'A4');
+$pdf = new RiesgoCarteraPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->SetMargins(10, 10, 10);
 $pdf->SetAutoPageBreak(true, 14);
@@ -133,7 +133,7 @@ $pdf->riesgo_lbl   = $label_riesgo;
 $pdf->gen_fecha    = date('d/m/Y H:i');
 $pdf->AddPage();
 
-// ── Resumen KPI ────────────────────────────────────────────
+// ── Resumen KPI (solo el nivel seleccionado si hay filtro) ─
 $niveles_meta = [
     1 => ['label' => 'Bajo',     'r' => 34,  'g' => 197, 'b' => 94],
     2 => ['label' => 'Moderado', 'r' => 14,  'g' => 165, 'b' => 233],
@@ -141,24 +141,26 @@ $niveles_meta = [
     4 => ['label' => 'Critico',  'r' => 239, 'g' => 68,  'b' => 68],
 ];
 
+$niveles_a_mostrar = $riesgo_sel > 0 ? [$riesgo_sel => $niveles_meta[$riesgo_sel]] : $niveles_meta;
+$n_kpi  = count($niveles_a_mostrar);
+$kpi_w  = 190 / $n_kpi; // portrait: 190mm útiles
+
 $pdf->SetFont('Helvetica', 'B', 8);
 $pdf->SetX(10);
-$kpi_w = (277 - 40) / 4; // 4 columnas en landscape
-foreach ($niveles_meta as $nv => $m) {
+foreach ($niveles_a_mostrar as $nv => $m) {
     $pdf->SetFillColor($m['r'], $m['g'], $m['b']);
     $pdf->SetTextColor(255, 255, 255);
-    $pdf->Cell($kpi_w, 7, lat($m['label'] . ': ' . $conteo_riesgo[$nv] . ' creditos — ' . fmt((float)$saldo_riesgo[$nv])), 1, 0, 'C', true);
-    $pdf->SetX($pdf->GetX());
+    $pdf->Cell($kpi_w, 7, lat($m['label'] . ': ' . $conteo_riesgo[$nv] . ' cred. — ' . fmt((float)$saldo_riesgo[$nv])), 1, 0, 'C', true);
 }
 $pdf->Ln(9);
 $pdf->SetTextColor(0, 0, 0);
 
 // ── Encabezado tabla ───────────────────────────────────────
-// Anchos (landscape A4: 277mm - 20 márgenes = 257mm útiles)
-// Cliente(48) | Artículo(40) | Cobrador(30) | Vendedor(30) | Zona(18) | Venc.(16) | Máx.Días(18) | Saldo(30) | Riesgo(22) = 252
-$cols   = [48, 40, 30, 30, 18, 16, 18, 30, 22];
-$labels = ['Cliente', 'Articulo', 'Cobrador', 'Vendedor', 'Zona', 'Cuotas Venc.', 'Max Dias', 'Saldo Pend.', 'Riesgo'];
-$aligns = ['L',  'L',  'L',  'L',  'C',  'C',           'C',         'R',           'C'];
+// Portrait A4: 210mm - 20 márgenes = 190mm útiles
+// #(6) | Cliente(45) | Artículo(35) | Vendedor(30) | Zona(16) | C.Venc.(16) | Max.Días(14) | Saldo(24) | Riesgo(20) = 206 → ajustado a 190
+$cols   = [6,  44, 34, 28, 15, 15, 14, 22, 18];
+$labels = ['#', 'Cliente', 'Articulo', 'Vendedor', 'Zona', 'C.Venc.', 'Max Dias', 'Saldo Pend.', 'Riesgo'];
+$aligns = ['C', 'L',  'L',  'L',  'C',  'C',       'C',       'R',          'C'];
 
 $pdf->SetFont('Helvetica', 'B', 7);
 $pdf->SetFillColor(220, 220, 230);
@@ -182,16 +184,18 @@ if (empty($rows)) {
     $pdf->Cell(array_sum($cols), 8, lat('Sin creditos con los filtros aplicados.'), 1, 1, 'C');
 } else {
     $fill = false;
+    $num  = 0;
     foreach ($rows as $r) {
+        $num++;
         $rc = $riesgo_colors[$r['riesgo']];
 
         $pdf->SetFont('Helvetica', '', 7);
         $pdf->SetFillColor($fill ? 245 : 255, $fill ? 245 : 255, $fill ? 250 : 255);
         $pdf->SetX(10);
 
-        $pdf->Cell($cols[0], 5.5, $pdf->fitText($r['apellidos'] . ', ' . $r['nombres'], $cols[0] - 2), 1, 0, 'L', true);
-        $pdf->Cell($cols[1], 5.5, $pdf->fitText($r['articulo'],  $cols[1] - 2), 1, 0, 'L', true);
-        $pdf->Cell($cols[2], 5.5, $pdf->fitText($r['cobrador'],  $cols[2] - 2), 1, 0, 'L', true);
+        $pdf->Cell($cols[0], 5.5, $num, 1, 0, 'C', true);
+        $pdf->Cell($cols[1], 5.5, $pdf->fitText($r['apellidos'] . ', ' . $r['nombres'], $cols[1] - 2), 1, 0, 'L', true);
+        $pdf->Cell($cols[2], 5.5, $pdf->fitText($r['articulo'],  $cols[2] - 2), 1, 0, 'L', true);
         $pdf->Cell($cols[3], 5.5, $pdf->fitText($r['vendedor'],  $cols[3] - 2), 1, 0, 'L', true);
         $pdf->Cell($cols[4], 5.5, $pdf->fitText($r['zona'] ?: '—', $cols[4] - 2), 1, 0, 'C', true);
         $pdf->Cell($cols[5], 5.5, lat((int)$r['cuotas_vencidas'] > 0 ? (string)(int)$r['cuotas_vencidas'] : '—'), 1, 0, 'C', true);
