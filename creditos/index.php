@@ -86,7 +86,10 @@ $stmt = $pdo->prepare("
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
            u.nombre AS cobrador_n, u.apellido AS cobrador_a,
            v.nombre AS vendedor_n, v.apellido AS vendedor_a,
-           (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas
+           (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas,
+           (SELECT COUNT(*) FROM ic_cuotas cu WHERE cu.credito_id=cr.id
+               AND cu.estado IN ('VENCIDA','PENDIENTE')
+               AND cu.fecha_vencimiento < CURDATE()) AS cuotas_venc_real
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
@@ -364,6 +367,13 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td>
                                 <?= badge_estado_credito($cr['estado']) ?>
+                                <?php if ($cr['cuotas_venc_real'] > 0 && $cr['estado'] === 'EN_CURSO'): ?>
+                                    <span class="badge-ic badge-warning"
+                                          style="margin-left:4px;font-size:.65rem"
+                                          title="<?= (int)$cr['cuotas_venc_real'] ?> cuota(s) con fecha vencida">
+                                        &#9888; <?= (int)$cr['cuotas_venc_real'] ?> atras.
+                                    </span>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <a href="ver?id=<?= $cr['id'] ?>" class="btn-ic btn-ghost btn-sm btn-icon"

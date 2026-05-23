@@ -65,8 +65,8 @@ $stmt = $pdo->prepare("
     JOIN ic_clientes cl  ON cr.cliente_id  = cl.id
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
     WHERE cu.estado IN ('VENCIDA', 'PENDIENTE')
-      AND DATEDIFF(CURDATE(), cu.fecha_vencimiento) = 2
-      AND cr.estado = 'EN_CURSO'
+      AND DATEDIFF(CURDATE(), cu.fecha_vencimiento) BETWEEN 1 AND 3
+      AND cr.estado IN ('EN_CURSO', 'MOROSO')
       AND cl.telefono IS NOT NULL
       AND cl.telefono != ''
     ORDER BY cl.apellidos ASC
