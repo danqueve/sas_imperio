@@ -48,7 +48,7 @@ $stmt = $pdo->prepare("
     WHERE $whereStr
     GROUP BY cr.id, cl.apellidos, cl.nombres, cl.zona, cr.articulo_desc, a.descripcion,
              u.nombre, u.apellido, v.nombre, v.apellido, cr.veces_refinanciado
-    ORDER BY cobrador ASC, saldo_pendiente DESC
+    ORDER BY saldo_pendiente DESC, cl.apellidos ASC
 ");
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
