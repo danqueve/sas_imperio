@@ -791,6 +791,21 @@ function whatsapp_finalizacion_url(string $telefono, string $nombre, string $art
 // ── Scoring predictivo para créditos activos ──────────────
 
 /**
+ * Función pura de scoring de riesgo. Centraliza los umbrales para todos los reportes.
+ * $cv=cuotas vencidas, $avg=promedio días atraso, $cm=cuotas activas con mora, $ref=refinanciaciones
+ */
+function calcular_nivel_riesgo(int $cv, float $avg, int $cm, int $ref): int
+{
+    // Crítico: reincidente, O muchas cuotas Y ya >14 días promedio, O >30 días promedio
+    if ($ref >= 2 || ($cv >= 4 && $avg > 14) || $avg > 30) return 4;
+    // Alto: refinanciado, O 2+ cuotas Y >7 días promedio, O >14 días promedio, O 3+ cuotas activas con mora
+    if ($ref >= 1 || ($cv >= 2 && $avg > 7) || $avg > 14 || $cm >= 3) return 3;
+    // Moderado: cualquier cuota vencida o mora activa
+    if ($cv >= 1 || $avg > 0 || $cm >= 1) return 2;
+    return 1; // Bajo
+}
+
+/**
  * Calcula nivel de riesgo de un crédito EN CURSO.
  * Retorna 1 (Bajo) a 4 (Crítico).
  */
@@ -801,8 +816,9 @@ function calcular_riesgo_credito_activo(int $credito_id, PDO $pdo): int
             COUNT(CASE WHEN cu.estado IN ('VENCIDA','PARCIAL') AND cu.fecha_vencimiento < CURDATE() THEN 1 END) AS cuotas_vencidas,
             COALESCE(AVG(CASE WHEN cu.fecha_vencimiento < CURDATE() AND cu.estado IN ('VENCIDA','PARCIAL')
                               THEN DATEDIFF(CURDATE(), cu.fecha_vencimiento) END), 0) AS avg_atraso,
-            COUNT(CASE WHEN cu.monto_mora > 0 THEN 1 END)                            AS con_mora,
-            COALESCE(cr.veces_refinanciado, 0)                                        AS refinanciado
+            COUNT(CASE WHEN cu.monto_mora > 0
+                        AND cu.estado NOT IN ('PAGADA','CAP_PAGADA','CANCELADA') THEN 1 END) AS con_mora,
+            COALESCE(cr.veces_refinanciado, 0) AS refinanciado
         FROM ic_cuotas cu
         JOIN ic_creditos cr ON cu.credito_id = cr.id
         WHERE cu.credito_id = ?
@@ -811,15 +827,10 @@ function calcular_riesgo_credito_activo(int $credito_id, PDO $pdo): int
     $d = $stmt->fetch();
     if (!$d) return 1;
 
-    $cv  = (int)   $d['cuotas_vencidas'];
-    $avg = (float) $d['avg_atraso'];
-    $cm  = (int)   $d['con_mora'];
-    $ref = (int)   $d['refinanciado'];
-
-    if ($ref >= 2 || $cv >= 4 || $avg > 30) return 4; // Crítico
-    if ($ref >= 1 || $cv >= 2 || $avg > 14 || $cm >= 3) return 3; // Alto
-    if ($cv >= 1 || $avg > 0 || $cm >= 1) return 2; // Moderado
-    return 1; // Bajo
+    return calcular_nivel_riesgo(
+        (int)$d['cuotas_vencidas'], (float)$d['avg_atraso'],
+        (int)$d['con_mora'],        (int)$d['refinanciado']
+    );
 }
 
 /**

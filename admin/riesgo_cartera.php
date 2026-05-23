@@ -36,7 +36,8 @@ $stmt = $pdo->prepare("
                           THEN DATEDIFF(CURDATE(), cu.fecha_vencimiento) END), 0) AS avg_atraso,
         COALESCE(MAX(CASE WHEN cu.fecha_vencimiento < CURDATE() AND cu.estado IN ('VENCIDA','PARCIAL')
                           THEN DATEDIFF(CURDATE(), cu.fecha_vencimiento) END), 0) AS max_dias,
-        COUNT(CASE WHEN cu.monto_mora > 0 THEN 1 END) AS con_mora,
+        COUNT(CASE WHEN cu.monto_mora > 0
+                    AND cu.estado NOT IN ('PAGADA','CAP_PAGADA','CANCELADA') THEN 1 END) AS con_mora,
         SUM(CASE WHEN cu.estado != 'PAGADA' THEN cu.monto_cuota - cu.saldo_pagado ELSE 0 END) AS saldo_pendiente
     FROM ic_creditos cr
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
@@ -56,18 +57,12 @@ $conteo_riesgo = [1 => 0, 2 => 0, 3 => 0, 4 => 0];
 $saldo_riesgo  = [1 => 0.0, 2 => 0.0, 3 => 0.0, 4 => 0.0];
 
 foreach ($rows as &$r) {
-    $cv  = (int)   $r['cuotas_vencidas'];
-    $avg = (float) $r['avg_atraso'];
-    $cm  = (int)   $r['con_mora'];
-    $ref = (int)   $r['refinanciado'];
-
-    if ($ref >= 2 || $cv >= 4 || $avg > 30)             $r['riesgo'] = 4;
-    elseif ($ref >= 1 || $cv >= 2 || $avg > 14 || $cm >= 3) $r['riesgo'] = 3;
-    elseif ($cv >= 1 || $avg > 0 || $cm >= 1)            $r['riesgo'] = 2;
-    else                                                  $r['riesgo'] = 1;
-
+    $r['riesgo'] = calcular_nivel_riesgo(
+        (int)$r['cuotas_vencidas'], (float)$r['avg_atraso'],
+        (int)$r['con_mora'],        (int)$r['refinanciado']
+    );
     $conteo_riesgo[$r['riesgo']]++;
-    $saldo_riesgo[$r['riesgo']] += (float) $r['saldo_pendiente'];
+    $saldo_riesgo[$r['riesgo']] += (float)$r['saldo_pendiente'];
 }
 unset($r);
 
