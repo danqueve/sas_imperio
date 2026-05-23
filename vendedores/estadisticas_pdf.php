@@ -70,6 +70,7 @@ $cred_sql = "
         cr.monto_total, cr.monto_cuota, cr.cant_cuotas, cr.frecuencia,
         COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
         CONCAT(cl.apellidos, ', ', cl.nombres) AS cliente,
+        COALESCE(cl.zona, '—') AS zona,
         (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas,
         (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id
             AND estado IN ('VENCIDA','PENDIENTE') AND fecha_vencimiento < CURDATE()) AS cuotas_vencidas,
@@ -137,10 +138,10 @@ $pdf->gen_fecha       = date('d/m/Y H:i');
 $pdf->AddPage();
 
 // Anchos columnas (suma = 190mm)
-// #(8) | Cliente(58) | Artículo(46) | Avance(22) | Último pago(24) | Cond.(32)
-$cols   = [8, 58, 46, 22, 24, 32];
-$labels = ['#', 'Cliente', 'Articulo', 'Avance', 'Ultimo pago', 'Estado'];
-$aligns = ['C', 'L', 'L', 'C', 'C', 'L'];
+// #(8) | Cliente(48) | Artículo(38) | Zona(22) | Avance(20) | Último pago(24) | Estado(30)
+$cols   = [8, 48, 38, 22, 20, 24, 30];
+$labels = ['#', 'Cliente', 'Articulo', 'Zona', 'Avance', 'Ultimo pago', 'Estado'];
+$aligns = ['C', 'L', 'L', 'L', 'C', 'C', 'L'];
 
 // Encabezado tabla
 $pdf->SetFont('Helvetica', 'B', 7);
@@ -186,14 +187,15 @@ if (empty($creditos)) {
         $pdf->Cell($cols[0], 5.5, $num, 1, 0, 'C', true);
         $pdf->Cell($cols[1], 5.5, $pdf->fitText($cr['cliente'], $cols[1] - 2), 1, 0, 'L', true);
         $pdf->Cell($cols[2], 5.5, $pdf->fitText($cr['articulo'], $cols[2] - 2), 1, 0, 'L', true);
-        $pdf->Cell($cols[3], 5.5, lat($avance_txt), 1, 0, 'C', true);
-        $pdf->Cell($cols[4], 5.5, lat($ultimo_pago), 1, 0, 'C', true);
+        $pdf->Cell($cols[3], 5.5, $pdf->fitText($cr['zona'], $cols[3] - 2), 1, 0, 'L', true);
+        $pdf->Cell($cols[4], 5.5, lat($avance_txt), 1, 0, 'C', true);
+        $pdf->Cell($cols[5], 5.5, lat($ultimo_pago), 1, 0, 'C', true);
 
         // Celda estado con color
         $x = $pdf->GetX(); $y = $pdf->GetY();
         $pdf->SetTextColor($cr_color[0], $cr_color[1], $cr_color[2]);
         $pdf->SetFont('Helvetica', 'B', 7);
-        $pdf->Cell($cols[5], 5.5, lat($cond), 1, 0, 'L', true);
+        $pdf->Cell($cols[6], 5.5, lat($cond), 1, 0, 'L', true);
         $pdf->SetTextColor(0, 0, 0);
 
         $pdf->Ln();
