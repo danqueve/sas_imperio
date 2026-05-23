@@ -21,7 +21,9 @@ require_once BASE_DIR . '/config/conexion.php';
 require_once BASE_DIR . '/config/funciones.php';
 
 // ── Modo dry-run ─────────────────────────────────────────────
-$dry_run = in_array('--dry-run', $argv ?? [], true);
+// Compatible con PHP CLI y PHP CGI (argv puede no estar disponible en CGI)
+$all_args = array_merge($argv ?? [], $_SERVER['argv'] ?? []);
+$dry_run  = in_array('--dry-run', $all_args, true);
 
 // ── Log de consola ───────────────────────────────────────────
 function log_cron(string $msg): void
