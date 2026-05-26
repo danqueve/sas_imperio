@@ -14,6 +14,17 @@ $pdo = obtener_conexion();
 $clientes_activos  = (int)$pdo->query("SELECT COUNT(*) FROM ic_clientes WHERE estado='ACTIVO'")->fetchColumn();
 $total_clientes    = (int)$pdo->query("SELECT COUNT(*) FROM ic_clientes")->fetchColumn();
 $creditos_en_curso = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos WHERE estado='EN_CURSO'")->fetchColumn();
+$creditos_morosos  = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos WHERE estado='MOROSO'")->fetchColumn();
+$creditos_al_dia   = (int)$pdo->query("
+    SELECT COUNT(*) FROM ic_creditos cr
+    WHERE cr.estado = 'EN_CURSO'
+      AND NOT EXISTS (
+          SELECT 1 FROM ic_cuotas cu
+          WHERE cu.credito_id = cr.id
+            AND cu.estado IN ('VENCIDA','PARCIAL')
+            AND cu.fecha_vencimiento < CURDATE()
+      )
+")->fetchColumn();
 $total_creditos    = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos")->fetchColumn();
 $cobrado_hoy       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada=CURDATE()")->fetchColumn();
 $pagos_hoy         = (int)$pdo->query("SELECT COUNT(*) FROM ic_pagos_confirmados WHERE fecha_jornada=CURDATE()")->fetchColumn();
@@ -347,11 +358,11 @@ require_once __DIR__ . '/../views/layout.php';
             <i class="fa fa-file-invoice-dollar"></i>
         </div>
         <div class="kpi-body">
-            <div class="kpi-label">Créditos en Curso</div>
-            <div class="kpi-value"><?= number_format($creditos_en_curso) ?></div>
-            <div class="kpi-sub">
-                <?= $creditos_mes ?> nuevos este mes
-                &nbsp;<?= delta_html($creditos_mes, $creditos_mes_ant, 'var(--primary-light)', 'var(--warning)') ?>
+            <div class="kpi-label">Créditos Activos</div>
+            <div class="kpi-value"><?= number_format($creditos_en_curso + $creditos_morosos) ?></div>
+            <div class="kpi-sub" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+                <span style="color:var(--success)"><i class="fa fa-check-circle" style="font-size:.7rem"></i> <?= number_format($creditos_al_dia) ?> al día</span>
+                <span style="color:var(--danger)"><i class="fa fa-triangle-exclamation" style="font-size:.7rem"></i> <?= number_format($creditos_morosos) ?> morosos</span>
             </div>
         </div>
     </div>
