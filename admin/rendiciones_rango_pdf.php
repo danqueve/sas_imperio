@@ -238,7 +238,6 @@ foreach ($grupos as $cid => $grupo_cob) {
             1, 1, 'L', true);
 
         // ── Filas de pagos ─────────────────────────────────────
-        $fill = false;
         foreach ($pagos_jornada as $p) {
             $num_global++;
             $num_cobrador++;
@@ -258,7 +257,7 @@ foreach ($grupos as $cid => $grupo_cob) {
             $estado_str = $p['estado_pago'] === 'APROBADO' ? 'APROBADO' : 'PEND.';
 
             $pdf->SetFont('Helvetica', '', 7);
-            $pdf->SetFillColor($fill ? 245 : 255, $fill ? 245 : 255, $fill ? 250 : 255);
+            $pdf->SetFillColor(255, 255, 255);
             $pdf->SetX(10);
 
             $pdf->Cell($COLS[0], 5.5, $num_global,                                                    1, 0, 'C', true);
@@ -288,7 +287,6 @@ foreach ($grupos as $cid => $grupo_cob) {
             $pdf->SetTextColor(0, 0, 0);
 
             $pdf->Ln();
-            $fill = !$fill;
 
             $total_cobrador      += (float)$p['monto_total'];
             $total_cobrador_ef   += (float)$p['monto_efectivo'];
