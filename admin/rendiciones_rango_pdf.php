@@ -190,9 +190,12 @@ $pdf->AddPage();
 
 $ancho_total  = array_sum($COLS); // 190
 $label_width  = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3]; // 93
-$total_global = 0.0;
-$num_global   = 0;
-$hay_mora_pend = false;
+$total_global      = 0.0;
+$total_global_ef   = 0.0;
+$total_global_tr   = 0.0;
+$total_global_mora = 0.0;
+$num_global        = 0;
+$hay_mora_pend     = false;
 
 foreach ($grupos as $cid => $grupo_cob) {
 
@@ -202,8 +205,11 @@ foreach ($grupos as $cid => $grupo_cob) {
     $pdf->SetX(10);
     $pdf->Cell($ancho_total, 6, lat('Cobrador: ' . $grupo_cob['nombre']), 1, 1, 'L', true);
 
-    $total_cobrador = 0.0;
-    $num_cobrador   = 0;
+    $total_cobrador      = 0.0;
+    $total_cobrador_ef   = 0.0;
+    $total_cobrador_tr   = 0.0;
+    $total_cobrador_mora = 0.0;
+    $num_cobrador        = 0;
 
     foreach ($grupo_cob['jornadas'] as $fecha_jornada => $pagos_jornada) {
 
@@ -271,8 +277,14 @@ foreach ($grupos as $cid => $grupo_cob) {
             $pdf->Ln();
             $fill = !$fill;
 
-            $total_cobrador += (float)$p['monto_total'];
-            $total_global   += (float)$p['monto_total'];
+            $total_cobrador      += (float)$p['monto_total'];
+            $total_cobrador_ef   += (float)$p['monto_efectivo'];
+            $total_cobrador_tr   += (float)$p['monto_transferencia'];
+            $total_cobrador_mora += (float)$p['monto_mora_cobrada'];
+            $total_global        += (float)$p['monto_total'];
+            $total_global_ef     += (float)$p['monto_efectivo'];
+            $total_global_tr     += (float)$p['monto_transferencia'];
+            $total_global_mora   += (float)$p['monto_mora_cobrada'];
         }
 
         // ── Subtotal jornada ───────────────────────────────────
@@ -294,25 +306,35 @@ foreach ($grupos as $cid => $grupo_cob) {
     }
 
     // ── Total cobrador ─────────────────────────────────────────
-    $pdf->SetFont('Helvetica', 'B', 8);
+    $pdf->SetFont('Helvetica', 'B', 7);
     $pdf->SetFillColor(210, 210, 230);
     $pdf->SetX(10);
-    $pdf->Cell($ancho_total, 6,
-        lat('TOTAL ' . mb_strtoupper($grupo_cob['nombre'], 'UTF-8') . ':   '
-            . fmt($total_cobrador) . '   (' . $num_cobrador . ' pago'
-            . ($num_cobrador !== 1 ? 's' : '') . ')'),
-        1, 1, 'R', true);
+    $pdf->Cell($label_width, 6,
+        lat('TOTAL ' . mb_strtoupper($grupo_cob['nombre'], 'UTF-8')
+            . ' (' . $num_cobrador . ' pago' . ($num_cobrador !== 1 ? 's' : '') . ')'),
+        1, 0, 'R', true);
+    $pdf->Cell($COLS[4], 6, lat(fmt($total_cobrador_ef)),   1, 0, 'R', true);
+    $pdf->Cell($COLS[5], 6, lat(fmt($total_cobrador_tr)),   1, 0, 'R', true);
+    $pdf->Cell($COLS[6], 6, lat(fmt($total_cobrador_mora)), 1, 0, 'R', true);
+    $pdf->Cell($COLS[7], 6, lat(fmt($total_cobrador)),      1, 0, 'R', true);
+    $pdf->Cell($COLS[8], 6, '',                              1, 0, 'C', true);
+    $pdf->Ln();
     $pdf->Ln(2);
 }
 
 // ── Total general ──────────────────────────────────────────────
-$pdf->SetFont('Helvetica', 'B', 9);
+$pdf->SetFont('Helvetica', 'B', 8);
 $pdf->SetFillColor(180, 180, 210);
 $pdf->SetX(10);
-$pdf->Cell($ancho_total, 7,
-    lat('TOTAL GENERAL:   ' . fmt($total_global)
-        . '   (' . $num_global . ' pago' . ($num_global !== 1 ? 's' : '') . ')'),
-    1, 1, 'C', true);
+$pdf->Cell($label_width, 7,
+    lat('TOTAL GENERAL (' . $num_global . ' pago' . ($num_global !== 1 ? 's' : '') . ')'),
+    1, 0, 'R', true);
+$pdf->Cell($COLS[4], 7, lat(fmt($total_global_ef)),   1, 0, 'R', true);
+$pdf->Cell($COLS[5], 7, lat(fmt($total_global_tr)),   1, 0, 'R', true);
+$pdf->Cell($COLS[6], 7, lat(fmt($total_global_mora)), 1, 0, 'R', true);
+$pdf->Cell($COLS[7], 7, lat(fmt($total_global)),      1, 0, 'R', true);
+$pdf->Cell($COLS[8], 7, '',                            1, 0, 'C', true);
+$pdf->Ln();
 
 // ── Nota al pie ────────────────────────────────────────────────
 $pdf->Ln(4);
