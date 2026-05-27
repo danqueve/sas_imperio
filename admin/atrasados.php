@@ -270,6 +270,14 @@ function url_vista(string $v, array $get): string {
         </select>
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
         <a href="atrasados" class="btn-ic btn-ghost">Limpiar</a>
+        <?php if ($cobrador_id > 0): ?>
+        <a href="atrasados_clientes_pdf?<?= e(http_build_query(array_filter(['cobrador_id' => $cobrador_id, 'zona' => $zona_sel ?: null]))) ?>"
+           target="_blank"
+           class="btn-ic btn-ghost"
+           style="margin-left:auto;border-color:rgba(239,68,68,.4);color:#ef4444">
+            <i class="fa fa-file-pdf"></i> PDF Clientes
+        </a>
+        <?php endif; ?>
     </form>
 </div>
 
