@@ -10,6 +10,11 @@ verificar_permiso('aprobar_rendiciones');
 
 $pdo         = obtener_conexion();
 $cobrador_id = (int) ($_GET['cobrador_id'] ?? 0);
+$desde       = trim($_GET['desde'] ?? date('Y-m-01'));
+$hasta       = trim($_GET['hasta'] ?? date('Y-m-d'));
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) $desde = date('Y-m-01');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta))  $hasta = date('Y-m-d');
+if ($desde > $hasta) $desde = $hasta;
 
 // ── POST handler ──────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -174,6 +179,45 @@ if ($cobrador_id > 0) {
     $cant_condonar = (int) $sc->fetchColumn();
 }
 
+// ── Lista completa de cobradores para el filtro desplegable ───
+$todos_cobradores = $pdo->query(
+    "SELECT id, nombre, apellido FROM ic_usuarios WHERE rol='cobrador' ORDER BY apellido ASC"
+)->fetchAll();
+
+// ── Resumen de actividad por cobrador en el rango seleccionado ─
+$where_cob_a = $cobrador_id > 0 ? ' AND cobrador_id = ?' : '';
+$where_cob_p = $cobrador_id > 0 ? ' AND cobrador_id = ?' : '';
+$resumen_params = [$desde, $hasta];
+if ($cobrador_id > 0) $resumen_params[] = $cobrador_id;
+$resumen_params[] = $desde;
+$resumen_params[] = $hasta;
+if ($cobrador_id > 0) $resumen_params[] = $cobrador_id;
+
+$resumen_stmt = $pdo->prepare("
+    SELECT sub.cobrador_id,
+           CONCAT(u.apellido, ', ', u.nombre) AS cobrador,
+           SUM(CASE WHEN sub.tipo='A' THEN sub.cant  ELSE 0   END) AS cant_aprobados,
+           SUM(CASE WHEN sub.tipo='A' THEN sub.total ELSE 0.0 END) AS total_aprobados,
+           SUM(CASE WHEN sub.tipo='P' THEN sub.cant  ELSE 0   END) AS cant_pendientes,
+           SUM(CASE WHEN sub.tipo='P' THEN sub.total ELSE 0.0 END) AS total_pendientes
+    FROM (
+        SELECT cobrador_id, COUNT(*) AS cant, SUM(monto_total) AS total, 'A' AS tipo
+        FROM ic_pagos_confirmados
+        WHERE fecha_jornada BETWEEN ? AND ? AND revertido = 0$where_cob_a
+        GROUP BY cobrador_id
+        UNION ALL
+        SELECT cobrador_id, COUNT(*) AS cant, SUM(monto_total) AS total, 'P' AS tipo
+        FROM ic_pagos_temporales
+        WHERE fecha_jornada BETWEEN ? AND ? AND estado = 'PENDIENTE'$where_cob_p
+        GROUP BY cobrador_id
+    ) sub
+    JOIN ic_usuarios u ON sub.cobrador_id = u.id
+    GROUP BY sub.cobrador_id, u.apellido, u.nombre
+    ORDER BY cobrador ASC
+");
+$resumen_stmt->execute($resumen_params);
+$resumen_rango = $resumen_stmt->fetchAll();
+
 $page_title     = 'Rendiciones';
 $page_current   = 'rendiciones';
 $topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-history"></i> Historial de Rendiciones</a>';
@@ -193,9 +237,110 @@ require_once __DIR__ . '/../views/layout.php';
     <?php unset($_SESSION['flash']); ?>
 <?php endif; ?>
 
-<div style="margin-bottom:16px;color:var(--text-muted);font-size:.82rem">
+<!-- FILTRO RANGO DE FECHAS + EXPORTAR PDF -->
+<div class="card-ic mb-4">
+    <form method="GET" class="filter-bar">
+        <label style="font-size:.8rem;color:var(--text-muted);white-space:nowrap">Desde</label>
+        <input type="date" name="desde" value="<?= e($desde) ?>" style="font-size:.88rem">
+        <label style="font-size:.8rem;color:var(--text-muted);white-space:nowrap">Hasta</label>
+        <input type="date" name="hasta" value="<?= e($hasta) ?>" style="font-size:.88rem">
+        <select name="cobrador_id">
+            <option value="0">Todos los cobradores</option>
+            <?php foreach ($todos_cobradores as $tc): ?>
+                <option value="<?= $tc['id'] ?>" <?= $cobrador_id === (int)$tc['id'] ? 'selected' : '' ?>>
+                    <?= e($tc['apellido'] . ', ' . $tc['nombre']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
+        <a href="rendiciones_rango_pdf?desde=<?= urlencode($desde) ?>&amp;hasta=<?= urlencode($hasta) ?>&amp;cobrador_id=<?= $cobrador_id ?>"
+           target="_blank"
+           class="btn-ic btn-ghost"
+           style="margin-left:auto;border-color:rgba(239,68,68,.4);color:#ef4444">
+            <i class="fa fa-file-pdf"></i> Exportar PDF (rango)
+        </a>
+    </form>
+</div>
+
+<!-- RESUMEN DEL RANGO -->
+<?php if (!empty($resumen_rango)): ?>
+<div class="card-ic mb-4">
+    <div class="card-ic-header">
+        <span class="card-title">
+            <i class="fa fa-calendar-days"></i>
+            Actividad <?= e(date('d/m/Y', strtotime($desde))) ?> — <?= e(date('d/m/Y', strtotime($hasta))) ?>
+        </span>
+        <span class="text-muted" style="font-size:.82rem">
+            <?= count($resumen_rango) ?> cobrador<?= count($resumen_rango) !== 1 ? 'es' : '' ?> con actividad
+        </span>
+    </div>
+    <div style="overflow-x:auto">
+        <table class="table-ic">
+            <thead>
+                <tr>
+                    <th>Cobrador</th>
+                    <th class="text-center">Aprobados</th>
+                    <th class="text-right">Monto Aprobado</th>
+                    <th class="text-center">Pendientes</th>
+                    <th class="text-right">Monto Pendiente</th>
+                    <th class="text-right">Total Período</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php
+                $gran_total_rango = 0.0;
+                foreach ($resumen_rango as $rs):
+                    $tot_rs = (float)$rs['total_aprobados'] + (float)$rs['total_pendientes'];
+                    $gran_total_rango += $tot_rs;
+                ?>
+                <tr>
+                    <td class="fw-bold"><?= e($rs['cobrador']) ?></td>
+                    <td class="text-center">
+                        <?php if ((int)$rs['cant_aprobados'] > 0): ?>
+                            <span style="font-size:.8rem;background:rgba(34,197,94,.18);color:var(--success);padding:2px 8px;border-radius:10px;font-weight:700">
+                                <?= (int)$rs['cant_aprobados'] ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="text-muted">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="text-right">
+                        <?= (float)$rs['total_aprobados'] > 0
+                            ? '<span style="color:var(--success)">' . formato_pesos((float)$rs['total_aprobados']) . '</span>'
+                            : '<span class="text-muted">—</span>' ?>
+                    </td>
+                    <td class="text-center">
+                        <?php if ((int)$rs['cant_pendientes'] > 0): ?>
+                            <span style="font-size:.8rem;background:rgba(245,158,11,.18);color:var(--warning);padding:2px 8px;border-radius:10px;font-weight:700">
+                                <?= (int)$rs['cant_pendientes'] ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="text-muted">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="text-right">
+                        <?= (float)$rs['total_pendientes'] > 0
+                            ? '<span style="color:var(--warning)">' . formato_pesos((float)$rs['total_pendientes']) . '</span>'
+                            : '<span class="text-muted">—</span>' ?>
+                    </td>
+                    <td class="text-right fw-bold"><?= formato_pesos($tot_rs) ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+                <tr style="font-weight:700;background:rgba(79,70,229,.06)">
+                    <td colspan="5" class="text-right" style="padding-right:12px;font-size:.85rem">TOTAL DEL PERÍODO:</td>
+                    <td class="text-right" style="color:var(--accent);font-size:1rem"><?= formato_pesos($gran_total_rango) ?></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<div style="margin-bottom:12px;color:var(--text-muted);font-size:.82rem">
     <i class="fa fa-info-circle"></i>
-    Mostrando todos los pagos pendientes de aprobación. Seleccioná un cobrador para ver el detalle por jornada.
+    Cobradores con pagos pendientes de aprobación. Seleccioná uno para ver el detalle por jornada.
 </div>
 
 <div style="display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start">
