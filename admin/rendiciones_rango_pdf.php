@@ -318,7 +318,7 @@ foreach ($grupos as $cid => $grupo_cob) {
 
     // ── Total cobrador ─────────────────────────────────────────
     $pdf->SetFont('Helvetica', 'B', 7);
-    $pdf->SetFillColor(210, 210, 230);
+    $pdf->SetFillColor(255, 255, 255);
     $pdf->SetX(10);
     $pdf->Cell($label_width, 6,
         lat('TOTAL ' . mb_strtoupper($grupo_cob['nombre'], 'UTF-8')
@@ -335,7 +335,7 @@ foreach ($grupos as $cid => $grupo_cob) {
 
 // ── Total general ──────────────────────────────────────────────
 $pdf->SetFont('Helvetica', 'B', 8);
-$pdf->SetFillColor(180, 180, 210);
+$pdf->SetFillColor(255, 255, 255);
 $pdf->SetX(10);
 $pdf->Cell($label_width, 7,
     lat('TOTAL GENERAL (' . $num_global . ' pago' . ($num_global !== 1 ? 's' : '') . ')'),
