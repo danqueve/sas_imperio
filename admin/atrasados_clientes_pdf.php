@@ -2,7 +2,7 @@
 // ============================================================
 // admin/atrasados_clientes_pdf.php — PDF clientes atrasados
 // Una fila por cliente, ordenado por cuotas vencidas (mayor→menor)
-// Columnas: # | Cliente | Cuotas Venc. | Monto Cuotas | Total Adeudado | Máx. Días | Ult. Pago | Zona
+// Columnas: # | Cliente | Cuotas Venc. | Val. Cuota | Total Adeudado | Máx. Días | Ult. Pago | Zona
 // ============================================================
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
@@ -40,7 +40,7 @@ $stmt = $pdo->prepare("
         cl.id          AS cliente_id,
         cl.apellidos, cl.nombres, cl.zona,
         COUNT(*)                                                    AS cant_cuotas,
-        SUM(cu.monto_cuota)                                         AS monto_cuotas,
+        MAX(cr.monto_cuota)                                         AS monto_cuota_base,
         SUM(cu.monto_cuota - cu.saldo_pagado)                       AS total_adeudado,
         MAX(DATEDIFF(CURDATE(), cu.fecha_vencimiento))              AS max_dias,
         (SELECT MAX(pc.fecha_pago)
@@ -64,7 +64,7 @@ if (empty($clientes)) {
 
 // ── Totales ──────────────────────────────────────────────────
 $total_cuotas    = array_sum(array_column($clientes, 'cant_cuotas'));
-$total_monto     = array_sum(array_column($clientes, 'monto_cuotas'));
+$total_monto     = array_sum(array_column($clientes, 'monto_cuota_base'));
 $total_adeudado  = array_sum(array_column($clientes, 'total_adeudado'));
 
 // ── Cobrador para el encabezado ──────────────────────────────
@@ -82,7 +82,7 @@ require_once __DIR__ . '/../lib/PDFBase.php';
 // Columnas: suma = 190mm (A4 portrait, márgenes 10mm c/lado)
 // #(6) + Cliente(54) + C.Venc.(18) + Monto Cuotas(26) + Total Adeudado(28) + Máx. Días(15) + Ult. Pago(22) + Zona(21) = 190
 $COLS   = [6,  54, 18, 26, 28, 15, 22, 21];
-$LABELS = ['#','Cliente','C.Venc.','Monto Cuotas','Total Adeudado','Max. Dias','Ult. Pago','Zona'];
+$LABELS = ['#','Cliente','C.Venc.','Val. Cuota','Total Adeudado','Max. Dias','Ult. Pago','Zona'];
 $ALIGNS = ['C','L','C','R','R','C','C','L'];
 
 class AtrasadosClientesPDF extends PDFBase
@@ -156,7 +156,7 @@ foreach ($clientes as $r) {
     $pdf->Cell($COLS[0], 5.5, $index,                                                        1, 0, 'C');
     $pdf->Cell($COLS[1], 5.5, $pdf->fitText($r['apellidos'] . ', ' . $r['nombres'], $COLS[1] - 2), 1, 0, 'L');
     $pdf->Cell($COLS[2], 5.5, (int)$r['cant_cuotas'],                                        1, 0, 'C');
-    $pdf->Cell($COLS[3], 5.5, lat(fmt((float)$r['monto_cuotas'])),                           1, 0, 'R');
+    $pdf->Cell($COLS[3], 5.5, lat(fmt((float)$r['monto_cuota_base'])),                       1, 0, 'R');
     $pdf->Cell($COLS[4], 5.5, lat(fmt((float)$r['total_adeudado'])),                         1, 0, 'R');
     $pdf->Cell($COLS[5], 5.5, lat((int)$r['max_dias'] . ' d.'),                              1, 0, 'C');
     $pdf->Cell($COLS[6], 5.5, lat($ult_pago),                                                1, 0, 'C');
@@ -186,7 +186,7 @@ $bw2 = 35;
 $resumen = [
     ['Clientes atrasados',   count($clientes) . ' clientes'],
     ['Total cuotas vencidas', $total_cuotas . ' cuotas'],
-    ['Monto total cuotas',   fmt($total_monto)],
+    ['Total valor cuotas',   fmt($total_monto)],
     ['TOTAL ADEUDADO',       fmt($total_adeudado)],
 ];
 
