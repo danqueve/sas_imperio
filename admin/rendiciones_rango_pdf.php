@@ -10,10 +10,11 @@ require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('aprobar_rendiciones');
 
-$pdo         = obtener_conexion();
-$desde       = trim($_GET['desde'] ?? '');
-$hasta       = trim($_GET['hasta'] ?? '');
-$cobrador_id = (int)($_GET['cobrador_id'] ?? 0);
+$pdo            = obtener_conexion();
+$desde          = trim($_GET['desde'] ?? '');
+$hasta          = trim($_GET['hasta'] ?? '');
+$cobrador_id    = (int)($_GET['cobrador_id'] ?? 0);
+$estado_filtro  = in_array($_GET['estado'] ?? '', ['aprobado', 'pendiente']) ? $_GET['estado'] : 'todos';
 
 if (!$desde || !$hasta) {
     die('Parámetros de rango (desde/hasta) requeridos.');
@@ -25,64 +26,70 @@ if ($desde > $hasta) {
     die('La fecha "desde" no puede ser posterior a "hasta".');
 }
 
-// ── Query APROBADOS ────────────────────────────────────────────
-$where_cob_a = $cobrador_id > 0 ? ' AND pc.cobrador_id = ?' : '';
-$params_a    = [$desde, $hasta];
-if ($cobrador_id > 0) $params_a[] = $cobrador_id;
+// ── Query APROBADOS (omitir si filtro = pendiente) ─────────────
+$aprobados = [];
+if ($estado_filtro !== 'pendiente') {
+    $where_cob_a = $cobrador_id > 0 ? ' AND pc.cobrador_id = ?' : '';
+    $params_a    = [$desde, $hasta];
+    if ($cobrador_id > 0) $params_a[] = $cobrador_id;
 
-$stmt_a = $pdo->prepare("
-    SELECT 'APROBADO' AS estado_pago,
-           pc.cobrador_id,
-           CONCAT(u.apellido, ', ', u.nombre)                                  AS cobrador,
-           pc.fecha_jornada,
-           COALESCE(pc.cliente_apellidos_snap, cl.apellidos, '—')              AS apellidos,
-           COALESCE(pc.cliente_nombres_snap,   cl.nombres,   '—')              AS nombres,
-           COALESCE(pc.numero_cuota, cu.numero_cuota, 0)                       AS numero_cuota,
-           COALESCE(pc.articulo_snap, cr.articulo_desc, a.descripcion, '—')   AS articulo,
-           pc.monto_efectivo, pc.monto_transferencia,
-           pc.monto_mora_cobrada, pc.monto_total,
-           COALESCE(pc.es_cuota_pura, 0) AS es_cuota_pura
-    FROM ic_pagos_confirmados pc
-    JOIN ic_usuarios u        ON pc.cobrador_id  = u.id
-    LEFT JOIN ic_cuotas cu    ON pc.cuota_id     = cu.id
-    LEFT JOIN ic_creditos cr  ON cu.credito_id   = cr.id
-    LEFT JOIN ic_clientes cl  ON cr.cliente_id   = cl.id
-    LEFT JOIN ic_articulos a  ON cr.articulo_id  = a.id
-    WHERE pc.fecha_jornada BETWEEN ? AND ?
-      AND pc.revertido = 0$where_cob_a
-    ORDER BY cobrador ASC, pc.fecha_jornada ASC, apellidos ASC
-");
-$stmt_a->execute($params_a);
-$aprobados = $stmt_a->fetchAll();
+    $stmt_a = $pdo->prepare("
+        SELECT 'APROBADO' AS estado_pago,
+               pc.cobrador_id,
+               CONCAT(u.apellido, ', ', u.nombre)                                  AS cobrador,
+               pc.fecha_jornada,
+               COALESCE(pc.cliente_apellidos_snap, cl.apellidos, '—')              AS apellidos,
+               COALESCE(pc.cliente_nombres_snap,   cl.nombres,   '—')              AS nombres,
+               COALESCE(pc.numero_cuota, cu.numero_cuota, 0)                       AS numero_cuota,
+               COALESCE(pc.articulo_snap, cr.articulo_desc, a.descripcion, '—')   AS articulo,
+               pc.monto_efectivo, pc.monto_transferencia,
+               pc.monto_mora_cobrada, pc.monto_total,
+               COALESCE(pc.es_cuota_pura, 0) AS es_cuota_pura
+        FROM ic_pagos_confirmados pc
+        JOIN ic_usuarios u        ON pc.cobrador_id  = u.id
+        LEFT JOIN ic_cuotas cu    ON pc.cuota_id     = cu.id
+        LEFT JOIN ic_creditos cr  ON cu.credito_id   = cr.id
+        LEFT JOIN ic_clientes cl  ON cr.cliente_id   = cl.id
+        LEFT JOIN ic_articulos a  ON cr.articulo_id  = a.id
+        WHERE pc.fecha_jornada BETWEEN ? AND ?
+          AND pc.revertido = 0$where_cob_a
+        ORDER BY cobrador ASC, pc.fecha_jornada ASC, apellidos ASC
+    ");
+    $stmt_a->execute($params_a);
+    $aprobados = $stmt_a->fetchAll();
+}
 
-// ── Query PENDIENTES ───────────────────────────────────────────
-$where_cob_p = $cobrador_id > 0 ? ' AND pt.cobrador_id = ?' : '';
-$params_p    = [$desde, $hasta];
-if ($cobrador_id > 0) $params_p[] = $cobrador_id;
+// ── Query PENDIENTES (omitir si filtro = aprobado) ─────────────
+$pendientes = [];
+if ($estado_filtro !== 'aprobado') {
+    $where_cob_p = $cobrador_id > 0 ? ' AND pt.cobrador_id = ?' : '';
+    $params_p    = [$desde, $hasta];
+    if ($cobrador_id > 0) $params_p[] = $cobrador_id;
 
-$stmt_p = $pdo->prepare("
-    SELECT 'PENDIENTE' AS estado_pago,
-           pt.cobrador_id,
-           CONCAT(u.apellido, ', ', u.nombre)              AS cobrador,
-           pt.fecha_jornada,
-           cl.apellidos, cl.nombres,
-           cu.numero_cuota,
-           COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
-           pt.monto_efectivo, pt.monto_transferencia,
-           pt.monto_mora_cobrada, pt.monto_total,
-           COALESCE(pt.es_cuota_pura, 0) AS es_cuota_pura
-    FROM ic_pagos_temporales pt
-    JOIN ic_usuarios u  ON pt.cobrador_id  = u.id
-    JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
-    JOIN ic_creditos cr ON cu.credito_id   = cr.id
-    JOIN ic_clientes cl ON cr.cliente_id   = cl.id
-    LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-    WHERE pt.fecha_jornada BETWEEN ? AND ?
-      AND pt.estado = 'PENDIENTE'$where_cob_p
-    ORDER BY cobrador ASC, pt.fecha_jornada ASC, cl.apellidos ASC
-");
-$stmt_p->execute($params_p);
-$pendientes = $stmt_p->fetchAll();
+    $stmt_p = $pdo->prepare("
+        SELECT 'PENDIENTE' AS estado_pago,
+               pt.cobrador_id,
+               CONCAT(u.apellido, ', ', u.nombre)              AS cobrador,
+               pt.fecha_jornada,
+               cl.apellidos, cl.nombres,
+               cu.numero_cuota,
+               COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
+               pt.monto_efectivo, pt.monto_transferencia,
+               pt.monto_mora_cobrada, pt.monto_total,
+               COALESCE(pt.es_cuota_pura, 0) AS es_cuota_pura
+        FROM ic_pagos_temporales pt
+        JOIN ic_usuarios u  ON pt.cobrador_id  = u.id
+        JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
+        JOIN ic_creditos cr ON cu.credito_id   = cr.id
+        JOIN ic_clientes cl ON cr.cliente_id   = cl.id
+        LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
+        WHERE pt.fecha_jornada BETWEEN ? AND ?
+          AND pt.estado = 'PENDIENTE'$where_cob_p
+        ORDER BY cobrador ASC, pt.fecha_jornada ASC, cl.apellidos ASC
+    ");
+    $stmt_p->execute($params_p);
+    $pendientes = $stmt_p->fetchAll();
+}
 
 $todos = array_merge($aprobados, $pendientes);
 
@@ -131,10 +138,11 @@ $ALIGNS = ['C','L','L','C','R','R','R','R','C'];
 
 class RendicionesRangoPDF extends PDFBase
 {
-    public string $desde_lbl = '';
-    public string $hasta_lbl = '';
-    public string $cob_lbl   = '';
-    public string $gen_fecha = '';
+    public string $desde_lbl  = '';
+    public string $hasta_lbl  = '';
+    public string $cob_lbl    = '';
+    public string $estado_lbl = '';
+    public string $gen_fecha  = '';
     public array  $cols      = [];
     public array  $labels    = [];
     public array  $aligns    = [];
@@ -151,7 +159,7 @@ class RendicionesRangoPDF extends PDFBase
 
         $this->SetFont('Helvetica', '', 8);
         $this->SetX(10);
-        $this->Cell(190, 5, lat('Rendiciones — Período ' . $this->desde_lbl . ' al ' . $this->hasta_lbl), 0, 1, 'C');
+        $this->Cell(190, 5, lat('Rendiciones — Período ' . $this->desde_lbl . ' al ' . $this->hasta_lbl . '   [' . $this->estado_lbl . ']'), 0, 1, 'C');
 
         $this->SetFont('Helvetica', '', 7);
         $this->SetX(10);
@@ -179,10 +187,15 @@ $pdf = new RendicionesRangoPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->SetMargins(10, 10, 10);
 $pdf->SetAutoPageBreak(true, 14);
-$pdf->desde_lbl = date('d/m/Y', strtotime($desde));
-$pdf->hasta_lbl = date('d/m/Y', strtotime($hasta));
-$pdf->cob_lbl   = $label_cobrador;
-$pdf->gen_fecha = date('d/m/Y H:i');
+$pdf->desde_lbl  = date('d/m/Y', strtotime($desde));
+$pdf->hasta_lbl  = date('d/m/Y', strtotime($hasta));
+$pdf->cob_lbl    = $label_cobrador;
+$pdf->estado_lbl = match($estado_filtro) {
+    'aprobado'  => 'Solo Aprobados',
+    'pendiente' => 'Solo Pendientes',
+    default     => 'Aprobados y Pendientes',
+};
+$pdf->gen_fecha  = date('d/m/Y H:i');
 $pdf->cols      = $COLS;
 $pdf->labels    = $LABELS;
 $pdf->aligns    = $ALIGNS;

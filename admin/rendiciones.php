@@ -9,9 +9,10 @@ verificar_sesion();
 verificar_permiso('aprobar_rendiciones');
 
 $pdo         = obtener_conexion();
-$cobrador_id = (int) ($_GET['cobrador_id'] ?? 0);
-$desde       = trim($_GET['desde'] ?? date('Y-m-01'));
-$hasta       = trim($_GET['hasta'] ?? date('Y-m-d'));
+$cobrador_id    = (int) ($_GET['cobrador_id'] ?? 0);
+$desde          = trim($_GET['desde'] ?? date('Y-m-01'));
+$hasta          = trim($_GET['hasta'] ?? date('Y-m-d'));
+$estado_filtro  = in_array($_GET['estado'] ?? '', ['aprobado', 'pendiente']) ? $_GET['estado'] : 'todos';
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) $desde = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta))  $hasta = date('Y-m-d');
 if ($desde > $hasta) $desde = $hasta;
@@ -252,8 +253,13 @@ require_once __DIR__ . '/../views/layout.php';
                 </option>
             <?php endforeach; ?>
         </select>
+        <select name="estado">
+            <option value="todos"     <?= $estado_filtro === 'todos'     ? 'selected' : '' ?>>Aprobados y Pendientes</option>
+            <option value="aprobado"  <?= $estado_filtro === 'aprobado'  ? 'selected' : '' ?>>Solo Aprobados</option>
+            <option value="pendiente" <?= $estado_filtro === 'pendiente' ? 'selected' : '' ?>>Solo Pendientes</option>
+        </select>
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
-        <a href="rendiciones_rango_pdf?desde=<?= urlencode($desde) ?>&amp;hasta=<?= urlencode($hasta) ?>&amp;cobrador_id=<?= $cobrador_id ?>"
+        <a href="rendiciones_rango_pdf?desde=<?= urlencode($desde) ?>&amp;hasta=<?= urlencode($hasta) ?>&amp;cobrador_id=<?= $cobrador_id ?>&amp;estado=<?= urlencode($estado_filtro) ?>"
            target="_blank"
            class="btn-ic btn-ghost"
            style="margin-left:auto;border-color:rgba(239,68,68,.4);color:#ef4444">
