@@ -58,6 +58,7 @@ if ($mi_vendedor_id) {
             cl.telefono,
             cr.id                                                                  AS credito_id,
             cr.estado                                                              AS credito_estado,
+            cr.motivo_finalizacion,
             cr.cant_cuotas,
             cr.fecha_alta,
             COALESCE(cr.articulo_desc, a.descripcion, '—')                        AS articulo,
@@ -67,9 +68,14 @@ if ($mi_vendedor_id) {
         JOIN ic_clientes cl  ON cr.cliente_id = cl.id
         JOIN ic_cuotas cu    ON cu.credito_id = cr.id
         LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-        WHERE cr.vendedor_id = :vid AND cr.estado IN ('EN_CURSO','MOROSO')
+        WHERE cr.vendedor_id = :vid
+          AND (
+              cr.estado IN ('EN_CURSO','MOROSO')
+              OR (cr.estado = 'FINALIZADO' AND cr.motivo_finalizacion IN ('PAGO_COMPLETO','PAGO_COMPLETO_CON_MORA','RETIRO_PRODUCTO'))
+          )
         GROUP BY cr.id, cl.id
-        ORDER BY cl.apellidos, cl.nombres
+        ORDER BY CASE cr.estado WHEN 'MOROSO' THEN 0 WHEN 'EN_CURSO' THEN 1 ELSE 2 END,
+                 cl.apellidos, cl.nombres
     ");
     $lista_stmt->execute([':vid' => $mi_vendedor_id]);
     $lista = $lista_stmt->fetchAll();
@@ -104,7 +110,7 @@ require __DIR__ . '/../views/layout.php';
             <i class="fa fa-users" style="color:var(--primary-light)"></i>
             <?= $nombre_vendedor ? 'Clientes de ' . $nombre_vendedor : 'Mis Clientes' ?>
         </h1>
-        <div class="page-subtitle">Créditos activos de tu cartera</div>
+        <div class="page-subtitle">Créditos activos e historial de tu cartera</div>
     </div>
 </div>
 
@@ -160,7 +166,7 @@ require __DIR__ . '/../views/layout.php';
 <!-- Tabla de clientes -->
 <div class="card-ic">
     <div class="card-ic-header" style="flex-wrap:wrap;gap:10px">
-        <span class="card-title"><i class="fa fa-list"></i> Cartera Activa</span>
+        <span class="card-title"><i class="fa fa-list"></i> Mi Cartera</span>
         <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:200px">
             <div style="position:relative;flex:1;max-width:280px">
                 <i class="fa fa-search" style="position:absolute;left:10px;top:50%;
@@ -196,10 +202,20 @@ require __DIR__ . '/../views/layout.php';
             <tbody>
                 <?php foreach ($lista as $row): ?>
                 <?php
+                    $finalizado = $row['credito_estado'] === 'FINALIZADO';
+                    $motivo     = $row['motivo_finalizacion'] ?? '';
+                    $es_pagado  = in_array($motivo, ['PAGO_COMPLETO','PAGO_COMPLETO_CON_MORA']);
+                    $es_retiro  = $motivo === 'RETIRO_PRODUCTO';
+
                     $pct = $row['cant_cuotas'] > 0
                         ? round($row['cuotas_pagadas'] / $row['cant_cuotas'] * 100)
                         : 0;
-                    if ($row['credito_estado'] === 'MOROSO') {
+                    if ($es_pagado) {
+                        $pct       = 100;
+                        $bar_color = 'var(--success)';
+                    } elseif ($es_retiro) {
+                        $bar_color = 'var(--text-muted)';
+                    } elseif ($row['credito_estado'] === 'MOROSO') {
                         $bar_color = 'var(--danger)';
                     } elseif ($pct >= 75) {
                         $bar_color = 'var(--success)';
@@ -208,8 +224,29 @@ require __DIR__ . '/../views/layout.php';
                     } else {
                         $bar_color = 'var(--text-muted)';
                     }
+
+                    $motivo_badge = match($motivo) {
+                        'PAGO_COMPLETO'          => '<span style="font-size:.65rem;background:rgba(33,150,83,.18);color:#34D399;border-radius:4px;padding:1px 6px;margin-left:4px">Pagado</span>',
+                        'PAGO_COMPLETO_CON_MORA' => '<span style="font-size:.65rem;background:rgba(33,150,83,.18);color:#34D399;border-radius:4px;padding:1px 6px;margin-left:4px">Pagado c/mora</span>',
+                        'RETIRO_PRODUCTO'        => '<span style="font-size:.65rem;background:rgba(255,167,11,.15);color:var(--warning);border-radius:4px;padding:1px 6px;margin-left:4px">Retiro art.</span>',
+                        default                  => '',
+                    };
+
+                    $cuotas_rest = !$finalizado ? (int)$row['cuotas_pendientes'] : 0;
+                    $por_cerrar  = $cuotas_rest >= 1 && $cuotas_rest <= 3;
+                    [$pc_color, $pc_borde, $pc_label] = match(true) {
+                        $cuotas_rest === 1 => ['var(--danger)',  'rgba(239,68,68,.9)',   '¡Última cuota!'],
+                        $cuotas_rest === 2 => ['var(--warning)', 'rgba(255,167,11,.9)',  '2 cuotas restantes'],
+                        $cuotas_rest === 3 => ['#63B3ED',        'rgba(99,179,237,.9)',  '3 cuotas restantes'],
+                        default            => ['', '', ''],
+                    };
+
+                    if ($finalizado)   $tr_style = 'opacity:.72';
+                    elseif ($por_cerrar) $tr_style = "border-left:3px solid {$pc_borde}";
+                    else               $tr_style = '';
                 ?>
-                <tr data-searchable="<?= e(strtolower($row['cliente_nombre'] . ' ' . $row['articulo'])) ?>">
+                <tr data-searchable="<?= e(strtolower($row['cliente_nombre'] . ' ' . $row['articulo'])) ?>"
+                    <?= $tr_style ? 'style="' . $tr_style . '"' : '' ?>>
                     <td>
                         <div style="font-weight:600"><?= e($row['cliente_nombre']) ?></div>
                         <?php if ($row['telefono']): ?>
@@ -222,7 +259,7 @@ require __DIR__ . '/../views/layout.php';
                     <td class="hide-mobile" style="color:var(--text-body);max-width:200px">
                         <?= e($row['articulo']) ?>
                     </td>
-                    <td><?= badge_estado_credito($row['credito_estado']) ?></td>
+                    <td><?= badge_estado_credito($row['credito_estado']) ?><?= $motivo_badge ?></td>
                     <td style="min-width:140px">
                         <div style="background:rgba(255,255,255,.08);border-radius:99px;height:7px;overflow:hidden;margin-bottom:3px">
                             <div style="width:<?= $pct ?>%;height:100%;border-radius:99px;background:<?= $bar_color ?>;transition:width .4s ease"></div>
@@ -231,6 +268,11 @@ require __DIR__ . '/../views/layout.php';
                             <?= (int)$row['cuotas_pagadas'] ?> / <?= (int)$row['cant_cuotas'] ?>
                             <span style="float:right;color:<?= $bar_color ?>;font-weight:700"><?= $pct ?>%</span>
                         </div>
+                        <?php if ($por_cerrar): ?>
+                        <div style="margin-top:4px;font-size:.68rem;font-weight:700;color:<?= $pc_color ?>">
+                            <i class="fa fa-flag-checkered" style="margin-right:3px;font-size:.6rem"></i><?= $pc_label ?>
+                        </div>
+                        <?php endif; ?>
                     </td>
                     <td style="text-align:right;white-space:nowrap">
                         <a href="<?= BASE_URL ?>ventas/ver_credito?id=<?= (int)$row['credito_id'] ?>"
