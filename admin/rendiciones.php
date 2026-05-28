@@ -292,7 +292,7 @@ require_once __DIR__ . '/../views/layout.php';
             <?= count($resumen_rango) ?> cobrador<?= count($resumen_rango) !== 1 ? 'es' : '' ?> con actividad
         </span>
     </div>
-    <div style="overflow-x:auto">
+    <div class="table-responsive">
         <table class="table-ic">
             <thead>
                 <tr>
@@ -361,7 +361,7 @@ require_once __DIR__ . '/../views/layout.php';
     Cobradores con pagos pendientes de aprobación. Seleccioná uno para ver el detalle por jornada.
 </div>
 
-<div style="display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start">
+<div class="two-col-grid" style="align-items:start">
 
     <!-- LISTA DE COBRADORES -->
     <div class="card-ic">
@@ -491,13 +491,13 @@ require_once __DIR__ . '/../views/layout.php';
                 <?= $sec['icono'] ?> <?= $sec['titulo'] ?>
             </div>
             <!-- Tabla de pagos de esta sección -->
-            <div style="overflow-x:auto">
+            <div class="table-responsive">
                 <table class="table-ic" style="margin-bottom:0">
                     <thead>
                         <tr>
                             <th>Cliente</th>
                             <th>Cuota</th>
-                            <th>Artículo</th>
+                            <th class="hide-mobile">Artículo</th>
                             <th>Efectivo</th>
                             <th>Transf.</th>
                             <th>Mora</th>
@@ -533,7 +533,7 @@ require_once __DIR__ . '/../views/layout.php';
                                     #<?= $p['numero_cuota'] ?> — <?= date('d/m/Y', strtotime($p['fecha_vencimiento'])) ?>
                                     <div style="font-size:.7rem;color:var(--text-muted)">Reg: <?= date('d/m H:i', strtotime($p['fecha_registro'])) ?></div>
                                 </td>
-                                <td><?= e($p['articulo']) ?></td>
+                                <td class="hide-mobile"><?= e($p['articulo']) ?></td>
                                 <td class="nowrap"><?= formato_pesos($p['monto_efectivo']) ?></td>
                                 <td class="nowrap"><?= formato_pesos($p['monto_transferencia']) ?></td>
                                 <td class="nowrap <?= $p['monto_mora_cobrada'] > 0 ? 'text-warning' : '' ?>">

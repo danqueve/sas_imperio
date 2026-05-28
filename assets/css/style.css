@@ -958,6 +958,38 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
   .sidebar-backdrop { display: none !important; }
 }
 
+/* ── Responsive — Utilidades globales ───────────────────────── */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+}
+
+.two-col-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .two-col-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .filter-bar input,
+  .filter-bar select {
+    min-width: unset;
+    flex: 1 1 calc(50% - 5px);
+  }
+  .filter-bar label {
+    width: 100%;
+    margin-bottom: -4px;
+  }
+  .modal-box { padding: 20px 16px; }
+}
+
 /* ── Utilidades ───────────────────────────────────────────── */
 .text-muted   { color: var(--text-muted) !important; }
 .text-success { color: var(--success-light) !important; }

@@ -350,7 +350,7 @@ function url_vista(string $v, array $get): string {
     </div>
     <?php endif; ?>
 
-    <div style="overflow-x:auto">
+    <div class="table-responsive">
 
     <?php if ($vista === 'cuotas'): ?>
     <!-- ───── VISTA POR CUOTA ───── -->
@@ -359,12 +359,12 @@ function url_vista(string $v, array $get): string {
             <tr>
                 <th class="text-center">#</th>
                 <th>Cliente</th>
-                <th>Artículo</th>
+                <th class="hide-mobile">Artículo</th>
                 <th class="text-center">Cuota</th>
                 <th class="text-right">Monto Adeudado</th>
                 <th class="text-center">Días Atraso</th>
                 <th class="text-center">Último Pago</th>
-                <th>Cobrador</th>
+                <th class="hide-mobile">Cobrador</th>
                 <th>Zona</th>
                 <th class="text-center">WA</th>
             </tr>
@@ -395,7 +395,7 @@ function url_vista(string $v, array $get): string {
                                 <i class="fa fa-arrow-up-right-from-square" style="font-size:.65rem;opacity:.5"></i>
                             </a>
                         </td>
-                        <td class="text-muted" style="font-size:.88rem"><?= e($r['articulo']) ?></td>
+                        <td class="text-muted hide-mobile" style="font-size:.88rem"><?= e($r['articulo']) ?></td>
                         <td class="text-center">
                             <span class="badge bg-secondary">#<?= $r['numero_cuota'] ?>/<?= $r['cant_cuotas'] ?></span>
                         </td>
@@ -410,7 +410,7 @@ function url_vista(string $v, array $get): string {
                         <td class="text-center text-muted" style="font-size:.88rem">
                             <?= $r['ultimo_pago'] ? date('d/m/Y', strtotime($r['ultimo_pago'])) : '<span style="color:#aaa">—</span>' ?>
                         </td>
-                        <td style="font-size:.88rem"><?= e($r['cob_apellido'] . ', ' . $r['cob_nombre']) ?></td>
+                        <td class="hide-mobile" style="font-size:.88rem"><?= e($r['cob_apellido'] . ', ' . $r['cob_nombre']) ?></td>
                         <td>
                             <?php if ($r['zona']): ?>
                                 <span class="badge" style="background:var(--info,#0ea5e9);color:#fff;font-size:.75rem">
@@ -458,8 +458,8 @@ function url_vista(string $v, array $get): string {
                 <th class="text-right">Total Adeudado</th>
                 <th class="text-center">Máx. Días</th>
                 <th class="text-center">Último Pago</th>
-                <th>Cobrador</th>
-                <th>Zona</th>
+                <th class="hide-mobile">Cobrador</th>
+                <th class="hide-mobile">Zona</th>
                 <th class="text-center">WA</th>
             </tr>
         </thead>
@@ -504,8 +504,8 @@ function url_vista(string $v, array $get): string {
                         <td class="text-center text-muted" style="font-size:.88rem">
                             <?= $r['ultimo_pago'] ? date('d/m/Y', strtotime($r['ultimo_pago'])) : '<span style="color:#aaa">—</span>' ?>
                         </td>
-                        <td style="font-size:.88rem"><?= e($r['cob_display']) ?></td>
-                        <td>
+                        <td class="hide-mobile" style="font-size:.88rem"><?= e($r['cob_display']) ?></td>
+                        <td class="hide-mobile">
                             <?php if ($r['zona']): ?>
                                 <span class="badge" style="background:var(--info,#0ea5e9);color:#fff;font-size:.75rem">
                                     <?= e($r['zona']) ?>

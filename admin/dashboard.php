@@ -283,14 +283,15 @@ require_once __DIR__ . '/../views/layout.php';
         </strong>
         <a href="rendiciones" style="color:inherit;text-decoration:underline;margin-left:auto">Ir a Rendiciones →</a>
     </div>
+    <div class="table-responsive">
     <table style="width:100%;border-collapse:collapse;font-size:.8rem">
         <thead>
             <tr style="opacity:.7;border-bottom:1px solid rgba(255,255,255,.15)">
                 <th style="padding:4px 8px 4px 0;font-weight:600;text-align:left">Cliente</th>
                 <th style="padding:4px 8px;font-weight:600;text-align:center">Cuota</th>
                 <th style="padding:4px 8px;font-weight:600;text-align:center">Tipo</th>
-                <th style="padding:4px 8px;font-weight:600;text-align:left">Motivo</th>
-                <th style="padding:4px 8px;font-weight:600;text-align:center">Fecha</th>
+                <th class="hide-mobile" style="padding:4px 8px;font-weight:600;text-align:left">Motivo</th>
+                <th class="hide-mobile" style="padding:4px 8px;font-weight:600;text-align:center">Fecha</th>
                 <th style="padding:4px 0 4px 8px;font-weight:600;text-align:center">Acción</th>
             </tr>
         </thead>
@@ -310,11 +311,11 @@ require_once __DIR__ . '/../views/layout.php';
                         <span class="badge-ic badge-warning">Temporal</span>
                     <?php endif; ?>
                 </td>
-                <td style="padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                <td class="hide-mobile" style="padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                     title="<?= e($s['motivo_baja']) ?>">
                     <?= e($s['motivo_baja']) ?>
                 </td>
-                <td style="padding:5px 8px;text-align:center;white-space:nowrap">
+                <td class="hide-mobile" style="padding:5px 8px;text-align:center;white-space:nowrap">
                     <?= date('d/m/Y', strtotime($s['fecha_cobro'])) ?>
                 </td>
                 <td style="padding:5px 0 5px 8px;text-align:center">
@@ -325,6 +326,7 @@ require_once __DIR__ . '/../views/layout.php';
         <?php endforeach; ?>
         </tbody>
     </table>
+    </div><!-- /.table-responsive -->
 </div>
 <?php endif; ?>
 
