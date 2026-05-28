@@ -13,6 +13,8 @@ $cobrador_id    = (int) ($_GET['cobrador_id'] ?? 0);
 $desde          = trim($_GET['desde'] ?? date('Y-m-01'));
 $hasta          = trim($_GET['hasta'] ?? date('Y-m-d'));
 $estado_filtro  = in_array($_GET['estado'] ?? '', ['aprobado', 'pendiente']) ? $_GET['estado'] : 'todos';
+$origen_filtro  = in_array($_GET['origen'] ?? '', ['cobrador', 'admin']) ? $_GET['origen'] : 'todos';
+$origen_db      = match($origen_filtro) { 'cobrador' => 'cobrador', 'admin' => 'manual', default => null };
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) $desde = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta))  $hasta = date('Y-m-d');
 if ($desde > $hasta) $desde = $hasta;
@@ -186,13 +188,18 @@ $todos_cobradores = $pdo->query(
 )->fetchAll();
 
 // ── Resumen de actividad por cobrador en el rango seleccionado ─
-$where_cob_a = $cobrador_id > 0 ? ' AND cobrador_id = ?' : '';
-$where_cob_p = $cobrador_id > 0 ? ' AND cobrador_id = ?' : '';
+$where_cob_a  = $cobrador_id > 0   ? ' AND cobrador_id = ?'  : '';
+$where_cob_p  = $cobrador_id > 0   ? ' AND cobrador_id = ?'  : '';
+$where_orig_a = $origen_db !== null ? ' AND origen = ?'       : '';
+$where_orig_p = $origen_db !== null ? ' AND origen = ?'       : '';
+
 $resumen_params = [$desde, $hasta];
-if ($cobrador_id > 0) $resumen_params[] = $cobrador_id;
+if ($cobrador_id > 0)   $resumen_params[] = $cobrador_id;
+if ($origen_db !== null) $resumen_params[] = $origen_db;
 $resumen_params[] = $desde;
 $resumen_params[] = $hasta;
-if ($cobrador_id > 0) $resumen_params[] = $cobrador_id;
+if ($cobrador_id > 0)   $resumen_params[] = $cobrador_id;
+if ($origen_db !== null) $resumen_params[] = $origen_db;
 
 $resumen_stmt = $pdo->prepare("
     SELECT sub.cobrador_id,
@@ -204,12 +211,12 @@ $resumen_stmt = $pdo->prepare("
     FROM (
         SELECT cobrador_id, COUNT(*) AS cant, SUM(monto_total) AS total, 'A' AS tipo
         FROM ic_pagos_confirmados
-        WHERE fecha_jornada BETWEEN ? AND ? AND revertido = 0$where_cob_a
+        WHERE fecha_jornada BETWEEN ? AND ? AND revertido = 0$where_cob_a$where_orig_a
         GROUP BY cobrador_id
         UNION ALL
         SELECT cobrador_id, COUNT(*) AS cant, SUM(monto_total) AS total, 'P' AS tipo
         FROM ic_pagos_temporales
-        WHERE fecha_jornada BETWEEN ? AND ? AND estado = 'PENDIENTE'$where_cob_p
+        WHERE fecha_jornada BETWEEN ? AND ? AND estado = 'PENDIENTE'$where_cob_p$where_orig_p
         GROUP BY cobrador_id
     ) sub
     JOIN ic_usuarios u ON sub.cobrador_id = u.id
@@ -258,8 +265,13 @@ require_once __DIR__ . '/../views/layout.php';
             <option value="aprobado"  <?= $estado_filtro === 'aprobado'  ? 'selected' : '' ?>>Solo Aprobados</option>
             <option value="pendiente" <?= $estado_filtro === 'pendiente' ? 'selected' : '' ?>>Solo Pendientes</option>
         </select>
+        <select name="origen">
+            <option value="todos"    <?= $origen_filtro === 'todos'    ? 'selected' : '' ?>>Cobrador y Admin</option>
+            <option value="cobrador" <?= $origen_filtro === 'cobrador' ? 'selected' : '' ?>>Solo Cobrador</option>
+            <option value="admin"    <?= $origen_filtro === 'admin'    ? 'selected' : '' ?>>Solo Admin</option>
+        </select>
         <button type="submit" class="btn-ic btn-ghost"><i class="fa fa-filter"></i> Filtrar</button>
-        <a href="rendiciones_rango_pdf?desde=<?= urlencode($desde) ?>&amp;hasta=<?= urlencode($hasta) ?>&amp;cobrador_id=<?= $cobrador_id ?>&amp;estado=<?= urlencode($estado_filtro) ?>"
+        <a href="rendiciones_rango_pdf?desde=<?= urlencode($desde) ?>&amp;hasta=<?= urlencode($hasta) ?>&amp;cobrador_id=<?= $cobrador_id ?>&amp;estado=<?= urlencode($estado_filtro) ?>&amp;origen=<?= urlencode($origen_filtro) ?>"
            target="_blank"
            class="btn-ic btn-ghost"
            style="margin-left:auto;border-color:rgba(239,68,68,.4);color:#ef4444">

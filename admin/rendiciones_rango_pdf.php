@@ -15,6 +15,8 @@ $desde          = trim($_GET['desde'] ?? '');
 $hasta          = trim($_GET['hasta'] ?? '');
 $cobrador_id    = (int)($_GET['cobrador_id'] ?? 0);
 $estado_filtro  = in_array($_GET['estado'] ?? '', ['aprobado', 'pendiente']) ? $_GET['estado'] : 'todos';
+$origen_filtro  = in_array($_GET['origen'] ?? '', ['cobrador', 'admin']) ? $_GET['origen'] : 'todos';
+$origen_db      = match($origen_filtro) { 'cobrador' => 'cobrador', 'admin' => 'manual', default => null };
 
 if (!$desde || !$hasta) {
     die('Parámetros de rango (desde/hasta) requeridos.');
@@ -29,9 +31,11 @@ if ($desde > $hasta) {
 // ── Query APROBADOS (omitir si filtro = pendiente) ─────────────
 $aprobados = [];
 if ($estado_filtro !== 'pendiente') {
-    $where_cob_a = $cobrador_id > 0 ? ' AND pc.cobrador_id = ?' : '';
-    $params_a    = [$desde, $hasta];
-    if ($cobrador_id > 0) $params_a[] = $cobrador_id;
+    $where_cob_a  = $cobrador_id > 0   ? ' AND pc.cobrador_id = ?' : '';
+    $where_orig_a = $origen_db !== null ? ' AND pc.origen = ?'      : '';
+    $params_a     = [$desde, $hasta];
+    if ($cobrador_id > 0)   $params_a[] = $cobrador_id;
+    if ($origen_db !== null) $params_a[] = $origen_db;
 
     $stmt_a = $pdo->prepare("
         SELECT 'APROBADO' AS estado_pago,
@@ -52,7 +56,7 @@ if ($estado_filtro !== 'pendiente') {
         LEFT JOIN ic_clientes cl  ON cr.cliente_id   = cl.id
         LEFT JOIN ic_articulos a  ON cr.articulo_id  = a.id
         WHERE pc.fecha_jornada BETWEEN ? AND ?
-          AND pc.revertido = 0$where_cob_a
+          AND pc.revertido = 0$where_cob_a$where_orig_a
         ORDER BY cobrador ASC, pc.fecha_jornada ASC, apellidos ASC
     ");
     $stmt_a->execute($params_a);
@@ -62,9 +66,11 @@ if ($estado_filtro !== 'pendiente') {
 // ── Query PENDIENTES (omitir si filtro = aprobado) ─────────────
 $pendientes = [];
 if ($estado_filtro !== 'aprobado') {
-    $where_cob_p = $cobrador_id > 0 ? ' AND pt.cobrador_id = ?' : '';
-    $params_p    = [$desde, $hasta];
-    if ($cobrador_id > 0) $params_p[] = $cobrador_id;
+    $where_cob_p  = $cobrador_id > 0   ? ' AND pt.cobrador_id = ?' : '';
+    $where_orig_p = $origen_db !== null ? ' AND pt.origen = ?'      : '';
+    $params_p     = [$desde, $hasta];
+    if ($cobrador_id > 0)   $params_p[] = $cobrador_id;
+    if ($origen_db !== null) $params_p[] = $origen_db;
 
     $stmt_p = $pdo->prepare("
         SELECT 'PENDIENTE' AS estado_pago,
@@ -84,7 +90,7 @@ if ($estado_filtro !== 'aprobado') {
         JOIN ic_clientes cl ON cr.cliente_id   = cl.id
         LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
         WHERE pt.fecha_jornada BETWEEN ? AND ?
-          AND pt.estado = 'PENDIENTE'$where_cob_p
+          AND pt.estado = 'PENDIENTE'$where_cob_p$where_orig_p
         ORDER BY cobrador ASC, pt.fecha_jornada ASC, cl.apellidos ASC
     ");
     $stmt_p->execute($params_p);
@@ -142,6 +148,7 @@ class RendicionesRangoPDF extends PDFBase
     public string $hasta_lbl  = '';
     public string $cob_lbl    = '';
     public string $estado_lbl = '';
+    public string $origen_lbl = '';
     public string $gen_fecha  = '';
     public array  $cols      = [];
     public array  $labels    = [];
@@ -163,8 +170,9 @@ class RendicionesRangoPDF extends PDFBase
 
         $this->SetFont('Helvetica', '', 7);
         $this->SetX(10);
-        $this->Cell(95, 5, lat('Cobrador: ' . $this->cob_lbl), 0, 0, 'L');
-        $this->Cell(95, 5, lat('Generado: ' . $this->gen_fecha), 0, 1, 'R');
+        $this->Cell(63, 5, lat('Cobrador: ' . $this->cob_lbl), 0, 0, 'L');
+        $this->Cell(63, 5, lat('Cargado por: ' . $this->origen_lbl), 0, 0, 'C');
+        $this->Cell(64, 5, lat('Generado: ' . $this->gen_fecha), 0, 1, 'R');
 
         $this->SetLineWidth(0.4);
         $this->Line(10, $this->GetY() + 1, 200, $this->GetY() + 1);
@@ -194,6 +202,11 @@ $pdf->estado_lbl = match($estado_filtro) {
     'aprobado'  => 'Solo Aprobados',
     'pendiente' => 'Solo Pendientes',
     default     => 'Aprobados y Pendientes',
+};
+$pdf->origen_lbl = match($origen_filtro) {
+    'cobrador' => 'Solo Cobrador',
+    'admin'    => 'Solo Admin',
+    default    => 'Cobrador y Admin',
 };
 $pdf->gen_fecha  = date('d/m/Y H:i');
 $pdf->cols      = $COLS;
