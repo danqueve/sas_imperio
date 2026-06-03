@@ -167,25 +167,40 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
     $resultado = ['aprobados' => 0, 'errores' => 0];
 
     $stmt = $pdo->prepare("
-        SELECT pt.*, cu.credito_id, cu.monto_cuota, cu.saldo_pagado, cu.monto_mora,
-               cu.fecha_vencimiento, cu.estado AS cuota_estado, cu.numero_cuota,
-               cr.interes_moratorio_pct,
-               COALESCE(cr.articulo_desc, a.descripcion, '') AS articulo_snap,
-               cl.telefono AS cliente_tel, cl.nombres AS cliente_nombres,
-               cl.apellidos AS cliente_apellidos
+        SELECT pt.id
         FROM ic_pagos_temporales pt
-        JOIN ic_cuotas cu   ON pt.cuota_id    = cu.id
-        JOIN ic_creditos cr ON cu.credito_id  = cr.id
-        JOIN ic_clientes cl ON cr.cliente_id  = cl.id
-        LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
         WHERE pt.cobrador_id = ? AND pt.fecha_jornada = ? AND pt.estado = 'PENDIENTE'
     ");
     $stmt->execute([$cobrador_id, $fecha]);
-    $pagos = $stmt->fetchAll();
+    $ids_pendientes = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-    foreach ($pagos as $pago) {
+    foreach ($ids_pendientes as $pago_id) {
         try {
             $pdo->beginTransaction();
+
+            // Re-leer con FOR UPDATE y datos completos; verifica que siga PENDIENTE
+            $lock = $pdo->prepare("
+                SELECT pt.*, cu.credito_id, cu.monto_cuota, cu.saldo_pagado, cu.monto_mora,
+                       cu.fecha_vencimiento, cu.estado AS cuota_estado, cu.numero_cuota,
+                       cr.interes_moratorio_pct,
+                       COALESCE(cr.articulo_desc, a.descripcion, '') AS articulo_snap,
+                       cl.telefono AS cliente_tel, cl.nombres AS cliente_nombres,
+                       cl.apellidos AS cliente_apellidos
+                FROM ic_pagos_temporales pt
+                JOIN ic_cuotas cu   ON pt.cuota_id    = cu.id
+                JOIN ic_creditos cr ON cu.credito_id  = cr.id
+                JOIN ic_clientes cl ON cr.cliente_id  = cl.id
+                LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
+                WHERE pt.id = ? AND pt.estado = 'PENDIENTE'
+                FOR UPDATE
+            ");
+            $lock->execute([$pago_id]);
+            $pago = $lock->fetch();
+
+            if (!$pago) {
+                $pdo->rollBack();
+                continue; // Otro proceso ya lo aprobó
+            }
 
             // 1. Insertar en pagos_confirmados con snapshot completo
             $semana_lunes = calcular_semana_lunes($pago['fecha_jornada'] ?: $fecha);
@@ -264,9 +279,13 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
             $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
                 ->execute([$nuevo_estado, $nuevo_saldo, $monto_mora_guardar, $fecha_pago_v, $pago['cuota_id']]);
 
-            // 3. Marcar pago temporal como APROBADO
-            $pdo->prepare("UPDATE ic_pagos_temporales SET estado='APROBADO' WHERE id=?")
-                ->execute([$pago['id']]);
+            // 3. Marcar pago temporal como APROBADO (AND estado='PENDIENTE' garantiza idempotencia)
+            $upd = $pdo->prepare("UPDATE ic_pagos_temporales SET estado='APROBADO' WHERE id=? AND estado='PENDIENTE'");
+            $upd->execute([$pago['id']]);
+            if ($upd->rowCount() === 0) {
+                $pdo->rollBack();
+                continue; // Ya fue procesado por concurrencia, no duplicar
+            }
 
             // 4. Recalcular estado del crédito (FINALIZADO, MOROSO o EN_CURSO)
             $cr_stmt = $pdo->prepare("SELECT cr.estado, cr.cliente_id FROM ic_creditos cr WHERE cr.id=?");

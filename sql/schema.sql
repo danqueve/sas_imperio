@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS `ic_pagos_confirmados` (
   `numero_cuota`     SMALLINT UNSIGNED NULL             COMMENT 'Snapshot número de cuota al aprobar',
   `fecha_vcto_orig`  DATE NULL                          COMMENT 'Snapshot fecha vencimiento al aprobar',
   `articulo_snap`    VARCHAR(255) NULL                  COMMENT 'Snapshot descripción artículo al aprobar',
+  UNIQUE KEY `uq_pago_temp_id` (`pago_temp_id`),
   FOREIGN KEY (`pago_temp_id`) REFERENCES `ic_pagos_temporales`(`id`),
   FOREIGN KEY (`cuota_id`) REFERENCES `ic_cuotas`(`id`),
   FOREIGN KEY (`cobrador_id`) REFERENCES `ic_usuarios`(`id`),
