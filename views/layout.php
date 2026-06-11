@@ -375,6 +375,33 @@ if ($rol === 'admin') {
             </div>
         </header>
 
+        <?php
+        $_sv_mins = supervisor_minutos_restantes();
+        if ($_sv_mins !== null && $_sv_mins > 0 && $_sv_mins <= 30):
+        ?>
+        <div id="sv-warn" style="background:rgba(245,158,11,.1);border-bottom:1px solid rgba(245,158,11,.2);
+             padding:7px 20px;font-size:.8rem;color:#f59e0b;display:flex;
+             align-items:center;justify-content:space-between;gap:12px">
+            <span>
+                <i class="fa fa-clock"></i>
+                Tu acceso vence en <strong id="sv-mins"><?= $_sv_mins ?></strong> min.
+                Para continuar, solicitá extensión a un administrador.
+            </span>
+            <button onclick="document.getElementById('sv-warn').remove()"
+                    style="background:none;border:none;color:#f59e0b;cursor:pointer;font-size:1rem;padding:0 4px;line-height:1">&times;</button>
+        </div>
+        <script>
+        (function(){
+            var m=<?= (int)$_sv_mins ?>, el=document.getElementById('sv-mins');
+            if(!el) return;
+            setInterval(function(){
+                if(m>0){ m--; el.textContent=m; }
+                if(m<=0){ window.location.href='<?= BASE_URL ?>auth/acceso_restringido'; }
+            }, 60000);
+        })();
+        </script>
+        <?php endif; ?>
+
         <!-- ── MAIN ── -->
         <main class="main-content">
             <?php if (!empty($page_title) || !empty($topbar_actions)): ?>

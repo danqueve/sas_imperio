@@ -34,6 +34,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($accion === 'extender_acceso') {
+        verificar_csrf();
+        $uid  = (int) $_POST['uid'];
+        $mins = (int) $_POST['minutos'];
+        $tgt  = $pdo->prepare("SELECT rol FROM ic_usuarios WHERE id=? AND activo=1");
+        $tgt->execute([$uid]);
+        $t = $tgt->fetch();
+        if (!$t || $t['rol'] !== 'supervisor' || $mins <= 0 || $mins > 1440) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
+        } else {
+            $hasta = (new DateTime())->modify("+{$mins} minutes")->format('Y-m-d H:i:s');
+            $pdo->prepare("UPDATE ic_usuarios SET acceso_extendido_hasta=? WHERE id=?")->execute([$hasta, $uid]);
+            registrar_log($pdo, $_SESSION['user_id'], 'ACCESO_EXTENDIDO', 'usuario', $uid, "{$mins}min hasta {$hasta}");
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => "Acceso extendido por {$mins} min (hasta " . date('H:i', strtotime($hasta)) . ")."];
+        }
+        header('Location: usuarios');
+        exit;
+    }
+
+    if ($accion === 'revocar_acceso') {
+        verificar_csrf();
+        $uid = (int) $_POST['uid'];
+        $pdo->prepare("UPDATE ic_usuarios SET acceso_extendido_hasta=NULL WHERE id=?")->execute([$uid]);
+        registrar_log($pdo, $_SESSION['user_id'], 'ACCESO_REVOCADO', 'usuario', $uid, 'Revocación manual');
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Extensión de acceso revocada.'];
+        header('Location: usuarios');
+        exit;
+    }
+
     if ($accion === 'guardar') {
         $nombre = trim($_POST['nombre'] ?? '');
         $apellido = trim($_POST['apellido'] ?? '');
@@ -97,7 +126,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$usuarios = $pdo->query("SELECT * FROM ic_usuarios ORDER BY rol, apellido, nombre")->fetchAll();
+$usuarios    = $pdo->query("SELECT * FROM ic_usuarios ORDER BY rol, apellido, nombre")->fetchAll();
+$hora_actual = (int) date('G');
+$fuera_horario = ($hora_actual < SUPERVISOR_HORA_INICIO || $hora_actual >= SUPERVISOR_HORA_FIN);
 $page_title = 'Usuarios';
 $page_current = 'usuarios';
 require_once __DIR__ . '/../views/layout.php';
@@ -129,6 +160,7 @@ require_once __DIR__ . '/../views/layout.php';
                         <th>Teléfono</th>
                         <th>Zona</th>
                         <th>Estado</th>
+                        <th>Acceso ext.</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -161,6 +193,47 @@ require_once __DIR__ . '/../views/layout.php';
                                     <span class="badge-ic badge-success">Activo</span>
                                 <?php else: ?>
                                     <span class="badge-ic badge-muted">Inactivo</span>
+                                <?php endif; ?>
+                            </td>
+                            <!-- Columna acceso extendido (solo supervisores) -->
+                            <td>
+                                <?php if ($usr['rol'] === 'supervisor' && $usr['activo']): ?>
+                                    <?php
+                                    $ext       = $usr['acceso_extendido_hasta'] ?? null;
+                                    $activo_ext = $ext && new DateTime($ext) > new DateTime();
+                                    ?>
+                                    <?php if ($activo_ext): ?>
+                                        <span class="badge-ic badge-warning" title="Vence: <?= e($ext) ?>">
+                                            <i class="fa fa-clock"></i>
+                                            Hasta <?= date('H:i', strtotime($ext)) ?>
+                                        </span>
+                                        <form method="POST" style="display:inline;margin-left:4px">
+                                            <?php csrf_input(); ?>
+                                            <input type="hidden" name="accion" value="revocar_acceso">
+                                            <input type="hidden" name="uid" value="<?= $usr['id'] ?>">
+                                            <button type="submit" class="btn-ic btn-danger btn-sm"
+                                                    data-confirm="¿Revocar la extensión de <?= e($usr['nombre']) ?>?">
+                                                Revocar
+                                            </button>
+                                        </form>
+                                    <?php elseif ($fuera_horario): ?>
+                                        <form method="POST" style="display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center">
+                                            <?php csrf_input(); ?>
+                                            <input type="hidden" name="accion" value="extender_acceso">
+                                            <input type="hidden" name="uid" value="<?= $usr['id'] ?>">
+                                            <button type="submit" name="minutos" value="120" class="btn-ic btn-primary btn-sm">+2h</button>
+                                            <button type="submit" name="minutos" value="240" class="btn-ic btn-primary btn-sm">+4h</button>
+                                            <button type="submit" name="minutos" value="480" class="btn-ic btn-primary btn-sm">+8h</button>
+                                            <input type="number" name="minutos" min="15" max="1440" placeholder="min"
+                                                   style="width:58px;padding:4px 6px;font-size:.78rem;border-radius:6px;
+                                                          background:var(--dark-input);border:1px solid var(--dark-border);color:var(--text-main)">
+                                            <button type="submit" class="btn-ic btn-ghost btn-sm">OK</button>
+                                        </form>
+                                    <?php else: ?>
+                                        <span class="text-muted" style="font-size:.78rem">Dentro del horario</span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
                                 <?php endif; ?>
                             </td>
                             <td class="nowrap">

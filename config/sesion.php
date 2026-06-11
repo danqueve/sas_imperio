@@ -18,6 +18,11 @@ if (session_status() === PHP_SESSION_NONE) {
 define('ROLES', ['admin', 'supervisor', 'cobrador', 'vendedor']);
 define('SESSION_IDLE_TIMEOUT', 2 * 60 * 60); // 2 horas de inactividad
 
+// ── Restricción horaria para supervisores ────────────────────
+// date('G') usa el timezone configurado en php.ini (America/Argentina/Buenos_Aires)
+define('SUPERVISOR_HORA_INICIO', 8);   // 08:00
+define('SUPERVISOR_HORA_FIN',   16);   // 16:00
+
 // ── Timeout por inactividad ──────────────────────────────────
 if (!empty($_SESSION['user_id'])) {
     $now = time();
@@ -46,6 +51,31 @@ function verificar_sesion(): void
         session_destroy();
         header('Location: ' . BASE_URL . 'auth/login');
         exit;
+    }
+
+    // ── Restricción horaria para supervisores ─────────────────
+    if ($_SESSION['rol'] === 'supervisor') {
+        $hora   = (int) date('G');
+        $dentro = ($hora >= SUPERVISOR_HORA_INICIO && $hora < SUPERVISOR_HORA_FIN);
+        if (!$dentro) {
+            $tiene_ext = false;
+            try {
+                $pdo  = obtener_conexion();
+                $stmt = $pdo->prepare(
+                    "SELECT acceso_extendido_hasta FROM ic_usuarios WHERE id=? AND activo=1 LIMIT 1"
+                );
+                $stmt->execute([$_SESSION['user_id']]);
+                $ext = $stmt->fetchColumn();
+                $tiene_ext = ($ext && new DateTime($ext) > new DateTime());
+            } catch (Throwable $e) {
+                error_log('Horario supervisor check: ' . $e->getMessage());
+                $tiene_ext = true; // fail-open: no bloquear por error de DB
+            }
+            if (!$tiene_ext) {
+                header('Location: ' . BASE_URL . 'auth/acceso_restringido');
+                exit;
+            }
+        }
     }
 }
 
@@ -162,4 +192,36 @@ function verificar_csrf(): void
         http_response_code(403);
         die('CSRF inválido. Recargá la página e intentalo de nuevo.');
     }
+}
+
+/**
+ * Para supervisores: minutos de acceso restantes (horario normal o extensión).
+ * Devuelve null si no aplica (otro rol). Usado por layout.php para el banner de aviso.
+ */
+function supervisor_minutos_restantes(): ?int
+{
+    if (($_SESSION['rol'] ?? '') !== 'supervisor') return null;
+
+    $hora = (int) date('G');
+    $min  = (int) date('i');
+
+    try {
+        $pdo  = obtener_conexion();
+        $stmt = $pdo->prepare("SELECT acceso_extendido_hasta FROM ic_usuarios WHERE id=? LIMIT 1");
+        $stmt->execute([$_SESSION['user_id']]);
+        $ext = $stmt->fetchColumn();
+        if ($ext) {
+            $fin   = new DateTime($ext);
+            $ahora = new DateTime();
+            if ($fin > $ahora) {
+                return (int) floor(($fin->getTimestamp() - $ahora->getTimestamp()) / 60);
+            }
+        }
+    } catch (Throwable $e) { /* silencioso */ }
+
+    if ($hora >= SUPERVISOR_HORA_INICIO && $hora < SUPERVISOR_HORA_FIN) {
+        return (SUPERVISOR_HORA_FIN - $hora) * 60 - $min;
+    }
+
+    return null;
 }
