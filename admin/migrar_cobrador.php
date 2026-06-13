@@ -261,7 +261,7 @@ require_once __DIR__ . '/../views/layout.php';
     </div>
 </div>
 
-<form method="POST">
+<form method="POST" id="form-confirmar">
     <?php csrf_input(); ?>
     <input type="hidden" name="accion"           value="ejecutar">
     <input type="hidden" name="cobrador_desde"   value="<?= $desde_id ?>">
@@ -358,7 +358,7 @@ function cerrarModal() {
 }
 function submitMigrar() {
     cerrarModal();
-    document.querySelector('form[method="POST"]:last-of-type').submit();
+    document.getElementById('form-confirmar').submit();
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModal(); });
 </script>
