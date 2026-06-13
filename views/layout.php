@@ -136,7 +136,7 @@ if ($rol === 'admin') {
             </div>
 
             <nav class="sidebar-nav">
-                <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>
+                <?php if ($rol === 'admin'): ?>
                     <div class="nav-label">General</div>
                     <a class="nav-item <?= ($page_current ?? '') === 'dashboard' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/dashboard"
@@ -144,18 +144,10 @@ if ($rol === 'admin') {
                         <i class="fa fa-chart-pie"></i>
                         <span class="nav-text">Dashboard</span>
                     </a>
-                    <?php if ($rol === 'supervisor'): ?>
-                    <a class="nav-item <?= ($page_current ?? '') === 'supervisor' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>supervisor/index"
-                       data-tooltip="Panel Supervisor">
-                        <i class="fa fa-user-shield"></i>
-                        <span class="nav-text">Mi Panel</span>
-                    </a>
-                    <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if ($rol !== 'cobrador' && $rol !== 'vendedor'): ?>
-                    <div class="nav-label">Gestión</div>
+                    <div class="nav-label"><?= $rol === 'supervisor' ? 'General' : 'Gestión' ?></div>
                     <a class="nav-item <?= ($page_current ?? '') === 'clientes' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>clientes/index"
                        data-tooltip="Clientes">
@@ -187,6 +179,14 @@ if ($rol === 'admin') {
                 <?php endif; ?>
 
                 <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>
+                    <a class="nav-item <?= ($page_current ?? '') === 'atrasados' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/atrasados"
+                       data-tooltip="Créditos Atrasados">
+                        <i class="fa fa-hand-holding-dollar"></i>
+                        <span class="nav-text">Atrasados</span>
+                    </a>
+                <?php endif; ?>
+                <?php if ($rol === 'admin'): ?>
                     <a class="nav-item <?= ($page_current ?? '') === 'rendiciones' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/rendiciones"
                        data-tooltip="Rendiciones">
@@ -222,12 +222,6 @@ if ($rol === 'admin') {
                         <i class="fa fa-chart-column"></i>
                         <span class="nav-text">Estad. Cobrador</span>
                     </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'atrasados' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>admin/atrasados"
-                       data-tooltip="Créditos Atrasados">
-                        <i class="fa fa-hand-holding-dollar"></i>
-                        <span class="nav-text">Atrasados</span>
-                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'riesgo_cartera' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/riesgo_cartera"
                        data-tooltip="Riesgo de Cartera">
@@ -256,6 +250,7 @@ if ($rol === 'admin') {
 
                 <?php if ($rol === 'admin' || $rol === 'supervisor'): ?>
                     <div class="nav-label">Ventas</div>
+                    <?php if ($rol === 'admin'): ?>
                     <a class="nav-item <?= ($page_current ?? '') === 'ventas' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>ventas/index"
                        data-tooltip="Ventas">
@@ -268,6 +263,7 @@ if ($rol === 'admin') {
                         <i class="fa fa-user-tag"></i>
                         <span class="nav-text">Vendedores</span>
                     </a>
+                    <?php endif; ?>
                     <a class="nav-item <?= ($page_current ?? '') === 'vendedores_stats' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>vendedores/estadisticas"
                        data-tooltip="Estadísticas Ventas">
