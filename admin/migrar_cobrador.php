@@ -150,7 +150,7 @@ require_once __DIR__ . '/../views/layout.php';
         Revisá la vista previa antes de confirmar.
     </p>
     <form method="POST" id="form-migrar">
-        <input type="hidden" name="csrf_token" value="<?= e($_SESSION['csrf_token'] ?? '') ?>">
+        <?php csrf_input(); ?>
         <input type="hidden" name="accion" value="preview" id="input-accion">
 
         <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:end;margin-bottom:20px">
@@ -262,7 +262,7 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <form method="POST">
-    <input type="hidden" name="csrf_token"      value="<?= e($_SESSION['csrf_token'] ?? '') ?>">
+    <?php csrf_input(); ?>
     <input type="hidden" name="accion"           value="ejecutar">
     <input type="hidden" name="cobrador_desde"   value="<?= $desde_id ?>">
     <input type="hidden" name="cobrador_hasta"   value="<?= $hasta_id ?>">
