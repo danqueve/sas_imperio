@@ -168,19 +168,23 @@ if ($cobrador_id) {
     }
 }
 
-// ── Badge: cuotas CAP_PAGADA/PARCIAL del cobrador ──
-$cant_condonar = 0;
-if ($cobrador_id > 0) {
-    $sc = $pdo->prepare("
-        SELECT COUNT(*) FROM ic_cuotas cu
-        JOIN ic_creditos cr ON cu.credito_id = cr.id
-        WHERE cu.estado IN ('CAP_PAGADA','PARCIAL')
-          AND cr.cobrador_id = ?
-          AND cr.estado IN ('EN_CURSO','MOROSO')
-    ");
-    $sc->execute([$cobrador_id]);
-    $cant_condonar = (int) $sc->fetchColumn();
-}
+// ── Cobradores con mora pendiente de condonar (CAP_PAGADA, monto_mora > 0) ──
+$condonar_stmt = $pdo->query("
+    SELECT u.id AS cobrador_id,
+           u.nombre, u.apellido,
+           COUNT(cu.id)       AS cant_cuotas,
+           SUM(cu.monto_mora) AS total_mora
+    FROM ic_cuotas cu
+    JOIN ic_creditos cr ON cu.credito_id = cr.id
+    JOIN ic_usuarios  u  ON cr.cobrador_id = u.id
+    WHERE cu.estado = 'CAP_PAGADA'
+      AND cu.monto_mora > 0
+      AND cr.estado IN ('EN_CURSO','MOROSO')
+    GROUP BY u.id, u.nombre, u.apellido
+    ORDER BY u.apellido ASC
+");
+$cobradores_condonar   = $condonar_stmt->fetchAll();
+$total_cuotas_condonar = array_sum(array_column($cobradores_condonar, 'cant_cuotas'));
 
 // ── Lista completa de cobradores para el filtro desplegable ───
 $todos_cobradores = $pdo->query(
@@ -229,11 +233,6 @@ $resumen_rango = $resumen_stmt->fetchAll();
 $page_title     = 'Rendiciones';
 $page_current   = 'rendiciones';
 $topbar_actions = '<a href="historial_rendiciones" class="btn-ic btn-ghost btn-sm"><i class="fa fa-history"></i> Historial de Rendiciones</a>';
-if ($cant_condonar > 0) {
-    $topbar_actions .= '<a href="pendientes_condonar?cobrador_id=' . $cobrador_id . '" class="btn-ic btn-sm" style="background:#f59e0b;color:#fff;border:none">'
-        . '<i class="fa fa-triangle-exclamation"></i> Pendientes (' . $cant_condonar . ')'
-        . '</a>';
-}
 
 require_once __DIR__ . '/../views/layout.php';
 ?>
@@ -355,6 +354,62 @@ require_once __DIR__ . '/../views/layout.php';
     </div>
 </div>
 <?php endif; ?>
+
+<!-- PANEL MORA PENDIENTE DE CONDONAR -->
+<div class="card-ic mb-4">
+    <div class="card-ic-header">
+        <span class="card-title">
+            <i class="fa fa-triangle-exclamation" style="color:#f59e0b"></i>
+            Mora pendiente de condonar
+        </span>
+        <?php if ($total_cuotas_condonar > 0): ?>
+        <span style="background:#fef3c7;color:#92400e;font-size:.8rem;padding:4px 12px;border-radius:12px;font-weight:700">
+            <?= $total_cuotas_condonar ?> cuota<?= $total_cuotas_condonar !== 1 ? 's' : '' ?>
+        </span>
+        <?php endif; ?>
+    </div>
+    <?php if (empty($cobradores_condonar)): ?>
+        <p class="text-muted text-center" style="padding:28px">
+            <i class="fa fa-circle-check" style="color:var(--success);display:block;font-size:1.6rem;margin-bottom:8px"></i>
+            No hay cuotas con mora pendiente de condonar.
+        </p>
+    <?php else: ?>
+    <div style="overflow-x:auto">
+        <table class="table-ic">
+            <thead>
+                <tr>
+                    <th>Cobrador</th>
+                    <th style="text-align:center">Cuotas</th>
+                    <th style="text-align:right">Mora total</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($cobradores_condonar as $cc): ?>
+                <tr>
+                    <td class="fw-bold"><?= e($cc['apellido'] . ', ' . $cc['nombre']) ?></td>
+                    <td style="text-align:center">
+                        <span style="background:#dbeafe;color:#1e40af;font-size:.78rem;padding:3px 10px;border-radius:12px;font-weight:700">
+                            <?= (int) $cc['cant_cuotas'] ?>
+                        </span>
+                    </td>
+                    <td style="text-align:right;color:var(--danger);font-weight:700">
+                        <?= formato_pesos($cc['total_mora']) ?>
+                    </td>
+                    <td style="text-align:right">
+                        <a href="pendientes_condonar?cobrador_id=<?= (int) $cc['cobrador_id'] ?>"
+                           class="btn-ic btn-sm"
+                           style="background:#f59e0b;color:#fff;border:none;white-space:nowrap">
+                            <i class="fa fa-triangle-exclamation"></i> Revisar
+                        </a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
+</div>
 
 <div style="margin-bottom:12px;color:var(--text-muted);font-size:.82rem">
     <i class="fa fa-info-circle"></i>

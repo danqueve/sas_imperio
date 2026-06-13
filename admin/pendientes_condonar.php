@@ -38,7 +38,10 @@ $stmt = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
-    WHERE cu.estado IN ('CAP_PAGADA','PARCIAL')
+    WHERE (
+              (cu.estado = 'CAP_PAGADA' AND cu.monto_mora > 0)
+              OR cu.estado = 'PARCIAL'
+          )
       AND cr.cobrador_id = ?
       AND cr.estado IN ('EN_CURSO','MOROSO')
     ORDER BY cu.estado DESC, cl.apellidos
