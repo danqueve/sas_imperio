@@ -312,6 +312,12 @@ if ($rol === 'admin') {
                         <i class="fa fa-percent"></i>
                         <span class="nav-text">Interés a Cero</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'migrar_cobrador' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/migrar_cobrador"
+                       data-tooltip="Migrar Cobrador">
+                        <i class="fa fa-right-left"></i>
+                        <span class="nav-text">Migrar Cobrador</span>
+                    </a>
                 <?php endif; ?>
 
                 <!-- Soporte — visible para todos los roles excepto vendedor -->
