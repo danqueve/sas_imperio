@@ -380,25 +380,118 @@ if ($rol === 'admin') {
         <?php
         $_sv_mins = supervisor_minutos_restantes();
         if ($_sv_mins !== null && $_sv_mins > 0 && $_sv_mins <= 30):
+        $_sv_urgent = $_sv_mins <= 10;
         ?>
-        <div id="sv-warn" style="background:rgba(245,158,11,.1);border-bottom:1px solid rgba(245,158,11,.2);
-             padding:7px 20px;font-size:.8rem;color:#f59e0b;display:flex;
-             align-items:center;justify-content:space-between;gap:12px">
-            <span>
-                <i class="fa fa-clock"></i>
-                Tu acceso vence en <strong id="sv-mins"><?= $_sv_mins ?></strong> min.
-                Para continuar, solicitá extensión a un administrador.
-            </span>
-            <button onclick="document.getElementById('sv-warn').remove()"
-                    style="background:none;border:none;color:#f59e0b;cursor:pointer;font-size:1rem;padding:0 4px;line-height:1">&times;</button>
+        <style>
+        /* Banner de vencimiento — fijo debajo del topbar, a la derecha del sidebar */
+        #sv-warn {
+            position: fixed;
+            top: var(--topbar-h);
+            left: var(--sidebar-w);
+            right: 0;
+            z-index: 1020;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 9px 20px;
+            font-size: .8rem;
+            border-bottom: 2px solid;
+            animation: sv-slidein .3s ease;
+            transition: background .4s, border-color .4s, color .4s;
+        }
+        .sidebar.collapsed ~ * #sv-warn,
+        .sidebar.collapsed ~ #sv-warn { left: var(--sidebar-collapsed-w); }
+        @media (max-width: 768px) { #sv-warn { left: 0; } }
+
+        #sv-warn.normal {
+            background: rgba(245,158,11,.13);
+            border-color: rgba(245,158,11,.35);
+            color: #fbbf24;
+        }
+        #sv-warn.urgent {
+            background: rgba(239,68,68,.14);
+            border-color: rgba(239,68,68,.4);
+            color: #f87171;
+        }
+        @keyframes sv-slidein {
+            from { opacity: 0; transform: translateY(-8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        #sv-warn .sv-icon { font-size: 1rem; flex-shrink: 0; }
+        #sv-warn.urgent .sv-icon { animation: sv-pulse 1.1s ease-in-out infinite; }
+        @keyframes sv-pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+        #sv-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px 2px 7px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: .78rem;
+            letter-spacing: .03em;
+            white-space: nowrap;
+        }
+        #sv-warn.normal #sv-badge { background: rgba(245,158,11,.22); color: #f59e0b; border: 1px solid rgba(245,158,11,.3); }
+        #sv-warn.urgent #sv-badge { background: rgba(239,68,68,.2);   color: #ef4444; border: 1px solid rgba(239,68,68,.35); }
+
+        #sv-warn .sv-msg { flex: 1; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #sv-warn .sv-msg strong { font-weight: 600; }
+
+        #sv-close {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+            opacity: .55;
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            font-size: 1rem;
+            line-height: 24px;
+            text-align: center;
+            padding: 0;
+            transition: opacity .2s, background .2s;
+        }
+        #sv-close:hover { opacity: 1; background: rgba(255,255,255,.12); }
+
+        /* Empujar el main-content hacia abajo cuando el banner está visible */
+        body.sv-active .main-content { padding-top: calc(var(--topbar-h) + 36px + 24px) !important; }
+        </style>
+        <div id="sv-warn" class="<?= $_sv_urgent ? 'urgent' : 'normal' ?>">
+            <i class="fa <?= $_sv_urgent ? 'fa-triangle-exclamation' : 'fa-clock' ?> sv-icon"></i>
+            <div class="sv-msg">
+                Tu acceso vence en
+                <span id="sv-badge">
+                    <i class="fa fa-hourglass-half" style="font-size:.65rem"></i>
+                    <span id="sv-mins"><?= $_sv_mins ?></span>&nbsp;min
+                </span>
+                &mdash; <strong>Solicitá una extensión a un administrador para continuar.</strong>
+            </div>
+            <button id="sv-close" title="Cerrar aviso">&times;</button>
         </div>
         <script>
         (function(){
-            var m=<?= (int)$_sv_mins ?>, el=document.getElementById('sv-mins');
-            if(!el) return;
+            var m    = <?= (int)$_sv_mins ?>;
+            var el   = document.getElementById('sv-mins');
+            var wrap = document.getElementById('sv-warn');
+            var icon = wrap ? wrap.querySelector('.sv-icon') : null;
+            if (!el || !wrap) return;
+
+            document.body.classList.add('sv-active');
+
+            document.getElementById('sv-close').addEventListener('click', function(){
+                wrap.remove();
+                document.body.classList.remove('sv-active');
+            });
+
             setInterval(function(){
-                if(m>0){ m--; el.textContent=m; }
-                if(m<=0){ window.location.href='<?= BASE_URL ?>auth/acceso_restringido'; }
+                if (m > 0) { m--; el.textContent = m; }
+                if (m <= 10) {
+                    wrap.classList.replace('normal', 'urgent');
+                    if (icon) { icon.classList.replace('fa-clock', 'fa-triangle-exclamation'); }
+                }
+                if (m <= 0) { window.location.href = '<?= BASE_URL ?>auth/acceso_restringido'; }
             }, 60000);
         })();
         </script>
