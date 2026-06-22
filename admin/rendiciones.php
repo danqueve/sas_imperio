@@ -122,6 +122,7 @@ if ($cobrador_id) {
         SELECT pt.*, pt.solicitud_baja, pt.motivo_baja, pt.fecha_jornada,
                cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
+               cu.saldo_pagado, cu.estado AS cuota_estado,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
                (SELECT COUNT(*)
                 FROM ic_cuotas cu2
@@ -586,6 +587,24 @@ require_once __DIR__ . '/../views/layout.php';
                                 </td>
                                 <td>
                                     #<?= $p['numero_cuota'] ?> — <?= date('d/m/Y', strtotime($p['fecha_vencimiento'])) ?>
+                                    <?php
+                                    $saldo_prev_rd = (float)($p['saldo_pagado'] ?? 0);
+                                    if ($p['cuota_estado'] === 'PARCIAL' && $saldo_prev_rd > 0):
+                                        $mora_cong_rd = (float)($p['mora_congelada'] ?? 0);
+                                        $total_orig_rd = (float)$p['monto_cuota'] + $mora_cong_rd;
+                                    ?>
+                                    <div style="font-size:.7rem;color:var(--success);margin-top:2px">
+                                        <i class="fa fa-check-circle"></i> Cuota parcial
+                                        · Total: <?= formato_pesos($total_orig_rd) ?>
+                                        · Previo: <?= formato_pesos($saldo_prev_rd) ?>
+                                    </div>
+                                    <?php endif; ?>
+                                    <?php $sobrante_rd = (float)($p['monto_sobrante'] ?? 0); ?>
+                                    <?php if ($sobrante_rd > 0.005): ?>
+                                    <div style="font-size:.7rem;color:#d97706;margin-top:2px;font-weight:600">
+                                        <i class="fa fa-exclamation-circle"></i> Sobrante: <?= formato_pesos($sobrante_rd) ?> — no aplicado
+                                    </div>
+                                    <?php endif; ?>
                                     <div style="font-size:.7rem;color:var(--text-muted)">Reg: <?= date('d/m H:i', strtotime($p['fecha_registro'])) ?></div>
                                 </td>
                                 <td class="hide-mobile"><?= e($p['articulo']) ?></td>

@@ -29,6 +29,7 @@ if ($multi_jornada) {
                cr.id AS credito_id,
                cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
+               cu.saldo_pagado, cu.estado AS cuota_estado,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
                (SELECT COUNT(*)
                 FROM ic_cuotas cu2
@@ -54,6 +55,7 @@ if ($multi_jornada) {
                cr.id AS credito_id,
                cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
+               cu.saldo_pagado, cu.estado AS cuota_estado,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
                (SELECT COUNT(*)
                 FROM ic_cuotas cu2
@@ -84,17 +86,26 @@ foreach ($pagos_raw as $p) {
     $key = $p['fecha_jornada'] . '_' . (int) $p['credito_id'];
     if (!isset($agrupado[$key])) {
         $agrupado[$key] = $p;
-        $agrupado[$key]['cuotas_nums'] = [(int) $p['numero_cuota']];
-        $agrupado[$key]['monto_cuota_sum'] = (float) $p['monto_cuota'];
+        $agrupado[$key]['cuotas_nums']        = [(int) $p['numero_cuota']];
+        $agrupado[$key]['monto_cuota_sum']    = (float) $p['monto_cuota'];
+        $agrupado[$key]['saldo_pagado_sum']   = (float)($p['saldo_pagado'] ?? 0);
+        $agrupado[$key]['monto_sobrante_sum'] = (float)($p['monto_sobrante'] ?? 0);
+        // Marcar si alguna cuota del grupo era PARCIAL
+        $agrupado[$key]['tiene_parcial']   = ($p['cuota_estado'] === 'PARCIAL' && (float)($p['saldo_pagado'] ?? 0) > 0);
     } else {
         $agrupado[$key]['cuotas_nums'][]        = (int) $p['numero_cuota'];
         $agrupado[$key]['monto_cuota_sum']      += (float) $p['monto_cuota'];
+        $agrupado[$key]['saldo_pagado_sum']     += (float)($p['saldo_pagado'] ?? 0);
         $agrupado[$key]['monto_efectivo']        = (float)$agrupado[$key]['monto_efectivo'] + (float)$p['monto_efectivo'];
         $agrupado[$key]['monto_transferencia']   = (float)$agrupado[$key]['monto_transferencia'] + (float)$p['monto_transferencia'];
         $agrupado[$key]['monto_total']           = (float)$agrupado[$key]['monto_total'] + (float)$p['monto_total'];
         $agrupado[$key]['monto_mora_cobrada']    = (float)$agrupado[$key]['monto_mora_cobrada'] + (float)$p['monto_mora_cobrada'];
+        $agrupado[$key]['monto_sobrante_sum']   += (float)($p['monto_sobrante'] ?? 0);
         if ((int)($p['es_cuota_pura'] ?? 0))  $agrupado[$key]['es_cuota_pura']  = 1;
         if ((int)($p['solicitud_baja'] ?? 0)) $agrupado[$key]['solicitud_baja'] = 1;
+        if ($p['cuota_estado'] === 'PARCIAL' && (float)($p['saldo_pagado'] ?? 0) > 0) {
+            $agrupado[$key]['tiene_parcial'] = true;
+        }
     }
 }
 $pagos = array_values($agrupado);
@@ -115,11 +126,13 @@ $total_transferencia = 0.0;
 $total_general       = 0.0;
 $total_mora_cobrada  = 0.0;
 $total_mora_pend     = 0.0;
+$total_sobrante      = 0.0;
 
 foreach ($pagos as $p) {
     $total_efectivo      += (float) $p['monto_efectivo'];
     $total_transferencia += (float) $p['monto_transferencia'];
     $total_general       += (float) $p['monto_total'];
+    $total_sobrante      += (float)($p['monto_sobrante_sum'] ?? 0);
     if ((int)($p['es_cuota_pura'] ?? 0)) {
         $total_mora_pend += (float) $p['monto_mora_cobrada'];
     } else {
@@ -281,7 +294,7 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
 
             $ef = (float) $p['monto_efectivo'];
             $tr = (float) $p['monto_transferencia'];
-            $tt = (float) $p['monto_total'];
+            $tt = (float) $p['monto_total'] + (float)($p['monto_sobrante_sum'] ?? 0);
 
             $sec_efectivo += $ef;
             $sec_transfer += $tr;
@@ -305,6 +318,18 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
 
             $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1), 1, 0, 'R', false);
             $pdf->Ln();
+
+            // Nota: sobrante no aplicado a ninguna cuota
+            $sobrante_p = (float)($p['monto_sobrante_sum'] ?? 0);
+            if ($sobrante_p > 0.005) {
+                $sobrante_txt = '** SOBRANTE: $' . fmt($sobrante_p) . ' ingresados por el cobrador no fueron aplicados a ninguna cuota.';
+                $pdf->SetFont('Helvetica', 'BI', 7);
+                $pdf->SetTextColor(150, 60, 0);
+                $pdf->Cell($COLS[0], 4, '', 0, 0);
+                $pdf->Cell($ANCHO_TOTAL - $COLS[0], 4, lat($sobrante_txt), 0, 1, 'L');
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFont('Helvetica', '', 8);
+            }
 
             // Solicitud de baja inline
             if ($es_baja) {
@@ -366,7 +391,7 @@ if ($es_multi) {
     $pdf->Cell($COLS[5], 8, $pdf->fitText(fmt($total_efectivo), $COLS[5] - 1),      1, 0, 'R', false);
     $pdf->Cell($COLS[6], 8, $pdf->fitText(fmt($total_transferencia), $COLS[6] - 1), 1, 0, 'R', false);
     $pdf->Cell($COLS[7], 8, $pdf->fitText(fmt($total_mora_cobrada), $COLS[7] - 1),  1, 0, 'R', false);
-    $pdf->Cell($COLS[8], 8, $pdf->fitText(fmt($total_general), $COLS[8] - 1),       1, 0, 'R', false);
+    $pdf->Cell($COLS[8], 8, $pdf->fitText(fmt($total_general + $total_sobrante), $COLS[8] - 1), 1, 0, 'R', false);
     $pdf->Ln();
 }
 
@@ -389,7 +414,10 @@ if ($total_mora_cobrada > 0) {
 if ($total_mora_pend > 0) {
     $resumen[] = ['Mora Pendiente (cuota pura)', fmt($total_mora_pend)];
 }
-$resumen[] = ['TOTAL RENDIDO', fmt($total_general)];
+if ($total_sobrante > 0.005) {
+    $resumen[] = ['!! Sobrante no aplicado', fmt($total_sobrante)];
+}
+$resumen[] = ['TOTAL RENDIDO', fmt($total_general + $total_sobrante)];
 
 foreach ($resumen as $i => [$label, $valor]) {
     $es_total = ($i === count($resumen) - 1);
@@ -407,6 +435,15 @@ if ($total_mora_pend > 0) {
     $pdf->SetTextColor(80, 80, 80);
     $pdf->SetX(10);
     $pdf->Cell($ANCHO_TOTAL, 5, lat('(Pend.) = Mora pendiente de cobro (cuota pura). Estos montos NO estan incluidos en los subtotales ni en el Total Rendido.'), 0, 1, 'L');
+    $pdf->SetTextColor(0, 0, 0);
+}
+// ── Nota al pie sobre sobrante no aplicado ───────────────────
+if ($total_sobrante > 0.005) {
+    $pdf->Ln($total_mora_pend > 0 ? 2 : 6);
+    $pdf->SetFont('Helvetica', 'BI', 8);
+    $pdf->SetTextColor(150, 60, 0);
+    $pdf->SetX(10);
+    $pdf->Cell($ANCHO_TOTAL, 5, lat('ATENCION — El cobrador ingreso $' . fmt($total_sobrante) . ' que no fueron aplicados a ninguna cuota (sobrante). Verificar con el cobrador.'), 0, 1, 'L');
     $pdf->SetTextColor(0, 0, 0);
 }
 

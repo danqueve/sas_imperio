@@ -69,9 +69,11 @@ $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol=
 
 foreach ($todas as $c) {
     $dias_atraso = dias_atraso_habiles($c['fecha_vencimiento']);
-    // CAP_PAGADA: mora ya congelada en monto_mora (no recalcular)
-    $mora = ($c['estado'] === 'CAP_PAGADA')
-        ? (float) $c['monto_mora']
+    // Usar mora congelada si existe (CAP_PAGADA, PARCIAL con pago previo aprobado).
+    // Solo recalcular si monto_mora == 0 (cuota VENCIDA sin pago previo).
+    $mora_db = (float) $c['monto_mora'];
+    $mora = $mora_db > 0
+        ? $mora_db
         : calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
     $c['dias_atraso_calc'] = $dias_atraso;
     $c['mora_calc'] = $mora;
@@ -146,6 +148,7 @@ $stmt_cobrados = $pdo->prepare("
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            pt.id AS pt_id,
            pt.fecha_jornada AS jornada_pago,
+           pt.monto_sobrante,
            1 AS pago_pen
     FROM ic_pagos_temporales pt
     JOIN ic_cuotas cu ON pt.cuota_id = cu.id
@@ -161,8 +164,9 @@ $cobrados_hoy_raw = $stmt_cobrados->fetchAll();
 $cobrados_hoy = [];
 foreach ($cobrados_hoy_raw as $c) {
     $dias_atraso = dias_atraso_habiles($c['fecha_vencimiento']);
-    $mora = ($c['estado'] === 'CAP_PAGADA')
-        ? (float) $c['monto_mora']
+    $mora_db_c = (float) $c['monto_mora'];
+    $mora = $mora_db_c > 0
+        ? $mora_db_c
         : calcular_mora($c['monto_cuota'], $dias_atraso, $c['interes_moratorio_pct']);
     $c['dias_atraso_calc'] = $dias_atraso;
     $c['mora_calc']        = $mora;
@@ -234,8 +238,9 @@ $semana_por_credito = [];
 
 foreach ($semana_rows_raw as $r) {
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
-    $mora        = ($r['estado'] === 'CAP_PAGADA')
-        ? (float) $r['monto_mora']
+    $mora_db_r   = (float) $r['monto_mora'];
+    $mora        = $mora_db_r > 0
+        ? $mora_db_r
         : calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
     $r['dias_atraso_calc'] = $dias_atraso;
     $r['mora_calc']        = $mora;
@@ -296,8 +301,9 @@ $mensual_rows_raw = $mensual_stmt->fetchAll();
 $mensual_dedup = []; // key = credito_id
 foreach ($mensual_rows_raw as $r) {
     $dias_atraso = dias_atraso_habiles($r['fecha_vencimiento']);
-    $mora        = ($r['estado'] === 'CAP_PAGADA')
-        ? (float) $r['monto_mora']
+    $mora_db_m   = (float) $r['monto_mora'];
+    $mora        = $mora_db_m > 0
+        ? $mora_db_m
         : calcular_mora($r['monto_cuota'], $dias_atraso, $r['interes_moratorio_pct']);
     $r['dias_atraso_calc'] = $dias_atraso;
     $r['mora_calc']        = $mora;
@@ -747,6 +753,14 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     <span style="font-size:.75rem;color:var(--text-muted);display:block">
                         Esta cuota: <?= formato_pesos($c['monto_cuota']) ?> · <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?>
                     </span>
+                <?php elseif ($c['estado'] === 'PARCIAL' && (float)($c['saldo_pagado'] ?? 0) > 0): ?>
+                    <?php $saldo_ap = (float)$c['saldo_pagado']; ?>
+                    <span class="agenda-monto" style="color:var(--success)"><?= formato_pesos($c['total_a_cobrar']) ?></span>
+                    <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?> — saldo</span>
+                    <span style="font-size:.72rem;color:var(--text-muted);display:block;margin-top:2px">
+                        Total: <?= formato_pesos($c['monto_cuota'] + $c['mora_calc']) ?>
+                        &nbsp;·&nbsp; <span style="color:var(--success)">✓ Abonado: <?= formato_pesos($saldo_ap) ?></span>
+                    </span>
                 <?php else: ?>
                     <span class="agenda-monto"><?= formato_pesos($c['monto_cuota']) ?></span>
                     <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?></span>
@@ -778,17 +792,25 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         </button>
                     </div>
                 <?php else: ?>
-                    <div style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,193,7,.1);border-radius:8px;border:1px solid rgba(255,193,7,.2)">
-                        <span style="color:var(--warning);font-weight:700;font-size:.9rem">
-                            <i class="fa fa-clock"></i> Pago Registrado
-                        </span>
-                        <?php if (!empty($c['pt_id'])): ?>
-                        <button type="button"
-                            onclick='anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'
-                            class="btn-ic btn-ghost" title="Anular pago y corregir"
-                            style="font-size:.78rem;padding:5px 10px;height:auto;color:var(--danger);border-color:rgba(220,53,69,.3);gap:5px">
-                            <i class="fa fa-xmark"></i> Anular
-                        </button>
+                    <div style="width:100%;background:rgba(255,193,7,.1);border-radius:8px;border:1px solid rgba(255,193,7,.2)">
+                        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px">
+                            <span style="color:var(--warning);font-weight:700;font-size:.9rem">
+                                <i class="fa fa-clock"></i> Pago Registrado
+                            </span>
+                            <?php if (!empty($c['pt_id'])): ?>
+                            <button type="button"
+                                onclick='anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'
+                                class="btn-ic btn-ghost" title="Anular pago y corregir"
+                                style="font-size:.78rem;padding:5px 10px;height:auto;color:var(--danger);border-color:rgba(220,53,69,.3);gap:5px">
+                                <i class="fa fa-xmark"></i> Anular
+                            </button>
+                            <?php endif; ?>
+                        </div>
+                        <?php if (!empty($c['monto_sobrante']) && (float)$c['monto_sobrante'] > 0.005): ?>
+                        <div style="padding:6px 14px 10px;font-size:.78rem;color:#d97706;font-weight:600;border-top:1px solid rgba(255,193,7,.25)">
+                            <i class="fa fa-exclamation-circle"></i>
+                            Sobrante registrado: <?= formato_pesos((float)$c['monto_sobrante']) ?> — el excedente quedó pendiente de verificar con el supervisor.
+                        </div>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>

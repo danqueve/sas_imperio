@@ -69,6 +69,7 @@ $remaining    = $total;
 $ef_remaining = $ef;
 $tr_remaining = $tr;
 $cuotas_ok    = 0;
+$last_pt_id   = null;
 
 // Fase 2: transacción con FOR UPDATE para bloqueo atómico
 try {
@@ -132,9 +133,10 @@ try {
 
         $pdo->prepare("
             INSERT INTO ic_pagos_temporales
-              (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, mora_congelada, es_cuota_pura, fecha_jornada, observaciones)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (cuota_id, cobrador_id, monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada, mora_congelada, monto_sobrante, es_cuota_pura, fecha_jornada, observaciones)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
         ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $mora_frozen, $es_cuota_pura, $fecha_jornada_sel, $obs]);
+        $last_pt_id = (int)$pdo->lastInsertId();
 
         registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota['id'],
             'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));
@@ -143,6 +145,12 @@ try {
         $tr_remaining -= $pago_tr;
         $remaining    -= $pago_en_esta;
         $cuotas_ok++;
+    }
+
+    // Si el cobrador ingresó más de lo que había pendiente, guardar el sobrante
+    if ($remaining > 0.005 && $last_pt_id) {
+        $pdo->prepare("UPDATE ic_pagos_temporales SET monto_sobrante = ? WHERE id = ?")
+            ->execute([$remaining, $last_pt_id]);
     }
 
     $pdo->commit();
@@ -158,7 +166,14 @@ if ($cuotas_ok > 0) {
     $msg = $cuotas_ok > 1
         ? "Pago registrado para {$cuotas_ok} cuotas. Pendiente de aprobación."
         : 'Pago registrado correctamente. Pendiente de aprobación del supervisor.';
-    $_SESSION['flash'] = ['type' => 'success', 'msg' => $msg];
+    // Avisar si el monto ingresado superó lo pendiente (excedente no aplicado)
+    if ($remaining > 0.005) {
+        $excedente = number_format($remaining, 0, ',', '.');
+        $msg .= " ⚠ Atención: $" . $excedente . " no fueron aplicados (exceden el saldo pendiente de las cuotas).";
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => $msg];
+    } else {
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => $msg];
+    }
 } else {
     $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Todas las cuotas ya tienen un pago pendiente de aprobación.'];
 }

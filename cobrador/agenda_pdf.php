@@ -232,8 +232,9 @@ foreach ($dias_sel as $dia) {
     // Pre-calcular total del día
     $total_dia = 0;
     foreach ($clientes_dia as $r) {
-        $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
-            ? (float)$r['monto_mora']
+        $mora_db_pdf = (float)$r['monto_mora'];
+        $mora = $mora_db_pdf > 0
+            ? $mora_db_pdf
             : calcular_mora((float)$r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float)$r['interes_moratorio_pct']);
         $saldo_p = (float)($r['saldo_pagado'] ?? 0);
         $total_dia += ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float)$r['monto_cuota'] + $mora - $saldo_p);
@@ -284,8 +285,9 @@ foreach ($dias_sel as $dia) {
         // Mejora 2: cuota X/Y
         $cuota_label = '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'];
 
-        $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
-            ? (float)$r['monto_mora']
+        $mora_db_row = (float)$r['monto_mora'];
+        $mora = $mora_db_row > 0
+            ? $mora_db_row
             : calcular_mora((float)$r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float)$r['interes_moratorio_pct']);
         $saldo_p      = (float)($r['saldo_pagado'] ?? 0);
         $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float)$r['monto_cuota'] + $mora - $saldo_p);
@@ -339,8 +341,9 @@ $rows_qm = $stmt_qm->fetchAll();
 if (!empty($rows_qm)) {
     $qm_aux = ['quincenal' => [], 'mensual' => []];
     foreach ($rows_qm as $r) {
-        $mora = ($r['cuota_estado'] === 'CAP_PAGADA')
-            ? (float) $r['monto_mora']
+        $mora_db_qm  = (float) $r['monto_mora'];
+        $mora = $mora_db_qm > 0
+            ? $mora_db_qm
             : calcular_mora((float) $r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float) $r['interes_moratorio_pct']);
         $saldo_p      = (float)($r['saldo_pagado'] ?? 0);
         $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float) $r['monto_cuota'] + $mora - $saldo_p);

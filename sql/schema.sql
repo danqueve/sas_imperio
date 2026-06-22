@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS `ic_pagos_temporales` (
   `monto_transferencia` DECIMAL(12,2) DEFAULT 0.00,
   `monto_total` DECIMAL(12,2) NOT NULL,
   `monto_mora_cobrada` DECIMAL(12,2) DEFAULT 0.00,
+  `monto_sobrante` DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'Monto ingresado por el cobrador que excede el saldo pendiente de las cuotas',
   `mora_congelada` DECIMAL(12,2) DEFAULT 0.00 COMMENT 'Mora calculada al momento del registro (se usa en aprobación)',
   `es_cuota_pura` TINYINT(1) DEFAULT 0,
   `observaciones` TEXT,

@@ -134,9 +134,10 @@ $pag_stmt = $pdo->prepare("
 $pag_stmt->execute([$credito_id]);
 $cuotas_pagables = [];
 foreach ($pag_stmt->fetchAll() as $cp) {
-    $dias   = dias_atraso_habiles($cp['fecha_vencimiento']);
-    $mora   = ($cp['estado'] === 'CAP_PAGADA')
-                ? (float) $cp['monto_mora']
+    $dias     = dias_atraso_habiles($cp['fecha_vencimiento']);
+    $mora_db  = (float) $cp['monto_mora'];
+    $mora     = $mora_db > 0
+                ? $mora_db
                 : calcular_mora((float)$cp['monto_cuota'], $dias, (float)$cp['interes_moratorio_pct']);
     $saldo  = (float)($cp['saldo_pagado'] ?? 0);
     $total  = ($cp['estado'] === 'CAP_PAGADA')
