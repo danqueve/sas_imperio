@@ -117,7 +117,7 @@ for ($i = 0; $i < 6; $i++) {
     $dias_semana[$d->format('Y-m-d')] = (int) $d->format('N');
 }
 
-$frecuencias = ['semanal', 'quincenal', 'mensual'];
+$frecuencias = ['diario', 'semanal', 'quincenal', 'mensual'];
 
 // ── Query 1: Cobradores activos ───────────────────────────────
 $cobradores = $pdo->query(
@@ -527,8 +527,8 @@ require_once __DIR__ . '/../views/layout.php';
                 $tf     = $tot['por_tipo'][$freq];
                 $pct_f  = $tf['agendados'] > 0 ? round($tf['cobrados'] / $tf['agendados'] * 100) : 0;
                 $c_f    = $pct_f >= 80 ? 'var(--success)' : ($pct_f >= 50 ? 'var(--warning)' : 'var(--danger)');
-                $label  = ['semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'][$freq];
-                $icon   = ['semanal' => 'fa-calendar-week', 'quincenal' => 'fa-calendar-days', 'mensual' => 'fa-calendar'][$freq];
+                $label  = ['diario' => 'Diario', 'semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'][$freq];
+                $icon   = ['diario' => 'fa-calendar-day', 'semanal' => 'fa-calendar-week', 'quincenal' => 'fa-calendar-days', 'mensual' => 'fa-calendar'][$freq];
             ?>
             <div style="flex:1;min-width:170px;background:rgba(0,0,0,.2);border-radius:10px;padding:12px 14px;border:1px solid rgba(255,255,255,.07)">
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">

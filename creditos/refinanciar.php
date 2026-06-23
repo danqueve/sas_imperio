@@ -106,11 +106,18 @@ $last_paid_date = $lp_stmt->fetchColumn() ?: $cr['primer_vencimiento'];
 
 function next_venc(string $base, string $frec): string {
     $f = new DateTime($base);
-    match ($frec) {
-        'semanal'   => $f->modify('+7 days'),
-        'quincenal' => $f->modify('+15 days'),
-        default     => $f->modify('+1 month'),
-    };
+    if ($frec === 'diario') {
+        $f->modify('+1 day');
+        while ((int)$f->format('N') === 7) {
+            $f->modify('+1 day');
+        }
+    } else {
+        match ($frec) {
+            'semanal'   => $f->modify('+7 days'),
+            'quincenal' => $f->modify('+15 days'),
+            default     => $f->modify('+1 month'),
+        };
+    }
     return $f->format('Y-m-d');
 }
 
@@ -349,7 +356,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Frecuencia de pago *</label>
                     <select name="frecuencia" id="inp_frecuencia" required onchange="recalcular()">
-                        <?php foreach (['semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'] as $k => $lbl): ?>
+                        <?php foreach (['diario' => 'Diario', 'semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'] as $k => $lbl): ?>
                             <option value="<?= $k ?>" <?= $f['frecuencia'] === $k ? 'selected' : '' ?>><?= $lbl ?></option>
                         <?php endforeach; ?>
                     </select>

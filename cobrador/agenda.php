@@ -289,7 +289,7 @@ $mensual_stmt = $pdo->prepare("
     LEFT JOIN ic_articulos art ON cr.articulo_id = art.id
     WHERE cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
       AND cr.estado IN ('EN_CURSO','MOROSO')
-      AND cr.frecuencia IN ('quincenal', 'mensual')
+      AND cr.frecuencia IN ('diario', 'quincenal', 'mensual')
       AND cr.cobrador_id = ?
     ORDER BY cu.fecha_vencimiento ASC, cl.apellidos ASC
 ");
@@ -979,7 +979,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
     <div class="card-ic-header" style="cursor: pointer;" onclick="toggleCollapse('col-mensual', 'icon-mensual')">
         <span class="card-title">
             <i class="fa fa-chevron-down" id="icon-mensual" style="transition: transform 0.2s; margin-right: 6px;"></i>
-            <i class="fa fa-calendar-alt" style="color:var(--primary)"></i> Quincenales y Mensuales
+            <i class="fa fa-calendar-alt" style="color:var(--primary)"></i> Diarios, Quincenales y Mensuales
             <span class="badge-ic badge-primary" style="margin-left:8px">
                 <?= count($mensual_rows) ?>
             </span>
@@ -991,12 +991,25 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
     <div id="col-mensual" style="display:block">
         <!-- Tabs quincenal / mensual -->
         <?php
+        $tab_diario    = array_values(array_filter($mensual_rows, fn($r) => $r['frecuencia'] === 'diario'));
         $tab_quincenal = array_values(array_filter($mensual_rows, fn($r) => $r['frecuencia'] === 'quincenal'));
         $tab_mensual   = array_values(array_filter($mensual_rows, fn($r) => $r['frecuencia'] === 'mensual'));
+        // Tab activo por defecto: diario > quincenal > mensual
+        $tab_default = !empty($tab_diario) ? 'diario' : (!empty($tab_quincenal) ? 'quincenal' : 'mensual');
         ?>
         <div style="display:flex;gap:6px;flex-wrap:wrap;padding:12px 16px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+            <button onclick="switchTabMensual('diario')" id="tab-diario"
+                class="btn-ic btn-sm <?= $tab_default === 'diario' ? 'btn-primary' : 'btn-ghost' ?>"
+                style="position:relative">
+                Diario
+                <?php if (!empty($tab_diario)): ?>
+                    <span style="position:absolute;top:-6px;right:-6px;background:var(--primary);color:#fff;border-radius:50%;width:18px;height:18px;font-size:.65rem;display:flex;align-items:center;justify-content:center;font-weight:700">
+                        <?= count($tab_diario) ?>
+                    </span>
+                <?php endif; ?>
+            </button>
             <button onclick="switchTabMensual('quincenal')" id="tab-quincenal"
-                class="btn-ic btn-sm <?= !empty($tab_quincenal) ? 'btn-primary' : 'btn-ghost' ?>"
+                class="btn-ic btn-sm <?= $tab_default === 'quincenal' ? 'btn-primary' : 'btn-ghost' ?>"
                 style="position:relative">
                 Quincenal
                 <?php if (!empty($tab_quincenal)): ?>
@@ -1006,7 +1019,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <?php endif; ?>
             </button>
             <button onclick="switchTabMensual('mensual')" id="tab-mensual"
-                class="btn-ic btn-sm <?= empty($tab_quincenal) ? 'btn-primary' : 'btn-ghost' ?>"
+                class="btn-ic btn-sm <?= $tab_default === 'mensual' ? 'btn-primary' : 'btn-ghost' ?>"
                 style="position:relative">
                 Mensual
                 <?php if (!empty($tab_mensual)): ?>
@@ -1017,7 +1030,21 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             </button>
         </div>
 
-        <div id="panel-quincenal" style="display:<?= !empty($tab_quincenal) ? 'block' : 'none' ?>">
+        <div id="panel-diario" style="display:<?= $tab_default === 'diario' ? 'block' : 'none' ?>">
+            <?php if (empty($tab_diario)): ?>
+                <p class="text-muted text-center" style="padding:24px">Sin cuotas diarias pendientes.</p>
+            <?php else: ?>
+                <?= render_tabla_cuotas($tab_diario, '', '') ?>
+                <div style="padding:16px;text-align:right;border-top:1px solid rgba(255,255,255,.1)">
+                    <span class="text-muted" style="margin-right:16px;font-size:.85rem">Total diario:</span>
+                    <span style="font-size:1.1rem;font-weight:700;color:var(--success)">
+                        <?= formato_pesos(array_sum(array_column($tab_diario, 'total_a_cobrar'))) ?>
+                    </span>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <div id="panel-quincenal" style="display:<?= $tab_default === 'quincenal' ? 'block' : 'none' ?>">
             <?php if (empty($tab_quincenal)): ?>
                 <p class="text-muted text-center" style="padding:24px">Sin cuotas quincenales pendientes.</p>
             <?php else: ?>
@@ -1031,7 +1058,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <?php endif; ?>
         </div>
 
-        <div id="panel-mensual" style="display:<?= empty($tab_quincenal) ? 'block' : 'none' ?>">
+        <div id="panel-mensual" style="display:<?= $tab_default === 'mensual' ? 'block' : 'none' ?>">
             <?php if (empty($tab_mensual)): ?>
                 <p class="text-muted text-center" style="padding:24px">Sin cuotas mensuales pendientes.</p>
             <?php else: ?>
@@ -1464,7 +1491,7 @@ function toggleArticulo(id) {
 }
 
 function switchTabMensual(tab) {
-  ['quincenal','mensual'].forEach(t => {
+  ['diario','quincenal','mensual'].forEach(t => {
     const panel = document.getElementById('panel-' + t);
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = 'none';

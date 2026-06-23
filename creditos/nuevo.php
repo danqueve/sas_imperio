@@ -327,7 +327,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Frecuencia *</label>
                     <select name="frecuencia" id="frecuencia" required onchange="toggleDiaCobro();calcularCuotas()">
-                        <?php foreach (['semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'] as $k => $lbl): ?>
+                        <?php foreach (['diario' => 'Diario', 'semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'] as $k => $lbl): ?>
                             <option value="<?= $k ?>" <?= ($v['frecuencia'] === $k) ? 'selected' : '' ?>>
                                 <?= $lbl ?>
                             </option>
@@ -531,9 +531,12 @@ function previsualizarFechas() {
     const n = Math.min(3, cant);
     for (let i = 0; i < n; i++) {
         fechas.push(cur.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }));
-        if (frec === 'mensual')   cur.setMonth(cur.getMonth() + 1);
-        else if (frec === 'quincenal') cur.setDate(cur.getDate() + 14);
-        else                      cur.setDate(cur.getDate() + 7);
+        if (frec === 'mensual')        cur.setMonth(cur.getMonth() + 1);
+        else if (frec === 'quincenal') cur.setDate(cur.getDate() + 15);
+        else if (frec === 'diario') {
+            cur.setDate(cur.getDate() + 1);
+            while (cur.getDay() === 0) cur.setDate(cur.getDate() + 1); // saltar domingo
+        } else                         cur.setDate(cur.getDate() + 7);
     }
     const extra = cant > 3 ? ' y ' + (cant - 3) + ' m\u00e1s\u2026' : '';
     prev.textContent = 'Vencimientos: ' + fechas.join(', ') + extra;

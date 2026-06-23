@@ -141,6 +141,12 @@ function generar_cuotas(int $credito_id, array $d, PDO $pdo): bool
     for ($i = 1; $i <= $d['cant_cuotas']; $i++) {
         if ($i > 1) {
             switch ($d['frecuencia']) {
+                case 'diario':
+                    $fecha->modify('+1 day');
+                    while ((int)$fecha->format('N') === 7) { // saltar domingo
+                        $fecha->modify('+1 day');
+                    }
+                    break;
                 case 'semanal':
                     $fecha->modify('+7 days');
                     break;

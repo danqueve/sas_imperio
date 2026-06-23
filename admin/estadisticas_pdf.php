@@ -32,7 +32,7 @@ $sabado_sel = $lunes_sel->modify('+5 days');
 $inicio_str = $lunes_sel->format('Y-m-d');
 $fin_str    = $sabado_sel->format('Y-m-d');
 
-$frecuencias = ['semanal', 'quincenal', 'mensual'];
+$frecuencias = ['diario', 'semanal', 'quincenal', 'mensual'];
 $nombres_dia = [1 => 'Lunes', 2 => 'Martes', 3 => 'Miercoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sabado'];
 
 $dias_semana = [];
@@ -363,7 +363,7 @@ foreach ($cobradores_con_datos as $cob_id => $cob) {
     $pdf->TituloSeccion('3. Desglose por Tipo de Cuota');
     $pdf->CabecerTabla($c3, $l3, $a3);
 
-    $etiquetas_tipo = ['semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'];
+    $etiquetas_tipo = ['diario' => 'Diario', 'semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'];
     foreach ($frecuencias as $freq) {
         $tf   = $tot['por_tipo'][$freq];
         $pctf = $tf['agendados'] > 0 ? (int) round($tf['cobrados'] / $tf['agendados'] * 100) : 0;

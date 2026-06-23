@@ -217,7 +217,7 @@ if ($n_pendientes > 0 && !empty($cr['primer_vencimiento'])) {
     // Calcular intervalo promedio de días entre pagos confirmados
     $fechas_pagos = array_column($historial_pagos, 'fecha_jornada');
     sort($fechas_pagos);
-    $intervalo_dias = match($cr['frecuencia']) { 'quincenal' => 15, 'mensual' => 30, default => 7 };
+    $intervalo_dias = match($cr['frecuencia']) { 'diario' => 1, 'quincenal' => 15, 'mensual' => 30, default => 7 };
     if (count($fechas_pagos) >= 2) {
         $diffs = [];
         for ($i = 1; $i < count($fechas_pagos); $i++) {

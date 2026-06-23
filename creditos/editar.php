@@ -140,6 +140,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach ($todas_cuotas as $idx => $c) {
                     if ($idx > 0) {
                         switch ($v['frecuencia']) {
+                            case 'diario':
+                                $fecha_calc->modify('+1 day');
+                                while ((int)$fecha_calc->format('N') === 7) {
+                                    $fecha_calc->modify('+1 day');
+                                }
+                                break;
                             case 'semanal':   $fecha_calc->modify('+7 days');  break;
                             case 'quincenal': $fecha_calc->modify('+15 days'); break;
                             case 'mensual':   $fecha_calc->modify('+1 month'); break;
@@ -284,7 +290,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Frecuencia *</label>
                     <select name="frecuencia" id="frecuencia" required onchange="calcularCuotas()">
-                        <?php foreach (['semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'] as $k => $lbl): ?>
+                        <?php foreach (['diario' => 'Diario', 'semanal' => 'Semanal', 'quincenal' => 'Quincenal', 'mensual' => 'Mensual'] as $k => $lbl): ?>
                             <option value="<?= $k ?>" <?= ($v['frecuencia'] === $k) ? 'selected' : '' ?>>
                                 <?= $lbl ?>
                             </option>
