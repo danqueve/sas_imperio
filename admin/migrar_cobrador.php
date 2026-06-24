@@ -88,7 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $resultado = ['ok' => false, 'error' => $e->getMessage()];
+                error_log('migrar_cobrador error: ' . $e->getMessage());
+                $resultado = ['ok' => false, 'error' => 'Error al migrar el cobrador. Intente nuevamente.'];
             }
         }
     }

@@ -118,7 +118,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            $error = 'Error al registrar: ' . $e->getMessage();
+            error_log('ventas/nueva error: ' . $e->getMessage());
+            $error = 'Error al registrar la venta. Intente nuevamente.';
         }
     }
 }
@@ -234,7 +235,7 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
 
         <div class="d-flex gap-3">
-            <button type="submit" class="btn-ic btn-primary">
+            <button type="submit" class="btn-ic btn-primary" onclick="this.disabled=true;this.form.submit()">
                 <i class="fa fa-check"></i> Registrar Venta
             </button>
             <a href="index" class="btn-ic btn-ghost">Cancelar</a>

@@ -75,6 +75,7 @@ $del_opt_bg = $is_light ? '#f9fafb' : 'rgba(15,23,42,.4)';
             <?php endif; ?>
 
             <form method="POST" action="procesar_ticket">
+                <?php csrf_input(); ?>
                 <div class="mb-4">
                     <label class="form-label-premium">ASUNTO DEL PROBLEMA</label>
                     <input type="text" name="titulo" class="form-control input-premium"

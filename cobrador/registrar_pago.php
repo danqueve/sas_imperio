@@ -39,6 +39,7 @@ $stmt = $pdo->prepare("
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     WHERE cu.id = ? AND cr.cobrador_id = ?
+      AND cr.estado NOT IN ('FINALIZADO', 'CANCELADO')
 ");
 $stmt->execute([$cuota_id, $_SESSION['user_id']]);
 $row = $stmt->fetch();

@@ -136,6 +136,12 @@ function jornadas_disponibles(): array
 function generar_cuotas(int $credito_id, array $d, PDO $pdo): bool
 {
     $fecha = new DateTime($d['primer_vencimiento']);
+    // Para frecuencia diaria: si el primer_vencimiento es domingo, avanzar al lunes
+    if ($d['frecuencia'] === 'diario') {
+        while ((int)$fecha->format('N') === 7) {
+            $fecha->modify('+1 day');
+        }
+    }
     $stmt = $pdo->prepare("INSERT INTO ic_cuotas (credito_id, numero_cuota, fecha_vencimiento, monto_cuota) VALUES (?, ?, ?, ?)");
 
     for ($i = 1; $i <= $d['cant_cuotas']; $i++) {
@@ -504,9 +510,11 @@ function revertir_rendicion(
             $nuevo_saldo = (float) max(0, (float) $cuota['saldo_pagado'] - (float) $pago['monto_total']);
             $mora = (float) $cuota['monto_mora'];
             if ($mora <= 0) {
+                // Usar fecha de aprobación como referencia para no inflar mora con días adicionales
+                $fecha_ref_rev = $pago['fecha_aprobacion'] ?? date('Y-m-d');
                 $mora = calcular_mora(
                     (float) $cuota['monto_cuota'],
-                    dias_atraso_habiles($cuota['fecha_vencimiento']),
+                    dias_atraso_habiles($cuota['fecha_vencimiento'], $fecha_ref_rev),
                     (float) $cuota['interes_moratorio_pct']
                 );
             }
@@ -576,7 +584,8 @@ function revertir_rendicion(
 
     } catch (Exception $e) {
         $pdo->rollBack();
-        return ['ok' => false, 'cuotas' => 0, 'error' => 'Error interno al revertir: ' . $e->getMessage()];
+        error_log('revertir_rendicion error: ' . $e->getMessage());
+        return ['ok' => false, 'cuotas' => 0, 'error' => 'Error interno al revertir. Intente nuevamente.'];
     }
 }
 
@@ -703,10 +712,11 @@ function calcular_puntaje_credito(int $credito_id, PDO $pdo): int
 {
     // Contar cuotas con mora registrada
     $stmt = $pdo->prepare("
-        SELECT 
+        SELECT
             COUNT(*) AS total_cuotas,
             SUM(CASE WHEN monto_mora > 0 THEN 1 ELSE 0 END) AS cuotas_con_mora,
-            MAX(dias_atraso) AS max_atraso
+            MAX(CASE WHEN estado IN ('VENCIDA','PARCIAL','CAP_PAGADA') AND fecha_vencimiento < CURDATE()
+                THEN DATEDIFF(CURDATE(), fecha_vencimiento) ELSE 0 END) AS max_atraso
         FROM ic_cuotas
         WHERE credito_id = ?
     ");
@@ -740,10 +750,10 @@ function calcular_puntaje_credito(int $credito_id, PDO $pdo): int
 function actualizar_puntaje_cliente(int $cliente_id, PDO $pdo): void
 {
     try {
-        // Si existe algún crédito con mala reputación, forzar puntaje = 4
+        // Si existe algún crédito cancelado, forzar puntaje = 4
         $bad_stmt = $pdo->prepare("
             SELECT COUNT(*) FROM ic_creditos
-            WHERE cliente_id = ? AND motivo_finalizacion = 'FINALIZADO_CREDITO'
+            WHERE cliente_id = ? AND (motivo_finalizacion = 'CANCELADO' OR estado = 'CANCELADO')
         ");
         $bad_stmt->execute([$cliente_id]);
         if ((int)$bad_stmt->fetchColumn() > 0) {

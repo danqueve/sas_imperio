@@ -9,6 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: index');
     exit;
 }
+verificar_csrf();
 
 $pdo    = obtener_conexion();
 $uid    = (int) $_SESSION['user_id'];

@@ -290,6 +290,7 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
             <?php if ($tk['estado'] !== 'resuelto'): ?>
                 <div class="chat-input-wrapper" id="chat-input-container">
                     <form method="POST" action="procesar_respuesta">
+                        <?php csrf_input(); ?>
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
                         <div class="d-flex gap-4 align-items-center">
                             <div class="flex-grow-1">
@@ -324,6 +325,7 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
                     </span>
                     <?php if ($puede_cerrar): ?>
                         <form method="POST" action="procesar_respuesta" class="d-inline ms-3">
+                            <?php csrf_input(); ?>
                             <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
                             <button type="submit" name="solo_estado" value="abierto"
                                     class="btn-ic btn-sm" style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color: #9ca3af">

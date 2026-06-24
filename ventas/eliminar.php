@@ -40,7 +40,8 @@ try {
     $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Venta eliminada y stock restaurado.'];
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al eliminar: ' . $e->getMessage()];
+    error_log('ventas/eliminar error: ' . $e->getMessage());
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al eliminar la venta. Intente nuevamente.'];
 }
 
 header('Location: index');

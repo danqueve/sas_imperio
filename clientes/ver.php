@@ -337,7 +337,7 @@ require_once __DIR__ . '/../views/layout.php';
             e.preventDefault();
             const nota = document.getElementById('inp-nota').value.trim();
             if (!nota) return;
-            const fd = new FormData(); fd.append('cliente_id', cid); fd.append('nota', nota);
+            const fd = new FormData(); fd.append('cliente_id', cid); fd.append('nota', nota); fd.append('_csrf', '<?= csrf_token() ?>');
             fetch('notas_ajax', {method:'POST', body: fd})
                 .then(r=>r.json()).then(d=>{ if(d.ok){ document.getElementById('inp-nota').value=''; cargarNotas(); }});
         });

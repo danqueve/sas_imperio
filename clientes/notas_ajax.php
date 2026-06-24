@@ -30,6 +30,7 @@ if ($method === 'GET') {
 }
 
 if ($method === 'POST') {
+    verificar_csrf();
     if (!$puede_escribir) { echo json_encode(['ok' => false, 'error' => 'Sin permiso']); exit; }
     $nota = trim($_POST['nota'] ?? '');
     if (strlen($nota) < 3) { echo json_encode(['ok' => false, 'error' => 'Nota muy corta']); exit; }

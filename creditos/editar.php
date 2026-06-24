@@ -188,7 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Error al actualizar: ' . $e->getMessage();
+            error_log('creditos/editar error: ' . $e->getMessage());
+            $error = 'Error al actualizar el crédito. Intente nuevamente.';
         }
     }
     // repopular

@@ -173,7 +173,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
-                $error = 'Error al guardar: ' . $e->getMessage();
+                error_log('creditos/nuevo error: ' . $e->getMessage());
+                $error = 'Error al guardar el crédito. Intente nuevamente.';
             }
         }
     }
@@ -528,6 +529,8 @@ function previsualizarFechas() {
     if (!venc || !cant) { prev.textContent = ''; return; }
     const fechas = [];
     const cur = new Date(venc + 'T00:00:00');
+    // Primer vencimiento diario: avanzar si cae en domingo
+    if (frec === 'diario') { while (cur.getDay() === 0) cur.setDate(cur.getDate() + 1); }
     const n = Math.min(3, cant);
     for (let i = 0; i < n; i++) {
         fechas.push(cur.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }));

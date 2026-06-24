@@ -27,14 +27,24 @@ $garante = $pdo->prepare("SELECT * FROM ic_garantes WHERE cliente_id=? LIMIT 1")
 $garante->execute([$id]);
 $g = $garante->fetch() ?: [];
 
-$cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
+$cobradores = $pdo->query("SELECT id,nombre,apellido,usuario FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
+$zona_por_usuario = ['santizalazar' => 'Zona 1', 'jpbicego' => 'Zona 2', 'enzoteceira' => 'Zona 3', 'masanchez' => 'Zona 4-6'];
+$cob_zona_map = [];
+foreach ($cobradores as $cb) { $cob_zona_map[(int)$cb['id']] = $zona_por_usuario[$cb['usuario']] ?? ''; }
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $v = $_POST;
     if (empty($v['nombres']) || empty($v['apellidos']) || empty($v['telefono'])) {
         $error = 'Los campos Nombres, Apellidos y Teléfono son obligatorios.';
-    } else {
+    } elseif (!empty($v['dni'])) {
+        $dni_check = $pdo->prepare("SELECT COUNT(*) FROM ic_clientes WHERE dni=? AND id!=?");
+        $dni_check->execute([trim($v['dni']), $id]);
+        if ((int)$dni_check->fetchColumn() > 0) {
+            $error = 'Ya existe otro cliente con ese número de DNI.';
+        }
+    }
+    if (!$error) {
         $pdo->prepare("
             UPDATE ic_clientes SET
               nombres=?, apellidos=?, dni=?, cuil=?, telefono=?, telefono_alt=?,
@@ -170,7 +180,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="card-ic-header"><span class="card-title"><i class="fa fa-user-tie"></i> Asignación</span></div>
             <div class="form-grid">
                 <div class="form-group"><label>Cobrador</label>
-                    <select name="cobrador_id">
+                    <select name="cobrador_id" id="cobrador_id" onchange="autoZona()">
                         <option value="">— Sin asignar —</option>
                         <?php foreach ($cobradores as $cb): ?>
                             <option value="<?= $cb['id'] ?>" <?= $v['cobrador_id'] == $cb['id'] ? 'selected' : '' ?>>
@@ -247,8 +257,16 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
+$cob_zona_json = json_encode($cob_zona_map, JSON_UNESCAPED_UNICODE);
 $page_scripts = <<<JS
 <script>
+const cobZonaMap = $cob_zona_json;
+function autoZona() {
+    const cid  = parseInt(document.getElementById('cobrador_id').value) || 0;
+    const zona = cobZonaMap[cid] || '';
+    const inp  = document.querySelector('[name=zona]');
+    if (zona) inp.value = zona;
+}
 document.getElementById('chk_garante').addEventListener('change', function(){
   document.getElementById('seccion_garante').style.display = this.checked ? '' : 'none';
 });

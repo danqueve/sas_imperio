@@ -1295,6 +1295,7 @@ JS;
         const fd = new FormData();
         fd.append('credito_id', CID);
         fd.append('nota', texto);
+        fd.append('_csrf', '<?= csrf_token() ?>');
         fetch(BASE + 'creditos/notas_ajax', { method: 'POST', body: fd })
             .then(r => r.json())
             .then(res => {

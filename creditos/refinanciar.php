@@ -44,10 +44,10 @@ $pi             = $p_stmt->fetch();
 $cuotas_pagadas = (int)   $pi['c'];
 $total_pagado   = (float) $pi['total'];
 
-// ── Cuotas pendientes / vencidas ──────────────────────────────
+// ── Cuotas pendientes / vencidas / parciales ──────────────────
 $pend_stmt = $pdo->prepare("
     SELECT * FROM ic_cuotas
-    WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA')
+    WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA','PARCIAL')
     ORDER BY numero_cuota
 ");
 $pend_stmt->execute([$id]);
@@ -56,10 +56,14 @@ $cuotas_pendientes = $pend_stmt->fetchAll();
 $deuda_capital = 0.0;
 $total_mora    = 0.0;
 foreach ($cuotas_pendientes as $cp) {
-    $deuda_capital += (float) $cp['monto_cuota'];
+    // PARCIAL: solo el saldo restante forma parte de la nueva deuda
+    $saldo_restante = ($cp['estado'] === 'PARCIAL')
+        ? max(0.0, (float)$cp['monto_cuota'] - (float)$cp['saldo_pagado'])
+        : (float)$cp['monto_cuota'];
+    $deuda_capital += $saldo_restante;
     $dias = dias_atraso_habiles($cp['fecha_vencimiento']);
     if ($dias > 0) {
-        $total_mora += calcular_mora($cp['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
+        $total_mora += calcular_mora($saldo_restante, $dias, $cr['interes_moratorio_pct']);
     }
 }
 $cant_pendientes = count($cuotas_pendientes);
@@ -275,7 +279,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $error = 'Error al procesar la refinanciación: ' . $e->getMessage();
+                error_log('creditos/refinanciar error: ' . $e->getMessage());
+                $error = 'Error al procesar la refinanciación. Intente nuevamente.';
             }
         }
     }

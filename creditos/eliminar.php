@@ -97,7 +97,8 @@ try {
 
 } catch (Exception $e) {
     $pdo->rollBack();
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al eliminar el crédito: ' . $e->getMessage()];
+    error_log('creditos/eliminar error: ' . $e->getMessage());
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al eliminar el crédito. Intente nuevamente.'];
     header("Location: ver?id=$id");
     exit;
 }

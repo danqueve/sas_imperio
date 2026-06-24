@@ -183,7 +183,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Error al guardar: ' . $e->getMessage();
+            error_log('liquidacion_editar error: ' . $e->getMessage());
+            $error = 'Error al guardar la liquidación. Intente nuevamente.';
         }
     }
 

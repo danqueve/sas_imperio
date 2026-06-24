@@ -38,6 +38,7 @@ if ($metodo === 'GET') {
 }
 
 if ($metodo === 'POST') {
+    verificar_csrf();
     if (!$es_admin) {
         http_response_code(403);
         echo json_encode(['error' => 'No autorizado']);

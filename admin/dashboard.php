@@ -135,7 +135,7 @@ $cartera = $pdo->query("
         COUNT(CASE WHEN cu.estado='PAGADA' THEN 1 END) AS pagadas,
         COUNT(CASE WHEN cu.estado IN('PENDIENTE','PARCIAL') AND cu.fecha_vencimiento>=CURDATE() THEN 1 END) AS vigentes,
         COUNT(CASE WHEN cu.estado IN('VENCIDA','CAP_PAGADA') OR (cu.estado IN('PENDIENTE','PARCIAL') AND cu.fecha_vencimiento<CURDATE()) THEN 1 END) AS vencidas,
-        COALESCE(SUM(CASE WHEN cu.estado!='PAGADA' THEN cu.monto_cuota END),0) AS deuda_total
+        COALESCE(SUM(CASE WHEN cu.estado!='PAGADA' THEN cu.monto_cuota - COALESCE(cu.saldo_pagado, 0) END),0) AS deuda_total
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cu.credito_id=cr.id
     WHERE cr.estado IN('EN_CURSO','MOROSO')
@@ -176,7 +176,7 @@ unset($_cr);
 
 // ── Gauges (porcentaje para los indicadores circulares) ───────
 $g_clientes = $total_clientes  > 0 ? min(99,(int)round($clientes_activos  / $total_clientes  * 100)) : 0;
-$g_creditos = $total_creditos  > 0 ? min(99,(int)round($creditos_en_curso / $total_creditos  * 100)) : 0;
+$g_creditos = $total_creditos  > 0 ? min(99,(int)round(($creditos_en_curso + $creditos_morosos) / $total_creditos  * 100)) : 0;
 $total_pend = $cartera['vigentes'] + $cartera['vencidas'];
 $g_al_dia   = $total_pend > 0 ? min(99,(int)round($cartera['vigentes'] / $total_pend * 100)) : 100;
 

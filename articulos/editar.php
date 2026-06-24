@@ -77,7 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (str_contains($e->getMessage(), 'uq_sku') || str_contains($e->getMessage(), 'Duplicate entry')) {
                 $error = 'El SKU ingresado ya existe. Usá uno diferente.';
             } else {
-                $error = 'Error al guardar: ' . $e->getMessage();
+                error_log('articulos/editar error: ' . $e->getMessage());
+                $error = 'Error al guardar el artículo. Intente nuevamente.';
             }
         }
     }
@@ -208,7 +209,7 @@ require_once __DIR__ . '/../views/layout.php';
         <?php endif; ?>
 
         <div class="d-flex gap-3">
-            <button type="submit" class="btn-ic btn-primary"><i class="fa fa-save"></i> Guardar</button>
+            <button type="submit" class="btn-ic btn-primary" onclick="this.disabled=true;this.form.submit()"><i class="fa fa-save"></i> Guardar</button>
             <a href="index" class="btn-ic btn-ghost">Cancelar</a>
         </div>
     </form>

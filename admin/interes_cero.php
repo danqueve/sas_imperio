@@ -117,7 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'ejecu
 
     } catch (Exception $e) {
         $pdo->rollBack();
-        $resultado = ['ok' => false, 'error' => $e->getMessage()];
+        error_log('interes_cero error: ' . $e->getMessage());
+        $resultado = ['ok' => false, 'error' => 'Error al procesar la operación. Intente nuevamente.'];
     }
 }
 

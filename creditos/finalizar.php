@@ -94,7 +94,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Ocurrió un error al intentar finalizar el crédito: ' . $e->getMessage();
+            error_log('creditos/finalizar error: ' . $e->getMessage());
+            $error = 'Ocurrió un error al intentar finalizar el crédito. Intente nuevamente.';
         }
     }
 }

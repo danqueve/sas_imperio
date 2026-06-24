@@ -70,7 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         } catch (PDOException $e) {
             $pdo->rollBack();
-            $error = 'Error al guardar: ' . $e->getMessage();
+            error_log('vendedores/editar error: ' . $e->getMessage());
+            $error = 'Error al guardar. Intente nuevamente.';
         }
     }
 }

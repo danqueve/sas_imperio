@@ -60,7 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
-            $error = 'Ocurrió un error al intentar cambiar el vendedor: ' . $e->getMessage();
+            error_log('creditos/cambiar_vendedor error: ' . $e->getMessage());
+            $error = 'Ocurrió un error al intentar cambiar el vendedor. Intente nuevamente.';
         }
     }
 }
