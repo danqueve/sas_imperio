@@ -77,7 +77,10 @@ $afectados_stmt = $pdo->query("
     FROM ic_cuotas cu
     JOIN ic_creditos cr ON cr.id = cu.credito_id
     JOIN ic_clientes cl ON cl.id = cr.cliente_id
-    WHERE cu.estado = 'VENCIDA'
+    WHERE (
+        cu.estado = 'VENCIDA'
+        OR (cu.estado = 'PARCIAL' AND cu.fecha_vencimiento < CURDATE())
+    )
       AND cr.estado NOT IN ('FINALIZADO', 'CANCELADO', 'MOROSO')
     GROUP BY cu.credito_id
 ");

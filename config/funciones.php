@@ -304,7 +304,9 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 $check = $pdo->prepare("
                     SELECT
                         SUM(CASE WHEN estado NOT IN ('PAGADA','CANCELADA') THEN 1 ELSE 0 END) AS pendientes,
-                        SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) AS vencidas
+                        SUM(CASE WHEN estado = 'VENCIDA'
+                                 OR (estado = 'PARCIAL' AND fecha_vencimiento < CURDATE())
+                            THEN 1 ELSE 0 END) AS vencidas
                     FROM ic_cuotas
                     WHERE credito_id = ?
                 ");
@@ -539,7 +541,9 @@ function revertir_rendicion(
             $check = $pdo->prepare("
                 SELECT
                     SUM(CASE WHEN estado NOT IN ('PAGADA','CANCELADA') THEN 1 ELSE 0 END) AS pendientes,
-                    SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) AS vencidas
+                    SUM(CASE WHEN estado = 'VENCIDA'
+                             OR (estado = 'PARCIAL' AND fecha_vencimiento < CURDATE())
+                        THEN 1 ELSE 0 END) AS vencidas
                 FROM ic_cuotas WHERE credito_id = ?
             ");
             $check->execute([$credito_id]);

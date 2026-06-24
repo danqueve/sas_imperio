@@ -55,6 +55,8 @@ function obtener_conexion(): PDO
         ];
         try {
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $opciones);
+            // Forzar modo estricto: rechaza ENUM inválidos en lugar de insertar ''
+            $pdo->exec("SET SESSION sql_mode = CONCAT(@@sql_mode, ',STRICT_TRANS_TABLES')");
         } catch (PDOException $e) {
             error_log('PDO Connection Error: ' . $e->getMessage());
             http_response_code(500);
