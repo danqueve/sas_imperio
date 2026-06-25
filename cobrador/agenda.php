@@ -539,7 +539,7 @@ $prog_pct      = $prog_total > 0 ? round(($prog_cobrados / $prog_total) * 100) :
         <span style="font-size:.9rem;font-weight:700">
             <span style="color:var(--success)"><?= $prog_cobrados ?></span>
             <span style="color:var(--text-muted)"> / <?= $prog_total ?> cobrados</span>
-            <span style="margin-left:8px;color:var(--text-muted);font-size:.8rem">(<?= $prog_pct ?>%)</span>
+            <span style="margin-left:8px;color:var(--text-muted);font-size:.84rem">(<?= $prog_pct ?>%)</span>
         </span>
     </div>
     <div style="background:rgba(255,255,255,.08);border-radius:99px;height:8px;overflow:hidden">
@@ -600,7 +600,7 @@ $meta_color = $pct_meta >= 100 ? '#d4a017' : ($pct_meta >= 70 ? 'var(--success)'
         <div class="kpi-sub">
             <?php if (count($tend_vals) >= 2): ?>
                 <?php foreach (array_slice($tend_vals, -4) as $tv): ?>
-                    <span style="font-size:.7rem;color:var(--text-muted)"><?= formato_pesos((float)$tv) ?></span>
+                    <span style="font-size:.8rem;color:var(--text-muted)"><?= formato_pesos((float)$tv) ?></span>
                 <?php endforeach; ?>
             <?php else: ?>
                 datos insuficientes
@@ -617,7 +617,7 @@ $meta_color = $pct_meta >= 100 ? '#d4a017' : ($pct_meta >= 70 ? 'var(--success)'
         <div class="kpi-value" style="font-size:1.2rem;color:var(--success)">
             <?= formato_pesos($kpi_ingresos_hoy) ?>
         </div>
-        <div class="kpi-sub" style="font-size:0.75rem;">
+        <div class="kpi-sub" style="font-size:0.8rem;">
             Efc: <?= formato_pesos($kpi_ingresos_efectivo) ?> <br>
             Trf: <?= formato_pesos($kpi_ingresos_transferencia) ?>
         </div>
@@ -657,7 +657,7 @@ $meta_color = $pct_meta >= 100 ? '#d4a017' : ($pct_meta >= 70 ? 'var(--success)'
         <div class="kpi-value" style="font-size:1.2rem;color:var(--primary-light)">
             <?= formato_pesos($kpi_por_rendir_total) ?>
         </div>
-        <div class="kpi-sub" style="font-size:0.75rem">
+        <div class="kpi-sub" style="font-size:0.8rem">
             Efc: <?= formato_pesos($kpi_por_rendir_efectivo) ?><br>
             Trf: <?= formato_pesos($kpi_por_rendir_transfer) ?>
             <?php if ($kpi_por_rendir_jornadas > 1): ?>
@@ -750,14 +750,14 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <?php elseif (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0 && isset($c['total_acumulado'])): ?>
                     <span class="agenda-monto" style="color:var(--danger)"><?= formato_pesos($c['total_acumulado']) ?></span>
                     <span class="agenda-cuota-num" style="color:var(--danger)">Total acumulado</span>
-                    <span style="font-size:.75rem;color:var(--text-muted);display:block">
+                    <span style="font-size:.8rem;color:var(--text-muted);display:block">
                         Esta cuota: <?= formato_pesos($c['monto_cuota']) ?> · <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?>
                     </span>
                 <?php elseif ($c['estado'] === 'PARCIAL' && (float)($c['saldo_pagado'] ?? 0) > 0): ?>
                     <?php $saldo_ap = (float)$c['saldo_pagado']; ?>
                     <span class="agenda-monto" style="color:var(--success)"><?= formato_pesos($c['total_a_cobrar']) ?></span>
                     <span class="agenda-cuota-num">Cuota <?= $c['numero_cuota'] ?>/<?= $c['cant_cuotas'] ?> — saldo</span>
-                    <span style="font-size:.72rem;color:var(--text-muted);display:block;margin-top:2px">
+                    <span style="font-size:.8rem;color:var(--text-muted);display:block;margin-top:2px">
                         Total: <?= formato_pesos($c['monto_cuota'] + $c['mora_calc']) ?>
                         &nbsp;·&nbsp; <span style="color:var(--success)">✓ Abonado: <?= formato_pesos($saldo_ap) ?></span>
                     </span>
@@ -1197,12 +1197,14 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <div class="form-group">
                     <label>Monto Efectivo $</label>
                     <input type="number" name="monto_efectivo" id="inp_efectivo" step="0.01" min="0" value="0"
-                        oninput="actualizarTotal()">
+                        oninput="actualizarTotal()"
+                        style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
                 <div class="form-group">
                     <label>Monto Transferencia $</label>
                     <input type="number" name="monto_transferencia" id="inp_transfer" step="0.01" min="0" value="0"
-                        oninput="actualizarTotal()">
+                        oninput="actualizarTotal()"
+                        style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
             </div>
             <div
@@ -1249,7 +1251,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <i class="fa fa-hand-holding-dollar kpi-icon"></i>
                 <div class="kpi-label">Cobrado Hoy</div>
                 <div class="kpi-value" style="font-size:1.1rem;color:var(--success)"><?= formato_pesos($kpi_ingresos_hoy) ?></div>
-                <div class="kpi-sub" style="font-size:.72rem">
+                <div class="kpi-sub" style="font-size:.8rem">
                     Efc: <?= formato_pesos($kpi_ingresos_efectivo) ?><br>
                     Trf: <?= formato_pesos($kpi_ingresos_transferencia) ?>
                 </div>
@@ -1339,6 +1341,19 @@ $page_scripts = <<<'JS'
     transition: opacity .15s;
 }
 .agenda-cobro-btn:hover { opacity: .85; }
+
+/* ── Legibilidad en móvil ─────────────────────────────── */
+.agenda-cuota-num {
+    color: var(--text-body) !important;
+    font-size: .84rem !important;
+}
+.agenda-zona { font-size: .86rem !important; }
+
+@media (max-width: 640px) {
+    .kpi-sub { font-size: .8rem !important; }
+    .kpi-label { font-size: .74rem !important; }
+    .agenda-vencimiento { font-size: .84rem; }
+}
 </style>
 
 <script>
