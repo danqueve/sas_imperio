@@ -73,6 +73,12 @@ foreach ($rows as $r) {
     $visto[$clave] = true;
     $por_dia[$r['dia_cobro']][] = $r;
 }
+// Ordenar cada día alfabéticamente por zona + apellidos
+foreach ($dias_sel as $d) {
+    usort($por_dia[$d], fn($a, $b) =>
+        strcmp(($a['zona'] ?? '') . $a['apellidos'], ($b['zona'] ?? '') . $b['apellidos'])
+    );
+}
 
 // ── Helpers ─────────────────────────────────────────────────────
 function fmt(float $v): string {
@@ -330,16 +336,16 @@ $stmt_qm = $pdo->prepare("
     ) filtro ON filtro.credito_id = cr.id
     WHERE cr.cobrador_id = ?
       AND cr.estado IN ('EN_CURSO','MOROSO')
-      AND cr.frecuencia IN ('quincenal', 'mensual')
+      AND cr.frecuencia IN ('diario', 'quincenal', 'mensual')
       AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
       AND filtro.credito_id IS NULL
-    ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cu.fecha_vencimiento ASC, cl.apellidos ASC
+    ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
 $stmt_qm->execute([$cobrador_id]);
 $rows_qm = $stmt_qm->fetchAll();
 
 if (!empty($rows_qm)) {
-    $qm_aux = ['quincenal' => [], 'mensual' => []];
+    $qm_aux = ['diario' => [], 'quincenal' => [], 'mensual' => []];
     foreach ($rows_qm as $r) {
         $mora_db_qm  = (float) $r['monto_mora'];
         $mora = $mora_db_qm > 0
@@ -348,22 +354,32 @@ if (!empty($rows_qm)) {
         $saldo_p      = (float)($r['saldo_pagado'] ?? 0);
         $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float) $r['monto_cuota'] + $mora - $saldo_p);
 
-        $key = $r['cliente_id'];
-        if (!isset($qm_aux[$r['frecuencia']][$key])) {
+        $key  = $r['cliente_id'];
+        $frec = $r['frecuencia'];
+        if (!isset($qm_aux[$frec][$key])) {
             $r['total_final'] = $total_cobrar;
             $r['cant_ven']    = 1;
-            $qm_aux[$r['frecuencia']][$key] = $r;
+            $qm_aux[$frec][$key] = $r;
         }
     }
     $qm_grupos = [
+        'diario'    => array_values($qm_aux['diario']),
         'quincenal' => array_values($qm_aux['quincenal']),
         'mensual'   => array_values($qm_aux['mensual']),
     ];
 
+    // Ordenar alfabéticamente por zona + apellidos dentro de cada grupo
+    foreach ($qm_grupos as $frec => &$lista) {
+        usort($lista, fn($a, $b) =>
+            strcmp(($a['zona'] ?? '') . $a['apellidos'], ($b['zona'] ?? '') . $b['apellidos'])
+        );
+    }
+    unset($lista);
+
     foreach ($qm_grupos as $frec => $lista) {
         if (empty($lista)) continue;
 
-        $titulo     = $frec === 'quincenal' ? 'Quincenales' : 'Mensuales';
+        $titulo     = match($frec) { 'diario' => 'Diarios', 'quincenal' => 'Quincenales', default => 'Mensuales' };
         $total_frec = array_sum(array_column($lista, 'total_final'));
 
         $pdf->SetFont('Helvetica', 'B', 10);
