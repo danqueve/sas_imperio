@@ -57,7 +57,7 @@ if (($_GET['export'] ?? '') === 'csv') {
             $row['articulo'],
             $row['cuota'],
             number_format((float)$row['monto_adeudado'], 2, ',', '.'),
-            $row['dias_atraso'],
+            dias_atraso_habiles($row['fecha_vencimiento']),
             date('d/m/Y', strtotime($row['fecha_vencimiento'])),
             $row['cobrador'],
             $row['zona'] ?: '—',
@@ -190,6 +190,7 @@ if ($vista === 'cuotas') {
             COUNT(*)                                                AS cant_cuotas_vencidas,
             SUM(cu.monto_cuota - cu.saldo_pagado)                   AS total_adeudado,
             MAX(DATEDIFF(CURDATE(), cu.fecha_vencimiento))          AS max_dias_atraso,
+            MIN(cu.fecha_vencimiento)                              AS fecha_vcto_peor,
             (SELECT MAX(pc.fecha_pago)
              FROM ic_pagos_confirmados pc
              JOIN ic_cuotas cu2 ON pc.cuota_id = cu2.id
@@ -377,9 +378,9 @@ function url_vista(string $v, array $get): string {
             <?php else: ?>
                 <?php foreach ($atrasados as $i => $r): ?>
                     <?php
-                    $dias = (int) $r['dias_atraso'];
-                    if ($dias > 30)     { $badge_bg = 'var(--danger)'; $badge_c = '#fff'; $nivel = 'critico'; }
-                    elseif ($dias > 14) { $badge_bg = '#f97316';       $badge_c = '#fff'; $nivel = 'alerta'; }
+                    $dias = dias_atraso_habiles($r['fecha_vencimiento']);
+                    if ($dias > 25)     { $badge_bg = 'var(--danger)'; $badge_c = '#fff'; $nivel = 'critico'; }
+                    elseif ($dias > 12) { $badge_bg = '#f97316';       $badge_c = '#fff'; $nivel = 'alerta'; }
                     else                { $badge_bg = '#eab308';       $badge_c = '#000'; $nivel = 'reciente'; }
 
                     $wa_msg = 'Hola ' . $r['nombres'] . ', le informamos que su cuota #' . $r['numero_cuota'] .
@@ -471,9 +472,9 @@ function url_vista(string $v, array $get): string {
             <?php else: ?>
                 <?php foreach ($atrasados as $i => $r): ?>
                     <?php
-                    $dias = (int) $r['max_dias_atraso'];
-                    if ($dias > 30)     { $badge_bg = 'var(--danger)'; $badge_c = '#fff'; }
-                    elseif ($dias > 14) { $badge_bg = '#f97316';       $badge_c = '#fff'; }
+                    $dias = !empty($r['fecha_vcto_peor']) ? dias_atraso_habiles($r['fecha_vcto_peor']) : (int) $r['max_dias_atraso'];
+                    if ($dias > 25)     { $badge_bg = 'var(--danger)'; $badge_c = '#fff'; }
+                    elseif ($dias > 12) { $badge_bg = '#f97316';       $badge_c = '#fff'; }
                     else                { $badge_bg = '#eab308';       $badge_c = '#000'; }
 
                     $wa_msg = 'Hola ' . $r['nombres'] . ', le informamos que tiene ' . $r['cant_cuotas_vencidas'] .

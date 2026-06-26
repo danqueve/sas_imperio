@@ -144,3 +144,25 @@ document.addEventListener('click', function (e) {
     e.target.classList.remove('open');
   }
 });
+
+// ── Debounce helper ───────────────────────────────────────
+window.debounce = function (fn, ms) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), ms);
+  };
+};
+
+// ── Prevenir doble submit en formularios críticos ─────────
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('form.form-ic:not([data-no-disable])').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      const btn = form.querySelector('[type="submit"]:not([data-no-disable])');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      btn.dataset.originalText = btn.innerHTML;
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando…';
+    });
+  });
+});

@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $accion = $_POST['accion'] ?? '';
 
     if ($accion === 'toggle_activo') {
+        verificar_csrf();
         $uid = (int) $_POST['uid'];
         $pdo->prepare("UPDATE ic_usuarios SET activo = 1 - activo WHERE id=?")->execute([$uid]);
         header('Location: usuarios');
@@ -243,6 +244,7 @@ require_once __DIR__ . '/../views/layout.php';
                                 </a>
                                 <?php if ($usr['id'] !== (int) $_SESSION['user_id']): ?>
                                     <form method="POST" style="display:inline">
+                                        <?= csrf_input() ?>
                                         <input type="hidden" name="accion" value="toggle_activo">
                                         <input type="hidden" name="uid" value="<?= $usr['id'] ?>">
                                         <button type="submit"

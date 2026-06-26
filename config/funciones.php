@@ -142,6 +142,8 @@ function generar_cuotas(int $credito_id, array $d, PDO $pdo): bool
             $fecha->modify('+1 day');
         }
     }
+    $monto_normal = (float) $d['monto_cuota'];
+    $monto_ultima = isset($d['monto_ultima_cuota']) ? (float) $d['monto_ultima_cuota'] : $monto_normal;
     $stmt = $pdo->prepare("INSERT INTO ic_cuotas (credito_id, numero_cuota, fecha_vencimiento, monto_cuota) VALUES (?, ?, ?, ?)");
 
     for ($i = 1; $i <= $d['cant_cuotas']; $i++) {
@@ -164,7 +166,8 @@ function generar_cuotas(int $credito_id, array $d, PDO $pdo): bool
                     break;
             }
         }
-        $stmt->execute([$credito_id, $i, $fecha->format('Y-m-d'), $d['monto_cuota']]);
+        $monto = ($i === (int)$d['cant_cuotas']) ? $monto_ultima : $monto_normal;
+        $stmt->execute([$credito_id, $i, $fecha->format('Y-m-d'), $monto]);
     }
     return true;
 }

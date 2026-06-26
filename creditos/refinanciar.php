@@ -165,7 +165,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($f['interes_adicional'] > 0) {
             $monto_fin *= (1 + $f['interes_adicional'] / 100);
         }
-        $nuevo_valor_cuota = round($monto_fin / $f['nuevas_cuotas'], 2);
+        $nuevo_valor_cuota  = floor($monto_fin / $f['nuevas_cuotas'] * 100) / 100;
+        $monto_ultima_cuota = round($monto_fin - ($f['nuevas_cuotas'] - 1) * $nuevo_valor_cuota, 2);
 
         if ($monto_fin <= 0) {
             $error = 'El saldo a refinanciar es cero o negativo. No hay deuda pendiente.';
@@ -239,6 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'cant_cuotas'        => $f['nuevas_cuotas'],
                     'frecuencia'         => $f['frecuencia'],
                     'monto_cuota'        => $nuevo_valor_cuota,
+                    'monto_ultima_cuota' => $monto_ultima_cuota,
                 ], $pdo);
 
                 // 5. Registrar en historial de refinanciaciones
