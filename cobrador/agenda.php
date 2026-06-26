@@ -1276,6 +1276,11 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
     </div>
 </div>
 
+<script>
+window.CSRF_TOKEN = '<?= csrf_token() ?>';
+const DIA_SEMANA  = <?= $dia_semana ?>;
+const TAB_DEFAULT = '<?= $tab_default ?? 'quincenal' ?>';
+</script>
 <?php
 $page_scripts = <<<'JS'
 <style>
@@ -1357,9 +1362,6 @@ $page_scripts = <<<'JS'
 </style>
 
 <script>
-window.CSRF_TOKEN = '<?= csrf_token() ?>';
-const DIA_SEMANA = <?= $dia_semana ?>;
-const TAB_DEFAULT = '<?= $tab_default ?? 'quincenal' ?>';
 let cuota_mora    = 0;
 let cuota_capital = 0;
 
