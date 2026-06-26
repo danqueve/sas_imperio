@@ -64,10 +64,15 @@ $por_dia = [];
 foreach ($rows as $r) {
     $por_dia[(int)$r['dia_cobro']][] = $r;
 }
-// Ordenar: 1-6 primero, luego 0
+// Ordenar: 1-6 primero, luego 0, y dentro de cada día alfabéticamente
 $por_dia_ord = [];
 foreach ([1,2,3,4,5,6,0] as $d) {
-    if (isset($por_dia[$d])) $por_dia_ord[$d] = $por_dia[$d];
+    if (!isset($por_dia[$d])) continue;
+    usort($por_dia[$d], fn($a, $b) =>
+        mb_strtolower($a['apellidos'] . ' ' . $a['nombres'])
+        <=> mb_strtolower($b['apellidos'] . ' ' . $b['nombres'])
+    );
+    $por_dia_ord[$d] = $por_dia[$d];
 }
 $por_dia = $por_dia_ord;
 

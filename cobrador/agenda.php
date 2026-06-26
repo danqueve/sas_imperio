@@ -1358,6 +1358,8 @@ $page_scripts = <<<'JS'
 
 <script>
 window.CSRF_TOKEN = '<?= csrf_token() ?>';
+const DIA_SEMANA = <?= $dia_semana ?>;
+const TAB_DEFAULT = '<?= $tab_default ?? 'quincenal' ?>';
 let cuota_mora    = 0;
 let cuota_capital = 0;
 
@@ -1371,21 +1373,46 @@ function filtrarAgenda(q) {
     const term = q.trim().toLowerCase();
     const cards = document.querySelectorAll('.agenda-card');
 
+    // 1. Mostrar/ocultar tarjetas por nombre
     cards.forEach(card => {
         const nombre = card.dataset.nombre || '';
         card.style.display = (term === '' || nombre.includes(term)) ? '' : 'none';
     });
 
-    // Mostrar/ocultar secciones según resultado de búsqueda
     const secciones = ['sec-hoy', 'sec-vencidas', 'sec-cobrados', 'sec-semanal', 'sec-mensual'];
+
     if (term === '') {
-        // Sin búsqueda → restaurar todas las secciones tal como las renderizó PHP
+        // Sin búsqueda → restaurar visibilidad original de secciones y paneles
         secciones.forEach(secId => {
             const sec = document.getElementById(secId);
             if (sec) sec.style.display = '';
         });
+        // Restaurar paneles de días: solo el día actual visible
+        for (let i = 1; i <= 6; i++) {
+            const p = document.getElementById('panel-dia-' + i);
+            if (p) p.style.display = i === DIA_SEMANA ? 'block' : 'none';
+        }
+        // Restaurar paneles QM: solo el tab por defecto visible
+        ['diario', 'quincenal', 'mensual'].forEach(t => {
+            const p = document.getElementById('panel-' + t);
+            if (p) p.style.display = t === TAB_DEFAULT ? 'block' : 'none';
+        });
     } else {
-        // Con búsqueda → ocultar secciones que no tengan ninguna tarjeta visible
+        // 2. Revelar paneles de días que tengan tarjetas coincidentes
+        for (let i = 1; i <= 6; i++) {
+            const p = document.getElementById('panel-dia-' + i);
+            if (!p) continue;
+            const tieneMatch = !!p.querySelector('.agenda-card:not([style*="display: none"])');
+            p.style.display = tieneMatch ? 'block' : 'none';
+        }
+        // 3. Revelar paneles QM que tengan tarjetas coincidentes
+        ['diario', 'quincenal', 'mensual'].forEach(t => {
+            const p = document.getElementById('panel-' + t);
+            if (!p) return;
+            const tieneMatch = !!p.querySelector('.agenda-card:not([style*="display: none"])');
+            p.style.display = tieneMatch ? 'block' : 'none';
+        });
+        // 4. Mostrar/ocultar secciones completas según tarjetas visibles
         secciones.forEach(secId => {
             const sec = document.getElementById(secId);
             if (!sec) return;
