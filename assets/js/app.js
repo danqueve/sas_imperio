@@ -8,7 +8,9 @@ window.showToast = function (msg, type = 'info', duration = 3500) {
   if (!container) return;
   const toast = document.createElement('div');
   toast.className = `toast-msg ${type}`;
-  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'polite');
+  const icons = { success: '✓', error: '✗', warning: '!', info: 'i' };
   toast.innerHTML = `<span>${icons[type] || ''} ${msg}</span>`;
   container.appendChild(toast);
   setTimeout(() => {

@@ -97,6 +97,28 @@ function fecha_jornada(?string $datetime = null): string
 }
 
 /**
+ * Avanza una fecha al siguiente vencimiento según la frecuencia del crédito.
+ * Para diario: salta domingos automáticamente.
+ */
+function calcular_siguiente_vencimiento(string $base, string $frecuencia): string
+{
+    $f = new DateTime($base);
+    if ($frecuencia === 'diario') {
+        $f->modify('+1 day');
+        while ((int)$f->format('N') === 7) {
+            $f->modify('+1 day');
+        }
+    } else {
+        match ($frecuencia) {
+            'semanal'   => $f->modify('+7 days'),
+            'quincenal' => $f->modify('+15 days'),
+            default     => $f->modify('+1 month'),
+        };
+    }
+    return $f->format('Y-m-d');
+}
+
+/**
  * Devuelve las fechas de jornada disponibles para registrar pagos en este momento.
  *
  * Reglas de negocio:

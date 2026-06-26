@@ -10,79 +10,54 @@ verificar_permiso('ver_reportes');
 
 $pdo = obtener_conexion();
 
-// ── Stats principales ─────────────────────────────────────────
-$clientes_activos  = (int)$pdo->query("SELECT COUNT(*) FROM ic_clientes WHERE estado='ACTIVO'")->fetchColumn();
-$total_clientes    = (int)$pdo->query("SELECT COUNT(*) FROM ic_clientes")->fetchColumn();
-$creditos_en_curso = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos WHERE estado='EN_CURSO'")->fetchColumn();
-$creditos_morosos  = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos WHERE estado='MOROSO'")->fetchColumn();
-$creditos_al_dia   = (int)$pdo->query("
-    SELECT COUNT(*) FROM ic_creditos cr
-    WHERE cr.estado = 'EN_CURSO'
-      AND NOT EXISTS (
-          SELECT 1 FROM ic_cuotas cu
-          WHERE cu.credito_id = cr.id
-            AND cu.estado IN ('VENCIDA','PARCIAL')
-            AND cu.fecha_vencimiento < CURDATE()
-      )
-")->fetchColumn();
-$total_creditos    = (int)$pdo->query("SELECT COUNT(*) FROM ic_creditos")->fetchColumn();
-$cobrado_hoy       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada=CURDATE()")->fetchColumn();
-$pagos_hoy         = (int)$pdo->query("SELECT COUNT(*) FROM ic_pagos_confirmados WHERE fecha_jornada=CURDATE()")->fetchColumn();
-$cobrado_mes       = (float)$pdo->query("SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada>=DATE_FORMAT(CURDATE(),'%Y-%m-01')")->fetchColumn();
-$rend_pend         = (int)$pdo->query("SELECT COUNT(DISTINCT cobrador_id) FROM ic_pagos_temporales WHERE estado='PENDIENTE'")->fetchColumn();
+// ── Stats principales + comparativas MoM (1 query) ───────────
+$kpi = $pdo->query("
+    SELECT
+        (SELECT COUNT(*) FROM ic_clientes)                                    AS total_clientes,
+        (SELECT COUNT(*) FROM ic_clientes WHERE estado='ACTIVO')              AS clientes_activos,
+        (SELECT COUNT(*) FROM ic_clientes cl WHERE cl.estado='ACTIVO'
+            AND NOT EXISTS (SELECT 1 FROM ic_creditos cr WHERE cr.cliente_id=cl.id AND cr.estado IN ('EN_CURSO','MOROSO'))
+            AND EXISTS     (SELECT 1 FROM ic_creditos cr2 WHERE cr2.cliente_id=cl.id AND cr2.fecha_finalizacion < DATE_SUB(CURDATE(), INTERVAL 90 DAY))
+        )                                                                     AS clientes_dormidos,
+        (SELECT COUNT(*) FROM ic_creditos)                                    AS total_creditos,
+        (SELECT COUNT(*) FROM ic_creditos WHERE estado='EN_CURSO')            AS creditos_en_curso,
+        (SELECT COUNT(*) FROM ic_creditos WHERE estado='MOROSO')              AS creditos_morosos,
+        (SELECT COUNT(*) FROM ic_creditos cr WHERE cr.estado='EN_CURSO'
+            AND NOT EXISTS (SELECT 1 FROM ic_cuotas cu WHERE cu.credito_id=cr.id AND cu.estado IN ('VENCIDA','PARCIAL') AND cu.fecha_vencimiento < CURDATE())
+        )                                                                     AS creditos_al_dia,
+        (SELECT COUNT(*) FROM ic_creditos cr WHERE cr.estado='EN_CURSO'
+            AND (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado NOT IN ('PAGADA','CANCELADA')) BETWEEN 1 AND 2
+        )                                                                     AS proximos_cerrar,
+        (SELECT COUNT(*) FROM ic_creditos WHERE estado='FINALIZADO' AND fecha_finalizacion >= DATE_FORMAT(CURDATE(),'%Y-%m-01'))                                        AS finalizados_mes,
+        (SELECT COUNT(*) FROM ic_creditos WHERE estado='FINALIZADO' AND fecha_finalizacion >= DATE_FORMAT(DATE_SUB(CURDATE(),INTERVAL 1 MONTH),'%Y-%m-01') AND fecha_finalizacion < DATE_FORMAT(CURDATE(),'%Y-%m-01')) AS finalizados_mes_ant,
+        (SELECT COUNT(*) FROM ic_creditos WHERE fecha_alta >= DATE_FORMAT(CURDATE(),'%Y-%m-01'))                                                                        AS creditos_mes,
+        (SELECT COUNT(*) FROM ic_creditos WHERE fecha_alta >= DATE_FORMAT(DATE_SUB(CURDATE(),INTERVAL 1 MONTH),'%Y-%m-01') AND fecha_alta < DATE_FORMAT(CURDATE(),'%Y-%m-01')) AS creditos_mes_ant,
+        (SELECT COUNT(DISTINCT cobrador_id) FROM ic_pagos_temporales WHERE estado='PENDIENTE')                                                                         AS rend_pend,
+        (SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada = CURDATE())                                                                AS cobrado_hoy,
+        (SELECT COUNT(*)                     FROM ic_pagos_confirmados WHERE fecha_jornada = CURDATE())                                                                AS pagos_hoy,
+        (SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada >= DATE_FORMAT(CURDATE(),'%Y-%m-01'))                                        AS cobrado_mes,
+        (SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada >= DATE_FORMAT(DATE_SUB(CURDATE(),INTERVAL 1 MONTH),'%Y-%m-01') AND fecha_jornada < DATE_FORMAT(CURDATE(),'%Y-%m-01')) AS cobrado_mes_ant,
+        (SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados WHERE fecha_jornada = DATE_SUB(CURDATE(), INTERVAL 7 DAY))                                      AS cobrado_hoy_sem_ant
+")->fetch(PDO::FETCH_ASSOC);
 
-// ── Nuevos KPIs ───────────────────────────────────────────────
-$proximos_cerrar   = (int)$pdo->query("
-    SELECT COUNT(*) FROM ic_creditos cr
-    WHERE cr.estado='EN_CURSO'
-      AND (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado NOT IN ('PAGADA','CANCELADA')) BETWEEN 1 AND 2
-")->fetchColumn();
-
-$finalizados_mes   = (int)$pdo->query("
-    SELECT COUNT(*) FROM ic_creditos
-    WHERE estado='FINALIZADO'
-      AND fecha_finalizacion>=DATE_FORMAT(CURDATE(),'%Y-%m-01')
-")->fetchColumn();
-
-$clientes_dormidos = (int)$pdo->query("
-    SELECT COUNT(*) FROM ic_clientes cl
-    WHERE cl.estado='ACTIVO'
-      AND NOT EXISTS (
-          SELECT 1 FROM ic_creditos cr
-          WHERE cr.cliente_id=cl.id
-            AND cr.estado IN ('EN_CURSO','MOROSO')
-      )
-      AND EXISTS (
-          SELECT 1 FROM ic_creditos cr2
-          WHERE cr2.cliente_id=cl.id
-            AND cr2.fecha_finalizacion < DATE_SUB(CURDATE(), INTERVAL 90 DAY)
-      )
-")->fetchColumn();
-
-// ── Comparativas MoM ─────────────────────────────────────────
-$cobrado_mes_ant    = (float)$pdo->query("
-    SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados
-    WHERE fecha_jornada >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
-      AND fecha_jornada <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
-")->fetchColumn();
-$cobrado_hoy_sem_ant = (float)$pdo->query("
-    SELECT COALESCE(SUM(monto_total),0) FROM ic_pagos_confirmados
-    WHERE fecha_jornada = DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-")->fetchColumn();
-$finalizados_mes_ant = (int)$pdo->query("
-    SELECT COUNT(*) FROM ic_creditos
-    WHERE estado='FINALIZADO'
-      AND fecha_finalizacion >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
-      AND fecha_finalizacion <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
-")->fetchColumn();
-$creditos_mes        = (int)$pdo->query("
-    SELECT COUNT(*) FROM ic_creditos WHERE fecha_alta >= DATE_FORMAT(CURDATE(),'%Y-%m-01')
-")->fetchColumn();
-$creditos_mes_ant    = (int)$pdo->query("
-    SELECT COUNT(*) FROM ic_creditos
-    WHERE fecha_alta >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH),'%Y-%m-01')
-      AND fecha_alta <  DATE_FORMAT(CURDATE(),'%Y-%m-01')
-")->fetchColumn();
+$total_clientes      = (int)   $kpi['total_clientes'];
+$clientes_activos    = (int)   $kpi['clientes_activos'];
+$clientes_dormidos   = (int)   $kpi['clientes_dormidos'];
+$total_creditos      = (int)   $kpi['total_creditos'];
+$creditos_en_curso   = (int)   $kpi['creditos_en_curso'];
+$creditos_morosos    = (int)   $kpi['creditos_morosos'];
+$creditos_al_dia     = (int)   $kpi['creditos_al_dia'];
+$proximos_cerrar     = (int)   $kpi['proximos_cerrar'];
+$finalizados_mes     = (int)   $kpi['finalizados_mes'];
+$finalizados_mes_ant = (int)   $kpi['finalizados_mes_ant'];
+$creditos_mes        = (int)   $kpi['creditos_mes'];
+$creditos_mes_ant    = (int)   $kpi['creditos_mes_ant'];
+$rend_pend           = (int)   $kpi['rend_pend'];
+$cobrado_hoy         = (float) $kpi['cobrado_hoy'];
+$pagos_hoy           = (int)   $kpi['pagos_hoy'];
+$cobrado_mes         = (float) $kpi['cobrado_mes'];
+$cobrado_mes_ant     = (float) $kpi['cobrado_mes_ant'];
+$cobrado_hoy_sem_ant = (float) $kpi['cobrado_hoy_sem_ant'];
 // Helper: flecha con % de cambio
 function delta_html(float $actual, float $anterior, string $color_up = 'var(--success)', string $color_down = 'var(--danger)'): string {
     if ($anterior <= 0) return $actual > 0 ? '<span style="color:'.$color_up.';font-weight:700;font-size:.72rem">↑ nuevo</span>' : '';

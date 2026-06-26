@@ -987,8 +987,79 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
     width: 100%;
     margin-bottom: -4px;
   }
-  .modal-box { padding: 20px 16px; }
+  .modal-box {
+    padding: 20px 16px;
+    max-width: 90vw;
+    margin: 8px;
+  }
+  .db-charts-grid { grid-template-columns: 1fr; }
+  .table-ic { font-size: .82rem; }
 }
+
+/* ── Tema Cobrador (interfaz de campo, fondo claro) ─────────── */
+body.theme-cobrador {
+  --body-bg: #f3f4f6;
+  --dark-bg: #ffffff;
+  --darker-bg: #e5e7eb;
+  --dark-border: #d1d5db;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --secondary: #f9fafb;
+  --secondary-hover: #f3f4f6;
+  --text-main: #1f2937;
+  --text-muted: #6b7280;
+  --accent: #0ea5e9;
+  --accent-hover: #0284c7;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  color: var(--text-main);
+  background-color: var(--body-bg);
+}
+body.theme-cobrador .card-ic,
+body.theme-cobrador .modal-box {
+  background: var(--dark-bg);
+  border-color: var(--dark-border);
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,.05), 0 2px 4px -2px rgba(0,0,0,.05);
+}
+body.theme-cobrador .card-ic-header,
+body.theme-cobrador .modal-header {
+  border-bottom: 1px solid var(--dark-border);
+  background: rgba(0,0,0,.015);
+}
+body.theme-cobrador .sidebar  { background: #ffffff; border-right: 1px solid var(--dark-border); }
+body.theme-cobrador .topbar   { background: #ffffff; border-bottom: 1px solid var(--dark-border); }
+body.theme-cobrador .nav-item { color: var(--text-main); }
+body.theme-cobrador .nav-item:hover { background: var(--secondary-hover); }
+body.theme-cobrador .nav-item.active {
+  background: rgba(79,70,229,.08);
+  color: var(--primary);
+  border-right: 3px solid var(--primary);
+}
+body.theme-cobrador .nav-label { color: var(--text-muted); font-weight: 700; }
+body.theme-cobrador input,
+body.theme-cobrador select,
+body.theme-cobrador textarea {
+  background: #ffffff !important;
+  border: 1px solid var(--dark-border) !important;
+  color: var(--text-main) !important;
+}
+body.theme-cobrador input:focus,
+body.theme-cobrador select:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px rgba(79,70,229,.1) !important;
+}
+body.theme-cobrador .page-header-title { color: var(--text-main); }
+body.theme-cobrador #modal-info        { background: #f3f4f6 !important; border: 1px solid #e5e7eb; }
+body.theme-cobrador .btn-ghost         { color: var(--text-main); }
+body.theme-cobrador .btn-ghost:hover   { background: var(--secondary-hover); }
+body.theme-cobrador .agenda-row        { border-bottom: 1px solid #e5e7eb; }
+body.theme-cobrador .agenda-row:hover  { background: #f9fafb; }
+body.theme-cobrador .agenda-header     { border-bottom: 2px solid #e5e7eb; color: var(--text-muted); }
+body.theme-cobrador .agenda-articulo   { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+body.theme-cobrador .kpi-card          { background: #ffffff; border: 1px solid #e5e7eb; }
+body.theme-cobrador .kpi-label         { color: var(--text-muted); }
+body.theme-cobrador .kpi-value         { color: var(--text-main); }
 
 /* ── Utilidades ───────────────────────────────────────────── */
 .text-muted   { color: var(--text-muted) !important; }

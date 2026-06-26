@@ -10,11 +10,8 @@ verificar_permiso('ver_reportes');
 
 $pdo = obtener_conexion();
 
-// ── Export CSV ─────────────────────────────────────────────
-if (($_GET['export'] ?? '') === 'csv') {
-    $cobrador_id_csv = (int) ($_GET['cobrador_id'] ?? 0);
-    $zona_csv        = trim($_GET['zona'] ?? '');
-
+function build_atrasados_where(int $cobrador_id, string $zona): array
+{
     $w = [
         "cu.estado IN ('PENDIENTE','VENCIDA','PARCIAL')",
         "cr.estado IN ('EN_CURSO','MOROSO')",
@@ -22,9 +19,17 @@ if (($_GET['export'] ?? '') === 'csv') {
         "(cu.monto_cuota - cu.saldo_pagado) > 0",
     ];
     $p = [];
-    if ($cobrador_id_csv > 0) { $w[] = 'cr.cobrador_id = ?'; $p[] = $cobrador_id_csv; }
-    if ($zona_csv !== '')     { $w[] = 'cl.zona = ?';         $p[] = $zona_csv; }
-    $wStr = implode(' AND ', $w);
+    if ($cobrador_id > 0) { $w[] = 'cr.cobrador_id = ?'; $p[] = $cobrador_id; }
+    if ($zona !== '')     { $w[] = 'cl.zona = ?';         $p[] = $zona; }
+    return ['sql' => implode(' AND ', $w), 'params' => $p];
+}
+
+// ── Export CSV ─────────────────────────────────────────────
+if (($_GET['export'] ?? '') === 'csv') {
+    $cobrador_id_csv = (int) ($_GET['cobrador_id'] ?? 0);
+    $zona_csv        = trim($_GET['zona'] ?? '');
+
+    ['sql' => $wStr, 'params' => $p] = build_atrasados_where($cobrador_id_csv, $zona_csv);
 
     $stmtCsv = $pdo->prepare("
         SELECT
@@ -78,23 +83,7 @@ $limit  = 50;
 $offset = ($page - 1) * $limit;
 
 // ── WHERE dinámico (compartido por todas las consultas) ──────
-$where  = [
-    "cu.estado IN ('PENDIENTE','VENCIDA','PARCIAL')",
-    "cr.estado IN ('EN_CURSO','MOROSO')",
-    "cu.fecha_vencimiento < CURDATE()",
-    "(cu.monto_cuota - cu.saldo_pagado) > 0",
-];
-$params = [];
-
-if ($cobrador_id > 0) {
-    $where[]  = 'cr.cobrador_id = ?';
-    $params[] = $cobrador_id;
-}
-if ($zona_sel !== '') {
-    $where[]  = 'cl.zona = ?';
-    $params[] = $zona_sel;
-}
-$whereStr = implode(' AND ', $where);
+['sql' => $whereStr, 'params' => $params] = build_atrasados_where($cobrador_id, $zona_sel);
 
 // ── Totales globales ─────────────────────────────────────────
 $stmtTot = $pdo->prepare("

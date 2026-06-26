@@ -108,23 +108,6 @@ $lp_stmt = $pdo->prepare("
 $lp_stmt->execute([$id]);
 $last_paid_date = $lp_stmt->fetchColumn() ?: $cr['primer_vencimiento'];
 
-function next_venc(string $base, string $frec): string {
-    $f = new DateTime($base);
-    if ($frec === 'diario') {
-        $f->modify('+1 day');
-        while ((int)$f->format('N') === 7) {
-            $f->modify('+1 day');
-        }
-    } else {
-        match ($frec) {
-            'semanal'   => $f->modify('+7 days'),
-            'quincenal' => $f->modify('+15 days'),
-            default     => $f->modify('+1 month'),
-        };
-    }
-    return $f->format('Y-m-d');
-}
-
 $cobradores = $pdo->query(
     "SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre"
 )->fetchAll();
@@ -136,7 +119,7 @@ $error = '';
 $f = [
     'nuevas_cuotas'       => max(1, (int)$cr['cant_cuotas'] - $cuotas_pagadas),
     'frecuencia'          => $cr['frecuencia'],
-    'primer_vencimiento'  => next_venc($last_paid_date, $cr['frecuencia']),
+    'primer_vencimiento'  => calcular_siguiente_vencimiento($last_paid_date, $cr['frecuencia']),
     'capitalizar_mora'    => true,
     'interes_adicional'   => 0,
     'cobrador_id'         => $cr['cobrador_id'],

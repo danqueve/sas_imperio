@@ -47,4 +47,12 @@ class PDFBase extends FPDF
         $this->SetDrawColor(0, 0, 0);
         $this->SetFillColor(255, 255, 255);
     }
+
+    public function addLogo(float $x = 10, float $y = 6, float $w = 18): void
+    {
+        $logo = __DIR__ . '/../assets/img/logo.png';
+        if (file_exists($logo)) {
+            $this->Image($logo, $x, $y, $w);
+        }
+    }
 }

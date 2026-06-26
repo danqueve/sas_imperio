@@ -23,9 +23,8 @@ $offset = ($page - 1) * $limit;
 $where = ['1=1'];
 $params = [];
 if ($q !== '') {
-    $where[] = "(c.nombres LIKE ? OR c.apellidos LIKE ? OR c.dni LIKE ? OR c.telefono LIKE ?)";
-    $like = "%$q%";
-    $params = array_merge($params, [$like, $like, $like, $like]);
+    $where[] = "MATCH(c.apellidos, c.nombres, c.dni, c.telefono) AGAINST (? IN BOOLEAN MODE)";
+    $params[] = '+' . implode('* +', preg_split('/\s+/', trim($q))) . '*';
 }
 if ($estado !== '') {
     $where[] = 'c.estado = ?';
