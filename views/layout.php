@@ -108,29 +108,11 @@ if ($rol === 'admin') {
                             </span>
                         <?php endif; ?>
                     </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'liquidaciones' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>admin/liquidaciones"
-                       data-tooltip="Liquidaciones">
-                        <i class="fa fa-money-bill-wave"></i>
-                        <span class="nav-text">Liquidaciones</span>
-                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'estadisticas' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/estadisticas_cobranza"
                        data-tooltip="Estadísticas de Cobranza">
                         <i class="fa fa-chart-bar"></i>
                         <span class="nav-text">Estadísticas</span>
-                    </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'ranking_cobradores' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>admin/ranking_cobradores"
-                       data-tooltip="Ranking de Cobradores">
-                        <i class="fa fa-trophy"></i>
-                        <span class="nav-text">Ranking Cob.</span>
-                    </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'estadisticas_cob' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>admin/estadisticas_cobrador"
-                       data-tooltip="Estadísticas por Cobrador">
-                        <i class="fa fa-chart-column"></i>
-                        <span class="nav-text">Estad. Cobrador</span>
                     </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'riesgo_cartera' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/riesgo_cartera"
@@ -143,12 +125,6 @@ if ($rol === 'admin') {
                        data-tooltip="Créditos Finalizados">
                         <i class="fa fa-circle-check"></i>
                         <span class="nav-text">Finalizados</span>
-                    </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'aging_report' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>admin/aging_report"
-                       data-tooltip="Antigüedad de Deuda">
-                        <i class="fa fa-layer-group"></i>
-                        <span class="nav-text">Antig. Deuda</span>
                     </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'cohortes' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/cohortes"
@@ -211,18 +187,6 @@ if ($rol === 'admin') {
                        data-tooltip="Actividad">
                         <i class="fa fa-history"></i>
                         <span class="nav-text">Actividad</span>
-                    </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'interes_cero' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>admin/interes_cero"
-                       data-tooltip="Interés a Cero">
-                        <i class="fa fa-percent"></i>
-                        <span class="nav-text">Interés a Cero</span>
-                    </a>
-                    <a class="nav-item <?= ($page_current ?? '') === 'migrar_cobrador' ? 'active' : '' ?>"
-                       href="<?= BASE_URL ?>admin/migrar_cobrador"
-                       data-tooltip="Migrar Cobrador">
-                        <i class="fa fa-right-left"></i>
-                        <span class="nav-text">Migrar Cobrador</span>
                     </a>
                 <?php endif; ?>
 
