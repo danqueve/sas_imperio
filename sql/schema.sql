@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS `ic_cuotas` (
   `monto_mora` DECIMAL(12,2) DEFAULT 0.00,
   `dias_atraso` INT DEFAULT 0 COMMENT 'Campo legacy — no se actualiza automáticamente. Calcular con DATEDIFF(CURDATE(), fecha_vencimiento)',
   `saldo_pagado` DECIMAL(12,2) DEFAULT 0.00,
-  `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA') DEFAULT 'PENDIENTE',
+  `estado` ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA','CANCELADA') DEFAULT 'PENDIENTE',
   `fecha_pago` DATE DEFAULT NULL,
   FOREIGN KEY (`credito_id`) REFERENCES `ic_creditos`(`id`) ON DELETE CASCADE,
   INDEX `idx_cuotas_credito_estado` (`credito_id`, `estado`)
@@ -347,5 +347,13 @@ ALTER TABLE ic_historial_refinanciaciones
 ALTER TABLE ic_historial_refinanciaciones
   ADD CONSTRAINT IF NOT EXISTS fk_histref_nuevo
     FOREIGN KEY (credito_nuevo_id) REFERENCES ic_creditos(id) ON DELETE SET NULL;
+
+-- ------------------------------------------------------------
+-- Migración: ic_cuotas — agregar estado CANCELADA al ENUM
+-- ------------------------------------------------------------
+ALTER TABLE `ic_cuotas`
+  MODIFY COLUMN `estado`
+    ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA','CANCELADA')
+    DEFAULT 'PENDIENTE';
 
 SET FOREIGN_KEY_CHECKS = 1;
