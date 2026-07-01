@@ -239,7 +239,10 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 continue; // Otro proceso ya lo aprobó
             }
 
-            // 1. Insertar en pagos_confirmados con snapshot completo
+            // 1. Insertar en pagos_confirmados con snapshot completo.
+            // Si la fila ya existe (pago revertido, uq_pago_temp_id), se reutiliza
+            // actualizando sus campos y limpiando el estado de reversa, en lugar de
+            // lanzar un error de clave duplicada que bloquearía la re-aprobación.
             $semana_lunes = calcular_semana_lunes($pago['fecha_jornada'] ?: $fecha);
             $ins = $pdo->prepare("
                 INSERT INTO ic_pagos_confirmados
@@ -248,7 +251,34 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                      es_cuota_pura, observaciones, fecha_jornada, semana_lunes, origen,
                      monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap,
                      cliente_nombres_snap, cliente_apellidos_snap)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AS nuevo
+                ON DUPLICATE KEY UPDATE
+                    cuota_id               = nuevo.cuota_id,
+                    cobrador_id            = nuevo.cobrador_id,
+                    aprobador_id           = nuevo.aprobador_id,
+                    fecha_pago             = nuevo.fecha_pago,
+                    monto_efectivo         = nuevo.monto_efectivo,
+                    monto_transferencia    = nuevo.monto_transferencia,
+                    monto_total            = nuevo.monto_total,
+                    monto_mora_cobrada     = nuevo.monto_mora_cobrada,
+                    es_cuota_pura          = nuevo.es_cuota_pura,
+                    observaciones          = nuevo.observaciones,
+                    fecha_jornada          = nuevo.fecha_jornada,
+                    semana_lunes           = nuevo.semana_lunes,
+                    origen                 = nuevo.origen,
+                    monto_cuota_orig       = nuevo.monto_cuota_orig,
+                    numero_cuota           = nuevo.numero_cuota,
+                    fecha_vcto_orig        = nuevo.fecha_vcto_orig,
+                    articulo_snap          = nuevo.articulo_snap,
+                    cliente_nombres_snap   = nuevo.cliente_nombres_snap,
+                    cliente_apellidos_snap = nuevo.cliente_apellidos_snap,
+                    fecha_aprobacion       = NOW(),
+                    revertido              = 0,
+                    fecha_reversa          = NULL,
+                    reverso_por            = NULL,
+                    motivo_reversa         = NULL,
+                    solicitud_baja         = 0,
+                    motivo_baja            = NULL
             ");
             $ins->execute([
                 $pago['id'],
