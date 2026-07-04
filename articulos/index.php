@@ -104,8 +104,7 @@ function render_tbody(array $lista): string {
             . '<td class="fw-bold">' . e($a['descripcion']) . '</td>'
             . '<td>' . e($a['categoria'] ?: '—') . '</td>'
             . '<td class="nowrap fw-bold">' . ($a['precio_venta'] ? formato_pesos($a['precio_venta']) : '—') . '</td>'
-            . '<td class="nowrap">' . ($a['precio_contado'] ? formato_pesos($a['precio_contado']) : '—') . '</td>'
-            . '<td class="nowrap">' . ($a['precio_tarjeta'] ? formato_pesos($a['precio_tarjeta']) : '—') . '</td>'
+            . '<td class="nowrap fw-bold" style="color:#f59e0b">' . ($a['precio_contado'] ? formato_pesos($a['precio_contado']) : '<span style="color:var(--text-muted);font-weight:400">—</span>') . '</td>'
             . '<td class="text-center">' . $stock_badge . '</td>'
             . '<td class="text-center">' . $activo_badge . '</td>'
             . '<td class="nowrap">'
@@ -247,8 +246,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <th>Descripción</th>
                     <th>Categoría</th>
                     <th>Precio Venta</th>
-                    <th>Contado</th>
-                    <th>Tarjeta</th>
+                    <th style="color:#f59e0b">Contado</th>
                     <th>Stock</th>
                     <th>Activo</th>
                     <th>Acciones</th>

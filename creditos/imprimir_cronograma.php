@@ -50,8 +50,16 @@ $cuotas = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? ORDER BY num
 $cuotas->execute([$id]);
 $lista_cuotas = $cuotas->fetchAll();
 
+$combo_stmt = $pdo->prepare("SELECT * FROM ic_credito_articulos WHERE credito_id = ? ORDER BY id");
+$combo_stmt->execute([$id]);
+$combo_items = $combo_stmt->fetchAll();
+
 // ── Generar PDF ───────────────────────────────────────────────
 ob_clean();
+
+function lat_imp(string $s): string {
+    return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
+}
 $pdf = new FPDF('P', 'mm', 'A4');
 $pdf->AddPage();
 $pdf->SetAutoPageBreak(true, 15);
@@ -71,15 +79,51 @@ $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(95, 6, 'DATOS DEL CLIENTE:', 0);
 $pdf->Cell(95, 6, 'DATOS DEL CREDITO:', 0, 1);
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(95, 5, 'Nombre: ' . iconv('UTF-8', 'ISO-8859-1', $cr['apellidos'] . ', ' . $cr['nombres']), 0);
-$pdf->Cell(95, 5, 'Articulo: ' . iconv('UTF-8', 'ISO-8859-1', $cr['articulo']), 0, 1);
-$pdf->Cell(95, 5, 'DNI: ' . ($cr['dni'] ?: '—'), 0);
-$pdf->Cell(95, 5, 'Precio Art.: $ ' . number_format($cr['precio_articulo'], 2, ',', '.'), 0, 1);
-$pdf->Cell(95, 5, 'Tel.: ' . ($cr['telefono'] ?: '—'), 0);
-$pdf->Cell(95, 5, 'Interes: ' . $cr['interes_pct'] . '%  — Total: $ ' . number_format($cr['monto_total'], 2, ',', '.'), 0, 1);
-$pdf->Cell(95, 5, iconv('UTF-8', 'ISO-8859-1', 'Dirección: ' . ($cr['direccion'] ?: '—')), 0);
+$pdf->Cell(95, 5, 'Nombre: ' . lat_imp($cr['apellidos'] . ', ' . $cr['nombres']), 0);
+if (!$combo_items) {
+    $pdf->Cell(95, 5, 'Articulo: ' . lat_imp($cr['articulo']), 0, 1);
+} else {
+    $pdf->Cell(95, 5, 'Credito Combo (' . count($combo_items) . ' art.)', 0, 1);
+}
+$pdf->Cell(95, 5, 'DNI: ' . ($cr['dni'] ?: '-'), 0);
+if (!$combo_items) {
+    $pdf->Cell(95, 5, 'Precio Art.: $ ' . number_format($cr['precio_articulo'], 2, ',', '.'), 0, 1);
+} else {
+    $pdf->Cell(95, 5, 'Total items: $ ' . number_format($cr['precio_articulo'], 2, ',', '.'), 0, 1);
+}
+$pdf->Cell(95, 5, 'Tel.: ' . ($cr['telefono'] ?: '-'), 0);
+$pdf->Cell(95, 5, 'Total Credito: $ ' . number_format($cr['monto_total'], 2, ',', '.'), 0, 1);
+$pdf->Cell(95, 5, lat_imp('Direccion: ' . ($cr['direccion'] ?: '-')), 0);
 $pdf->Cell(95, 5, 'Cuotas: ' . $cr['cant_cuotas'] . ' x $ ' . number_format($cr['monto_cuota'], 2, ',', '.') . ' (' . $cr['frecuencia'] . ')', 0, 1);
-$pdf->Ln(4);
+$pdf->Ln(3);
+
+// Detalle artículos combo
+if ($combo_items) {
+    $pdf->SetFont('Arial', 'B', 8.5);
+    $pdf->SetFillColor(230, 230, 240);
+    $pdf->Cell(0, 6, 'ARTICULOS DEL COMBO', 0, 1, 'L', true);
+    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->SetFillColor(240, 240, 240);
+    $pdf->Cell(95, 5, 'Descripcion', 1, 0, 'L', true);
+    $pdf->Cell(20, 5, 'Cant.', 1, 0, 'C', true);
+    $pdf->Cell(37, 5, 'Precio Unit.', 1, 0, 'R', true);
+    $pdf->Cell(38, 5, 'Subtotal', 1, 1, 'R', true);
+    $pdf->SetFont('Arial', '', 8);
+    $total_items = 0;
+    foreach ($combo_items as $ci) {
+        $desc = lat_imp(mb_substr($ci['descripcion'], 0, 50));
+        $pdf->Cell(95, 5, $desc, 1, 0, 'L');
+        $pdf->Cell(20, 5, (int)$ci['cantidad'], 1, 0, 'C');
+        $pdf->Cell(37, 5, '$ ' . number_format($ci['precio_unitario'], 2, ',', '.'), 1, 0, 'R');
+        $pdf->Cell(38, 5, '$ ' . number_format($ci['subtotal'], 2, ',', '.'), 1, 1, 'R');
+        $total_items += (float)$ci['subtotal'];
+    }
+    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->Cell(115, 5, '', 0, 0);
+    $pdf->Cell(37, 5, 'Total:', 0, 0, 'R');
+    $pdf->Cell(38, 5, '$ ' . number_format($total_items, 2, ',', '.'), 0, 1, 'R');
+    $pdf->Ln(3);
+}
 
 // Tabla de cuotas
 $pdf->SetFillColor(230, 230, 230);

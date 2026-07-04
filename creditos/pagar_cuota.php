@@ -174,18 +174,30 @@ try {
         $cuotas_ok++;
     }
 
-    // Recalcular estado del crédito (FINALIZADO / MOROSO / EN_CURSO)
+    // Recalcular estado del crédito — misma lógica que aprobar_rendicion()
     $check = $pdo->prepare("
-        SELECT SUM(CASE WHEN estado != 'PAGADA' THEN 1 ELSE 0 END) AS pendientes,
-               SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END) AS vencidas
+        SELECT
+            SUM(CASE WHEN estado NOT IN ('PAGADA','CANCELADA') THEN 1 ELSE 0 END) AS pendientes,
+            SUM(CASE WHEN estado = 'VENCIDA'
+                     OR (estado = 'PARCIAL' AND fecha_vencimiento < CURDATE())
+                THEN 1 ELSE 0 END) AS vencidas
         FROM ic_cuotas WHERE credito_id = ?
     ");
     $check->execute([$credito_id]);
     $counts = $check->fetch(PDO::FETCH_ASSOC);
-    if ((int)$counts['pendientes'] === 0)    $nuevo_cr_estado = 'FINALIZADO';
-    elseif ((int)$counts['vencidas'] > 0)    $nuevo_cr_estado = 'MOROSO';
-    else                                     $nuevo_cr_estado = 'EN_CURSO';
-    $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")->execute([$nuevo_cr_estado, $credito_id]);
+    if ((int)$counts['pendientes'] === 0) {
+        $pdo->prepare("
+            UPDATE ic_creditos
+            SET estado = 'FINALIZADO',
+                fecha_finalizacion  = COALESCE(fecha_finalizacion, ?),
+                motivo_finalizacion = COALESCE(motivo_finalizacion, 'PAGO_COMPLETO')
+            WHERE id = ?
+        ")->execute([date('Y-m-d'), $credito_id]);
+    } elseif ((int)$counts['vencidas'] > 0) {
+        $pdo->prepare("UPDATE ic_creditos SET estado='MOROSO' WHERE id=?")->execute([$credito_id]);
+    } else {
+        $pdo->prepare("UPDATE ic_creditos SET estado='EN_CURSO' WHERE id=?")->execute([$credito_id]);
+    }
 
     $pdo->commit();
 

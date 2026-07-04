@@ -31,6 +31,10 @@ $cuotas = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? ORDER BY num
 $cuotas->execute([$id]);
 $lista_cuotas = $cuotas->fetchAll();
 
+$combo_stmt = $pdo->prepare("SELECT * FROM ic_credito_articulos WHERE credito_id = ? ORDER BY id");
+$combo_stmt->execute([$id]);
+$combo_items = $combo_stmt->fetchAll();
+
 // ── Generar PDF ───────────────────────────────────────────────
 ob_clean();
 $pdf = new FPDF('P', 'mm', 'A4');
@@ -52,15 +56,47 @@ $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(95, 6, 'DATOS DEL CLIENTE:', 0);
 $pdf->Cell(95, 6, 'DATOS DEL CREDITO:', 0, 1);
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(95, 5, 'Nombre: ' . lat($cr['apellidos'] . ', ' . $cr['nombres']), 0);
-$pdf->Cell(95, 5, 'Articulo: ' . lat($cr['articulo']), 0, 1);
-$pdf->Cell(95, 5, 'DNI: ' . ($cr['dni'] ?: '—'), 0);
-$pdf->Cell(95, 5, 'Total Credito: $ ' . number_format($cr['monto_total'], 2, ',', '.'), 0, 1);
-$pdf->Cell(95, 5, 'Tel.: ' . ($cr['telefono'] ?: '—'), 0);
-$pdf->Cell(95, 5, 'Cuotas: ' . $cr['cant_cuotas'] . ' x $ ' . number_format($cr['monto_cuota'], 2, ',', '.') . ' (' . $cr['frecuencia'] . ')', 0, 1);
+
+// Columna derecha: artículo truncado o etiqueta combo
+$art_label = $combo_items
+    ? lat('Combo: ' . count($combo_items) . ' artículos')
+    : lat(mb_strlen($cr['articulo']) > 42 ? mb_substr($cr['articulo'], 0, 42) . '...' : $cr['articulo']);
+
+$pdf->Cell(95, 5, 'Nombre: '    . lat($cr['apellidos'] . ', ' . $cr['nombres']), 0);
+$pdf->Cell(95, 5, lat('Artículo: ') . $art_label, 0, 1);
+
+$pdf->Cell(95, 5, 'DNI: '       . ($cr['dni'] ?: '—'), 0);
+$pdf->Cell(95, 5, 'Total: $ '   . number_format($cr['monto_total'], 2, ',', '.'), 0, 1);
+
+$pdf->Cell(95, 5, 'Tel.: '      . ($cr['telefono'] ?: '—'), 0);
+$pdf->Cell(95, 5, 'Cuotas: '   . $cr['cant_cuotas'] . ' x $ ' . number_format($cr['monto_cuota'], 2, ',', '.') . ' (' . $cr['frecuencia'] . ')', 0, 1);
+
 $pdf->Cell(95, 5, lat('Dirección: ' . ($cr['direccion'] ?: '—')), 0);
-$pdf->Cell(95, 5, 'Cobrador: ' . lat($cr['cobrador_n'] . ' ' . $cr['cobrador_a']), 0, 1);
-$pdf->Ln(6);
+$pdf->Cell(95, 5, 'Cobrador: '  . lat($cr['cobrador_n'] . ' ' . $cr['cobrador_a']), 0, 1);
+
+$pdf->Ln(4);
+
+// ── Tabla de artículos (solo combo) ──────────────────────────
+if ($combo_items) {
+    $pdf->SetFont('Arial', 'B', 8.5);
+    $pdf->SetFillColor(220, 220, 235);
+    $pdf->Cell(0, 6, lat('ARTÍCULOS DEL COMBO'), 0, 1, 'L', true);
+
+    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->SetFillColor(238, 238, 248);
+    $pdf->Cell(160, 5, lat('Descripción'), 1, 0, 'L', true);
+    $pdf->Cell(30,  5, 'Cant.',            1, 1, 'C', true);
+
+    $pdf->SetFont('Arial', '', 8);
+    foreach ($combo_items as $ci) {
+        $desc = lat(mb_strlen($ci['descripcion']) > 90 ? mb_substr($ci['descripcion'], 0, 90) . '...' : $ci['descripcion']);
+        $pdf->Cell(160, 5, $desc,               1, 0, 'L');
+        $pdf->Cell(30,  5, (int)$ci['cantidad'], 1, 1, 'C');
+    }
+    $pdf->Ln(4);
+}
+
+$pdf->Ln(2);
 
 // Tabla de cuotas
 $pdf->SetFillColor(243, 244, 246);
@@ -110,12 +146,12 @@ if ($cr['estado'] === 'FINALIZADO') {
     $pdf->SetTextColor(0, 0, 0);
 }
 
-// Footer simple
-$pdf->SetY(-20);
+// Footer simple — deshabilitar auto page break para no generar página extra
+$pdf->SetAutoPageBreak(false);
+$pdf->SetY(-12);
 $pdf->SetFont('Arial', 'I', 7);
 $pdf->SetTextColor(107, 114, 128);
-$pdf->Cell(0, 5, lat('Generado el ') . date('d/m/Y H:i') . lat(' — Imperio Comercial'), 0, 1, 'C');
-$pdf->Cell(0, 5, lat('Página ') . $pdf->PageNo(), 0, 0, 'C');
+$pdf->Cell(0, 5, lat('Generado el ') . date('d/m/Y H:i') . lat(' — Imperio Comercial  |  Pág. ') . $pdf->PageNo(), 0, 0, 'C');
 
 $nombre_archivo = 'cronograma_' . str_replace(' ', '_', $cr['apellidos']) . '_' . $id . '.pdf';
 $pdf->Output('I', lat($nombre_archivo));

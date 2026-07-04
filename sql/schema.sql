@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS `ic_creditos` (
   `precio_articulo` DECIMAL(12,2) NOT NULL,
   `monto_total` DECIMAL(12,2) NOT NULL,
   `interes_pct` DECIMAL(5,2) NOT NULL,
-  `interes_moratorio_pct` DECIMAL(5,2) DEFAULT 15.00,
+  `interes_moratorio_pct` DECIMAL(5,2) DEFAULT 5.00,
   `frecuencia` ENUM('diario','semanal','quincenal','mensual') NOT NULL,
   `cant_cuotas` INT NOT NULL,
   `monto_cuota` DECIMAL(12,2) NOT NULL,
@@ -347,6 +347,23 @@ ALTER TABLE ic_historial_refinanciaciones
 ALTER TABLE ic_historial_refinanciaciones
   ADD CONSTRAINT IF NOT EXISTS fk_histref_nuevo
     FOREIGN KEY (credito_nuevo_id) REFERENCES ic_creditos(id) ON DELETE SET NULL;
+
+-- ------------------------------------------------------------
+-- Tabla ic_credito_articulos — detalle de ítems en créditos combo
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_credito_articulos` (
+  `id`              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `credito_id`      INT NOT NULL,
+  `articulo_id`     INT NULL,
+  `descripcion`     VARCHAR(255) NOT NULL,
+  `cantidad`        SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  `precio_unitario` DECIMAL(12,2) NOT NULL,
+  `subtotal`        DECIMAL(12,2) NOT NULL,
+  FOREIGN KEY (`credito_id`)  REFERENCES `ic_creditos`(`id`)  ON DELETE CASCADE,
+  FOREIGN KEY (`articulo_id`) REFERENCES `ic_articulos`(`id`) ON DELETE SET NULL,
+  INDEX `idx_ca_credito` (`credito_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci
+  COMMENT='Detalle de artículos de créditos combo';
 
 -- ------------------------------------------------------------
 -- Migración: ic_cuotas — agregar estado CANCELADA al ENUM

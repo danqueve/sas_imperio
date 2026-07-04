@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $precio,
                 $monto_tot,
                 $interes,
-                (float)($v['interes_moratorio_pct'] ?? 15),
+                (float)($v['interes_moratorio_pct'] ?? 5),
                 $v['frecuencia'],
                 $cant_cuotas,
                 ($v['dia_cobro'] ?: null),

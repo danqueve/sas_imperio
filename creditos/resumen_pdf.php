@@ -33,6 +33,10 @@ $cuotas_stmt = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? ORDER B
 $cuotas_stmt->execute([$id]);
 $lista_cuotas = $cuotas_stmt->fetchAll();
 
+$combo_stmt = $pdo->prepare("SELECT * FROM ic_credito_articulos WHERE credito_id = ? ORDER BY id");
+$combo_stmt->execute([$id]);
+$combo_items = $combo_stmt->fetchAll();
+
 // Calcular mora dinámica
 foreach ($lista_cuotas as &$cuota) {
     if (in_array($cuota['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL'])) {
@@ -104,15 +108,15 @@ $pdf->SetFont('Arial', '', 9);
 
 $left_w = 95;
 $pdf->Cell($left_w, 5, 'Cliente: ' . lat($cr['apellidos'] . ', ' . $cr['nombres']), 0);
-$pdf->Cell($left_w, 5, lat('Articulo: ') . lat($cr['articulo']), 0, 1);
+$pdf->Cell($left_w, 5, $combo_items ? lat('Credito Combo (' . count($combo_items) . ' art.)') : lat('Articulo: ' . $cr['articulo']), 0, 1);
 
-$pdf->Cell($left_w, 5, 'DNI: ' . ($cr['dni'] ?: '—'), 0);
+$pdf->Cell($left_w, 5, 'DNI: ' . ($cr['dni'] ?: '-'), 0);
 $pdf->Cell($left_w, 5, 'Estado: ' . $cr['estado'], 0, 1);
 
-$pdf->Cell($left_w, 5, lat('Tel.: ') . ($cr['telefono'] ?: '—'), 0);
-$pdf->Cell($left_w, 5, 'Precio art.: ' . pesos($cr['precio_articulo']), 0, 1);
+$pdf->Cell($left_w, 5, lat('Tel.: ') . ($cr['telefono'] ?: '-'), 0);
+$pdf->Cell($left_w, 5, ($combo_items ? 'Total items: ' : 'Precio art.: ') . pesos($cr['precio_articulo']), 0, 1);
 
-$pdf->Cell($left_w, 5, lat('Direccion: ') . lat($cr['direccion'] ?: '—'), 0);
+$pdf->Cell($left_w, 5, lat('Direccion: ') . lat($cr['direccion'] ?: '-'), 0);
 $pdf->Cell($left_w, 5, 'Monto total: ' . pesos($cr['monto_total']), 0, 1);
 
 $pdf->Cell($left_w, 5, 'Cobrador: ' . lat($cr['cobrador_n'] . ' ' . $cr['cobrador_a']), 0);
@@ -121,11 +125,43 @@ $pdf->Cell($left_w, 5, 'Cuota: ' . pesos($cr['monto_cuota']) . ' (' . $cr['frecu
 $pdf->Cell($left_w, 5, 'Alta: ' . date('d/m/Y', strtotime($cr['fecha_alta'])), 0);
 $pdf->Cell($left_w, 5, '1er venc.: ' . date('d/m/Y', strtotime($cr['primer_vencimiento'])), 0, 1);
 
-$pdf->Cell($left_w, 5, lat('Interes: ') . $cr['interes_pct'] . lat('%'), 0);
+if (!$combo_items) {
+    $pdf->Cell($left_w, 5, lat('Interes: ') . $cr['interes_pct'] . lat('%'), 0);
+} else {
+    $pdf->Cell($left_w, 5, '', 0);
+}
 $pdf->Cell($left_w, 5, 'Mora/sem.: ' . $cr['interes_moratorio_pct'] . lat('%'), 0, 1);
 
 if (!empty($cr['veces_refinanciado']) && (int)$cr['veces_refinanciado'] > 0) {
     $pdf->Cell(0, 5, 'Refinanciaciones: ' . (int)$cr['veces_refinanciado'], 0, 1);
+}
+
+// Detalle artículos combo
+if ($combo_items) {
+    $pdf->Ln(3);
+    $pdf->SetFont('Arial', 'B', 9);
+    $pdf->SetFillColor(230, 230, 240);
+    $pdf->Cell(0, 6, 'ARTICULOS DEL COMBO', 0, 1, 'L', true);
+    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->SetFillColor(240, 240, 240);
+    $pdf->Cell(97, 5, 'Descripcion', 1, 0, 'L', true);
+    $pdf->Cell(18, 5, 'Cant.', 1, 0, 'C', true);
+    $pdf->Cell(37, 5, 'Precio Unit.', 1, 0, 'R', true);
+    $pdf->Cell(38, 5, 'Subtotal', 1, 1, 'R', true);
+    $pdf->SetFont('Arial', '', 8);
+    $total_items = 0;
+    foreach ($combo_items as $ci) {
+        $desc = lat(mb_substr($ci['descripcion'], 0, 52));
+        $pdf->Cell(97, 5, $desc, 1, 0, 'L');
+        $pdf->Cell(18, 5, (int)$ci['cantidad'], 1, 0, 'C');
+        $pdf->Cell(37, 5, pesos($ci['precio_unitario']), 1, 0, 'R');
+        $pdf->Cell(38, 5, pesos($ci['subtotal']), 1, 1, 'R');
+        $total_items += (float)$ci['subtotal'];
+    }
+    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->Cell(115, 5, '', 0, 0);
+    $pdf->Cell(37, 5, 'Total:', 0, 0, 'R');
+    $pdf->Cell(38, 5, pesos($total_items), 0, 1, 'R');
 }
 
 $pdf->Ln(5);

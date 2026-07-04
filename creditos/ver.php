@@ -39,6 +39,10 @@ $cuotas = $pdo->prepare("SELECT * FROM ic_cuotas WHERE credito_id=? ORDER BY num
 $cuotas->execute([$id]);
 $lista_cuotas = $cuotas->fetchAll();
 
+$combo_stmt = $pdo->prepare("SELECT ca.*, a.sku FROM ic_credito_articulos ca LEFT JOIN ic_articulos a ON ca.articulo_id = a.id WHERE ca.credito_id = ? ORDER BY ca.id");
+$combo_stmt->execute([$id]);
+$combo_items = $combo_stmt->fetchAll();
+
 // Mapa cuota_id → pago confirmado (id, solicitud_baja, motivo_baja) para acciones admin/supervisor
 $conf_map = [];
 if (es_admin() || es_supervisor()) {
@@ -473,24 +477,46 @@ require_once __DIR__ . '/../views/layout.php';
                     <td><?= e($cr['dni']) ?></td>
                 </tr>
                 <?php endif; ?>
+                <?php if ($combo_items): ?>
                 <tr>
-                    <td class="text-muted" style="padding:5px 0">Artículo</td>
-                    <td>
-                        <?= e($cr['articulo']) ?>
+                    <td colspan="2" style="padding:8px 0 4px">
+                        <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:7px;font-weight:600">
+                            <i class="fa fa-layer-group" style="font-size:.65rem;margin-right:4px"></i>Artículos del Combo
+                        </div>
+                        <?php foreach ($combo_items as $ci): ?>
+                        <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+                            <div style="font-size:.84rem;font-weight:500;margin-bottom:2px;line-height:1.3">
+                                <?= e($ci['descripcion']) ?>
+                                <?php if ($ci['articulo_id'] === null): ?>
+                                    <span style="font-size:.7rem;color:var(--text-muted);font-weight:400">(libre)</span>
+                                <?php endif; ?>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;font-size:.76rem;font-variant-numeric:tabular-nums">
+                                <span style="color:var(--text-muted)"><?= (int)$ci['cantidad'] ?> × <?= formato_pesos($ci['precio_unitario']) ?></span>
+                                <span style="font-weight:600"><?= formato_pesos($ci['subtotal']) ?></span>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                        <div style="display:flex;justify-content:space-between;padding:6px 0 2px;font-size:.78rem;font-variant-numeric:tabular-nums">
+                            <span style="color:var(--text-muted)">Total ítems</span>
+                            <span style="font-weight:700;color:var(--primary-light)"><?= formato_pesos(array_sum(array_column($combo_items, 'subtotal'))) ?></span>
+                        </div>
                     </td>
+                </tr>
+                <?php else: ?>
+                <tr>
+                    <td class="text-muted" style="padding:5px 0;vertical-align:top">Artículo</td>
+                    <td><?= e($cr['articulo']) ?></td>
                 </tr>
                 <tr>
                     <td class="text-muted" style="padding:5px 0">Precio art.</td>
-                    <td>
-                        <?= formato_pesos($cr['precio_articulo']) ?>
-                    </td>
+                    <td><?= formato_pesos($cr['precio_articulo']) ?></td>
                 </tr>
                 <tr>
                     <td class="text-muted" style="padding:5px 0">Interés</td>
-                    <td>
-                        <?= $cr['interes_pct'] ?>%
-                    </td>
+                    <td><?= $cr['interes_pct'] ?>%</td>
                 </tr>
+                <?php endif; ?>
                 <tr>
                     <td class="text-muted" style="padding:5px 0">Monto total</td>
                     <td class="fw-bold">

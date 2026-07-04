@@ -27,10 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $desc           = trim($_POST['descripcion'] ?? '');
     $sku            = trim($_POST['sku'] ?? '') ?: null;
     $cat            = trim($_POST['categoria'] ?? '');
-    $costo          = $_POST['precio_costo'] !== '' ? (float) $_POST['precio_costo'] : null;
     $venta          = $_POST['precio_venta'] !== '' ? (float) $_POST['precio_venta'] : null;
     $contado        = $_POST['precio_contado'] !== '' ? (float) $_POST['precio_contado'] : null;
-    $tarjeta        = $_POST['precio_tarjeta'] !== '' ? (float) $_POST['precio_tarjeta'] : null;
     $stock          = (int) ($_POST['stock'] ?? 0);
     $activo         = isset($_POST['activo']) ? 1 : 0;
 
@@ -40,33 +38,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             if ($esEdicion) {
                 // Registrar historial si cambiaron precios
-                $prev = $pdo->prepare("SELECT precio_costo,precio_venta,precio_contado,precio_tarjeta FROM ic_articulos WHERE id=?");
+                $prev = $pdo->prepare("SELECT precio_venta, precio_contado FROM ic_articulos WHERE id=?");
                 $prev->execute([$id]);
                 $ant = $prev->fetch(PDO::FETCH_ASSOC);
-                $campos_precio = ['precio_costo','precio_venta','precio_contado','precio_tarjeta'];
-                $nuevos = [$costo, $venta, $contado, $tarjeta];
-                $cambio = false;
-                foreach ($campos_precio as $i => $campo) {
-                    if ((float)($ant[$campo] ?? 0) !== (float)($nuevos[$i] ?? 0)) { $cambio = true; break; }
-                }
+                $cambio = (float)($ant['precio_venta'] ?? 0) !== (float)($venta ?? 0)
+                       || (float)($ant['precio_contado'] ?? 0) !== (float)($contado ?? 0);
                 if ($cambio) {
                     $pdo->prepare("
                         INSERT INTO ic_precios_historial
                           (articulo_id, usuario_id,
-                           precio_costo_ant, precio_venta_ant, precio_contado_ant, precio_tarjeta_ant,
-                           precio_costo_nuevo, precio_venta_nuevo, precio_contado_nuevo, precio_tarjeta_nuevo)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)
+                           precio_venta_ant, precio_contado_ant,
+                           precio_venta_nuevo, precio_contado_nuevo)
+                        VALUES (?,?,?,?,?,?)
                     ")->execute([$id, $_SESSION['user_id'],
-                        $ant['precio_costo'], $ant['precio_venta'], $ant['precio_contado'], $ant['precio_tarjeta'],
-                        $costo, $venta, $contado, $tarjeta]);
+                        $ant['precio_venta'], $ant['precio_contado'],
+                        $venta, $contado]);
                 }
-                $pdo->prepare("UPDATE ic_articulos SET descripcion=?,sku=?,categoria=?,precio_costo=?,precio_venta=?,precio_contado=?,precio_tarjeta=?,stock=?,activo=? WHERE id=?")
-                    ->execute([$desc, $sku, $cat, $costo, $venta, $contado, $tarjeta, $stock, $activo, $id]);
+                $pdo->prepare("UPDATE ic_articulos SET descripcion=?,sku=?,categoria=?,precio_venta=?,precio_contado=?,stock=?,activo=? WHERE id=?")
+                    ->execute([$desc, $sku, $cat, $venta, $contado, $stock, $activo, $id]);
                 registrar_log($pdo, $_SESSION['user_id'], 'ARTICULO_EDITADO', 'articulo', $id, $desc);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artículo actualizado.'];
             } else {
-                $pdo->prepare("INSERT INTO ic_articulos (descripcion,sku,categoria,precio_costo,precio_venta,precio_contado,precio_tarjeta,stock,activo) VALUES (?,?,?,?,?,?,?,?,1)")
-                    ->execute([$desc, $sku, $cat, $costo, $venta, $contado, $tarjeta, $stock]);
+                $pdo->prepare("INSERT INTO ic_articulos (descripcion,sku,categoria,precio_venta,precio_contado,stock,activo) VALUES (?,?,?,?,?,?,1)")
+                    ->execute([$desc, $sku, $cat, $venta, $contado, $stock]);
                 $art_id = (int) $pdo->lastInsertId();
                 registrar_log($pdo, $_SESSION['user_id'], 'ARTICULO_CREADO', 'articulo', $art_id, $desc);
                 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Artículo agregado.'];
@@ -124,12 +118,6 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
 
                 <div class="form-group">
-                    <label>Precio de Costo $</label>
-                    <input type="number" name="precio_costo" value="<?= $a['precio_costo'] ?? '' ?>" step="0.01" min="0"
-                        placeholder="0.00">
-                </div>
-
-                <div class="form-group">
                     <label>Precio de Venta $</label>
                     <input type="number" name="precio_venta" id="precio_venta" value="<?= $a['precio_venta'] ?? '' ?>"
                         step="0.01" min="0" placeholder="0.00" oninput="calcCostoFinal()">
@@ -138,12 +126,6 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Precio Contado $</label>
                     <input type="number" name="precio_contado" value="<?= $a['precio_contado'] ?? '' ?>"
-                        step="0.01" min="0" placeholder="0.00">
-                </div>
-
-                <div class="form-group">
-                    <label>Precio Tarjeta $</label>
-                    <input type="number" name="precio_tarjeta" value="<?= $a['precio_tarjeta'] ?? '' ?>"
                         step="0.01" min="0" placeholder="0.00">
                 </div>
 
