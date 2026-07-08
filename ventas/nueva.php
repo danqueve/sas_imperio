@@ -110,8 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 registrar_log($pdo, $_SESSION['user_id'], 'VENTA_REGISTRADA', 'venta', $venta_id,
                     $art_row['descripcion'] . ' x' . $cantidad . ' | ' . $forma_pago);
                 $_SESSION['flash'] = [
-                    'type' => 'success',
-                    'msg'  => 'Venta registrada. Total: ' . formato_pesos($precio_unit * $cantidad),
+                    'type'    => 'success',
+                    'msg'     => 'Venta registrada. Total: ' . formato_pesos($precio_unit * $cantidad),
+                    'pdf_url' => 'recibo_pdf?id=' . $venta_id,
                 ];
                 header('Location: index');
                 exit;

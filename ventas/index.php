@@ -78,8 +78,14 @@ require_once __DIR__ . '/../views/layout.php';
 ?>
 
 <?php if (!empty($_SESSION['flash'])): ?>
-    <div class="alert-ic alert-<?= e($_SESSION['flash']['type']) ?>">
-        <?= e($_SESSION['flash']['msg']) ?>
+    <div class="alert-ic alert-<?= e($_SESSION['flash']['type']) ?>" style="display:flex;align-items:center;gap:16px">
+        <span><?= e($_SESSION['flash']['msg']) ?></span>
+        <?php if (!empty($_SESSION['flash']['pdf_url'])): ?>
+            <a href="<?= e($_SESSION['flash']['pdf_url']) ?>" target="_blank"
+               class="btn-ic btn-primary btn-sm" style="flex-shrink:0">
+                <i class="fa fa-print"></i> Imprimir Recibo
+            </a>
+        <?php endif; ?>
     </div>
     <?php unset($_SESSION['flash']); ?>
 <?php endif; ?>
