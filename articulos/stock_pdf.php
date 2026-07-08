@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 // articulos/stock_pdf.php — PDF Reporte de Stock
-// A4 landscape, tabular, stock coloreado
+// A4 portrait, blanco y negro, sin columna Tarjeta
 // ============================================================
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
@@ -52,19 +52,19 @@ foreach ($lista as $a) {
     elseif ($st <= 4) $total_stock_bajo++;
 }
 
-// ── Helpers ──────────────────────────────────────────────────
+// ── PDF setup ────────────────────────────────────────────────
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 function fmtp(float $v): string {
     return '$ ' . number_format($v, 0, ',', '.');
 }
 
-// Anchos columnas (A4 landscape = 277mm usable a 10mm margen c/lado)
-// SKU(22) + Descripcion(75) + Categoria(38) + P.Venta(28) + Contado(28) + Tarjeta(28) + Stock(18) = 237
-$COLS   = [22, 75, 38, 28, 28, 28, 18];
-$LABELS = ['SKU', 'Descripcion', 'Categoria', 'P. Venta', 'Contado', 'Tarjeta', 'Stock'];
-$ALIGNS = ['L', 'L', 'L', 'R', 'R', 'R', 'C'];
-$ANCHO  = array_sum($COLS);
+// Anchos columnas — A4 portrait: 210mm - 20mm márgenes = 190mm usable
+// SKU(20) + Desc(70) + Cat(30) + P.Venta(26) + Contado(26) + Stock(18) = 190
+$COLS   = [20, 70, 30, 26, 26, 18];
+$LABELS = ['SKU', 'Descripcion', 'Categoria', 'P. Venta', 'Contado', 'Stock'];
+$ALIGNS = ['L',  'L',           'L',         'R',        'R',       'C'];
+$ANCHO  = array_sum($COLS); // 190
 
 class StockPDF extends PDFBase
 {
@@ -94,8 +94,9 @@ class StockPDF extends PDFBase
         $this->Line(10, $this->GetY() + 1, 10 + $aw, $this->GetY() + 1);
         $this->Ln(4);
 
+        // Encabezado columnas — negro con texto blanco
         $this->SetFont('Helvetica', 'B', 8);
-        $this->SetFillColor(40, 40, 40);
+        $this->SetFillColor(0, 0, 0);
         $this->SetTextColor(255, 255, 255);
         foreach ($this->cols as $i => $w) {
             $this->Cell($w, 6, lat($this->labels[$i]), 1, 0, $this->aligns[$i], true);
@@ -104,10 +105,9 @@ class StockPDF extends PDFBase
         $this->SetTextColor(0, 0, 0);
         $this->SetFont('Helvetica', '', 8);
     }
-
 }
 
-$pdf = new StockPDF('L', 'mm', 'A4');
+$pdf = new StockPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->SetAutoPageBreak(true, 16);
 $pdf->SetMargins(10, 10, 10);
@@ -124,27 +124,39 @@ $pdf->AddPage();
 $pdf->SetFont('Helvetica', '', 8);
 
 $cat_actual = null;
+$fila_par   = false;
 
 foreach ($lista as $a) {
-    // Separador de categoría
+    // Separador de categoría — gris oscuro con texto blanco
     if ($a['categoria'] !== $cat_actual) {
         $cat_actual = $a['categoria'];
         if ($cat_actual) {
-            $pdf->SetFillColor(60, 60, 80);
-            $pdf->SetTextColor(220, 220, 255);
+            $pdf->SetFillColor(60, 60, 60);
+            $pdf->SetTextColor(255, 255, 255);
             $pdf->SetFont('Helvetica', 'B', 7.5);
             $pdf->SetX(10);
             $pdf->Cell($ANCHO, 5, lat('  ' . strtoupper($cat_actual)), 0, 1, 'L', true);
             $pdf->SetFont('Helvetica', '', 8);
             $pdf->SetTextColor(0, 0, 0);
         }
+        $fila_par = false;
     }
 
     $st = (int)$a['stock'];
+
+    // Colores monocromáticos según stock
     if ($st === 0) {
-        $pdf->SetFillColor(255, 220, 220); $fill = true;
+        // Sin stock → gris medio con texto normal
+        $pdf->SetFillColor(195, 195, 195);
+        $fill = true;
     } elseif ($st <= 4) {
-        $pdf->SetFillColor(255, 240, 200); $fill = true;
+        // Stock bajo → gris claro
+        $pdf->SetFillColor(228, 228, 228);
+        $fill = true;
+    } elseif ($fila_par) {
+        // Filas alternadas → gris muy claro
+        $pdf->SetFillColor(245, 245, 245);
+        $fill = true;
     } else {
         $fill = false;
     }
@@ -153,20 +165,32 @@ foreach ($lista as $a) {
     $pdf->Cell($COLS[0], 6, $pdf->fitText($a['sku'] ?: '-', $COLS[0] - 1), 1, 0, 'L', $fill);
     $pdf->Cell($COLS[1], 6, $pdf->fitText($a['descripcion'], $COLS[1] - 1), 1, 0, 'L', $fill);
     $pdf->Cell($COLS[2], 6, $pdf->fitText($a['categoria'] ?: '-', $COLS[2] - 1), 1, 0, 'L', $fill);
-    $pdf->Cell($COLS[3], 6, lat($a['precio_venta']  ? fmtp((float)$a['precio_venta'])  : '-'), 1, 0, 'R', $fill);
+    $pdf->Cell($COLS[3], 6, lat($a['precio_venta']   ? fmtp((float)$a['precio_venta'])   : '-'), 1, 0, 'R', $fill);
     $pdf->Cell($COLS[4], 6, lat($a['precio_contado'] ? fmtp((float)$a['precio_contado']) : '-'), 1, 0, 'R', $fill);
-    $pdf->Cell($COLS[5], 6, lat($a['precio_tarjeta'] ? fmtp((float)$a['precio_tarjeta']) : '-'), 1, 0, 'R', $fill);
-    $pdf->Cell($COLS[6], 6, lat((string)$st), 1, 1, 'C', $fill);
+    // Stock en negrita cuando es 0 o bajo
+    if ($st === 0 || $st <= 4) $pdf->SetFont('Helvetica', 'B', 8);
+    $pdf->Cell($COLS[5], 6, lat((string)$st), 1, 1, 'C', $fill);
+    if ($st === 0 || $st <= 4) $pdf->SetFont('Helvetica', '', 8);
+
+    $fila_par = !$fila_par;
 }
 
-// ── Resumen final ────────────────────────────────────────────
-$pdf->Ln(4);
+// ── Resumen final ─────────────────────────────────────────────
+$pdf->Ln(3);
 $pdf->SetFont('Helvetica', 'B', 8);
 $pdf->SetX(10);
-$pdf->SetFillColor(230, 230, 240);
+$pdf->SetFillColor(200, 200, 200);
 $pdf->Cell($ANCHO, 6, lat(
-    'Total: ' . count($lista) . ' art.  |  Unidades en stock: ' . number_format($total_unidades) .
+    'Total: ' . count($lista) . ' art.  |  Unidades: ' . number_format($total_unidades) .
     '  |  Sin stock: ' . $total_sin_stock . '  |  Stock bajo (1-4): ' . $total_stock_bajo
 ), 1, 1, 'C', true);
+
+// Leyenda gris
+$pdf->Ln(2);
+$pdf->SetFont('Helvetica', 'I', 7);
+$pdf->SetTextColor(80, 80, 80);
+$pdf->SetX(10);
+$pdf->Cell($ANCHO / 2, 5, lat('[  ] Gris medio = sin stock   [  ] Gris claro = stock bajo (1-4)'), 0, 0, 'L');
+$pdf->SetTextColor(0, 0, 0);
 
 $pdf->Output('I', 'stock_articulos_' . date('Ymd') . '.pdf');
