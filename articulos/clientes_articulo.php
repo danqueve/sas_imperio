@@ -31,9 +31,18 @@ $stmt = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id  = cl.id
     LEFT JOIN ic_usuarios u ON cr.cobrador_id = u.id
     WHERE cr.articulo_id = ?
-    ORDER BY cr.fecha_alta DESC
+    UNION
+    SELECT cr.id, cr.fecha_alta, cr.monto_total, cr.estado,
+           cl.id, cl.nombres, cl.apellidos, cl.dni,
+           u.nombre, u.apellido
+    FROM ic_credito_articulos ca
+    JOIN ic_creditos cr  ON cr.id  = ca.credito_id
+    JOIN ic_clientes cl  ON cl.id  = cr.cliente_id
+    LEFT JOIN ic_usuarios u ON u.id = cr.cobrador_id
+    WHERE ca.articulo_id = ?
+    ORDER BY fecha_alta DESC, credito_id DESC
 ");
-$stmt->execute([$id]);
+$stmt->execute([$id, $id]);
 $creditos = $stmt->fetchAll();
 
 if (empty($creditos)):
