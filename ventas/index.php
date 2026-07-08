@@ -196,6 +196,10 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td class="text-right nowrap fw-bold"><?= formato_pesos($monto_total) ?></td>
                             <td class="nowrap">
+                                <a href="recibo_pdf?id=<?= $vt['id'] ?>" target="_blank"
+                                   class="btn-ic btn-ghost btn-sm btn-icon" title="Imprimir recibo">
+                                    <i class="fa fa-print"></i>
+                                </a>
                                 <?php if (es_admin()): ?>
                                     <a href="eliminar?id=<?= $vt['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
                                        title="Eliminar y restaurar stock"

@@ -50,7 +50,7 @@ function fmtv(float $n): string {
 require_once __DIR__ . '/../lib/PDFBase.php';
 ob_clean();
 
-$pdf = new FPDF('P', 'mm', 'A4');
+$pdf = new PDFBase('P', 'mm', 'A4');
 $pdf->SetMargins(15, 15, 15);
 $pdf->SetAutoPageBreak(false);
 $pdf->AddPage();
