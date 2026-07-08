@@ -94,15 +94,14 @@ class StockPDF extends PDFBase
         $this->Line(10, $this->GetY() + 1, 10 + $aw, $this->GetY() + 1);
         $this->Ln(4);
 
-        // Encabezado columnas — negro con texto blanco
+        // Encabezado columnas — negro sobre blanco
         $this->SetFont('Helvetica', 'B', 8);
-        $this->SetFillColor(0, 0, 0);
-        $this->SetTextColor(255, 255, 255);
+        $this->SetFillColor(255, 255, 255);
+        $this->SetTextColor(0, 0, 0);
         foreach ($this->cols as $i => $w) {
             $this->Cell($w, 6, lat($this->labels[$i]), 1, 0, $this->aligns[$i], true);
         }
         $this->Ln();
-        $this->SetTextColor(0, 0, 0);
         $this->SetFont('Helvetica', '', 8);
     }
 }
