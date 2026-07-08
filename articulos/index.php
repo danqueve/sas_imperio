@@ -65,8 +65,24 @@ $totalPags = (int)ceil($total / $limit);
 
 // ── Query principal ──────────────────────────────────────────
 $stmt = $pdo->prepare("
-    SELECT a.*
+    SELECT a.*, COALESCE(cr.activos, 0) AS creditos_activos
     FROM ic_articulos a
+    LEFT JOIN (
+        SELECT articulo_id, SUM(activos) AS activos
+        FROM (
+            SELECT articulo_id, COUNT(*) AS activos
+            FROM ic_creditos
+            WHERE articulo_id IS NOT NULL AND estado IN ('EN_CURSO','MOROSO')
+            GROUP BY articulo_id
+            UNION ALL
+            SELECT ca.articulo_id, COUNT(DISTINCT ca.credito_id) AS activos
+            FROM ic_credito_articulos ca
+            JOIN ic_creditos c ON c.id = ca.credito_id
+            WHERE ca.articulo_id IS NOT NULL AND c.estado IN ('EN_CURSO','MOROSO')
+            GROUP BY ca.articulo_id
+        ) cr_raw
+        GROUP BY articulo_id
+    ) cr ON cr.articulo_id = a.id
     WHERE $whereStr
     ORDER BY a.descripcion
     LIMIT $limit OFFSET $offset
@@ -84,7 +100,7 @@ $categorias = $pdo->query("
 // ── Helpers de render (reutilizados en AJAX) ─────────────────
 function render_tbody(array $lista): string {
     if (empty($lista)) {
-        return '<tr><td colspan="10" class="text-center text-muted" style="padding:40px">Sin artículos para los filtros aplicados.</td></tr>';
+        return '<tr><td colspan="11" class="text-center text-muted" style="padding:40px">Sin artículos para los filtros aplicados.</td></tr>';
     }
     $html = '';
     foreach ($lista as $a) {
@@ -98,6 +114,10 @@ function render_tbody(array $lista): string {
             ? '<span class="badge-ic badge-success">Sí</span>'
             : '<span class="badge-ic badge-muted">No</span>';
         $desc_js = e(addslashes($a['descripcion']));
+        $cr_activos = (int)($a['creditos_activos'] ?? 0);
+        $cr_badge = $cr_activos > 0
+            ? '<span class="badge-ic badge-primary" title="Créditos EN_CURSO o MOROSO que usan este artículo">' . $cr_activos . '</span>'
+            : '<span class="text-muted" style="font-size:.8rem">—</span>';
         $html .= '<tr>'
             . '<td class="text-muted">#' . (int)$a['id'] . '</td>'
             . '<td class="text-muted" style="font-size:.82rem;font-family:monospace">' . e($a['sku'] ?: '—') . '</td>'
@@ -106,6 +126,7 @@ function render_tbody(array $lista): string {
             . '<td class="nowrap fw-bold">' . ($a['precio_venta'] ? formato_pesos($a['precio_venta']) : '—') . '</td>'
             . '<td class="nowrap fw-bold" style="color:#f59e0b">' . ($a['precio_contado'] ? formato_pesos($a['precio_contado']) : '<span style="color:var(--text-muted);font-weight:400">—</span>') . '</td>'
             . '<td class="text-center">' . $stock_badge . '</td>'
+            . '<td class="text-center">' . $cr_badge . '</td>'
             . '<td class="text-center">' . $activo_badge . '</td>'
             . '<td class="nowrap">'
             .   '<button onclick="verClientes(' . (int)$a['id'] . ',\'' . $desc_js . '\')" class="btn-ic btn-ghost btn-sm btn-icon" title="Ver clientes con crédito"><i class="fa fa-users"></i></button> '
@@ -248,6 +269,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <th>Precio Venta</th>
                     <th style="color:#f59e0b">Contado</th>
                     <th>Stock</th>
+                    <th title="Créditos EN_CURSO o MOROSO que usan este artículo">En crédito</th>
                     <th>Activo</th>
                     <th>Acciones</th>
                 </tr>
