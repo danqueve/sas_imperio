@@ -141,10 +141,11 @@ function render_tbody(array $lista): string {
 
 function render_paginador(int $page, int $totalPags, array $get): string {
     if ($totalPags <= 1) return '';
+    unset($get['ajax']);
     $html = '<div class="pagination mt-3">';
     for ($p = 1; $p <= $totalPags; $p++) {
         $href = '?' . http_build_query(array_merge($get, ['page' => $p]));
-        $html .= '<a href="' . $href . '" class="page-item ' . ($p === $page ? 'active' : '') . '">' . $p . '</a>';
+        $html .= '<a href="' . $href . '" class="page-item ' . ($p === $page ? 'active' : '') . '" data-page="' . $p . '">' . $p . '</a>';
     }
     $html .= '</div>';
     return $html;
@@ -306,9 +307,10 @@ require_once __DIR__ . '/../views/layout.php';
     var counter  = document.getElementById('resultado_contador');
     var timer;
 
-    function fetchArticulos() {
+    function fetchArticulos(page) {
+        page = page || 1;
         var params = new URLSearchParams(new FormData(form));
-        params.set('page', '1');
+        params.set('page', page);
         params.set('ajax', '1');
 
         tbody.style.opacity = '0.5';
@@ -325,13 +327,21 @@ require_once __DIR__ . '/../views/layout.php';
             .catch(function() { tbody.style.opacity = '1'; });
     }
 
+    // Interceptar clicks en links de paginación (delegación sobre el contenedor)
+    pagWrap.addEventListener('click', function(e) {
+        var link = e.target.closest('a[data-page]');
+        if (!link) return;
+        e.preventDefault();
+        fetchArticulos(parseInt(link.getAttribute('data-page'), 10));
+    });
+
     qInput.addEventListener('input', function() {
         clearTimeout(timer);
-        timer = setTimeout(fetchArticulos, 400);
+        timer = setTimeout(function() { fetchArticulos(1); }, 400);
     });
 
     selects.forEach(function(sel) {
-        if (sel) sel.addEventListener('change', fetchArticulos);
+        if (sel) sel.addEventListener('change', function() { fetchArticulos(1); });
     });
 })();
 
