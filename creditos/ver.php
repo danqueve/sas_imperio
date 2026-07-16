@@ -1131,13 +1131,15 @@ function diasHabilesAtraso(vencStr, refStr) {
     return count;
 }
 
-const MORA_DIAS_GRACIA = 6;
+const MORA_DIAS_GRACIA  = 6;
+const MORA_UMBRAL_TOTAL = 10;
 
 function calcularMoraJS(capital, vencStr, fechaRef) {
-    const diasTotal    = diasHabilesAtraso(vencStr, fechaRef);
-    const diasEfectivos = Math.max(0, diasTotal - MORA_DIAS_GRACIA);
-    if (diasEfectivos <= 0) return 0;
-    return Math.round(capital * (PCT_MORA_SEMANAL / 6 / 100) * diasEfectivos * 100) / 100;
+    const dias = diasHabilesAtraso(vencStr, fechaRef);
+    if (dias <= MORA_DIAS_GRACIA) return 0;
+    const pctDiario     = PCT_MORA_SEMANAL / 6 / 100;
+    const diasEfectivos = dias <= MORA_UMBRAL_TOTAL ? dias - MORA_DIAS_GRACIA : dias;
+    return Math.round(capital * pctDiario * diasEfectivos * 100) / 100;
 }
 
 function abrirPagoDirecto(cuota_id, num_cuota, capital, vencimiento, saldo_prev, mora_frozen) {
