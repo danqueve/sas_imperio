@@ -461,7 +461,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="card-ic-header"><span class="card-title">Datos del Crédito</span></div>
             <table style="width:100%;font-size:.875rem;border-collapse:collapse">
                 <tr>
-                    <td class="text-muted" style="padding:5px 0;width=45%">Cliente</td>
+                    <td class="text-muted" style="padding:5px 0;width:45%">Cliente</td>
                     <td>
                         <a href="../clientes/ver?id=<?= $cr['cid'] ?>" class="fw-bold">
                             <?= e($cr['apellidos'] . ', ' . $cr['nombres']) ?>
@@ -1131,10 +1131,13 @@ function diasHabilesAtraso(vencStr, refStr) {
     return count;
 }
 
+const MORA_DIAS_GRACIA = 6;
+
 function calcularMoraJS(capital, vencStr, fechaRef) {
-    const dias = diasHabilesAtraso(vencStr, fechaRef);
-    if (dias <= 0) return 0;
-    return Math.round(capital * (PCT_MORA_SEMANAL / 6 / 100) * dias * 100) / 100;
+    const diasTotal    = diasHabilesAtraso(vencStr, fechaRef);
+    const diasEfectivos = Math.max(0, diasTotal - MORA_DIAS_GRACIA);
+    if (diasEfectivos <= 0) return 0;
+    return Math.round(capital * (PCT_MORA_SEMANAL / 6 / 100) * diasEfectivos * 100) / 100;
 }
 
 function abrirPagoDirecto(cuota_id, num_cuota, capital, vencimiento, saldo_prev, mora_frozen) {

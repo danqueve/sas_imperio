@@ -25,16 +25,21 @@ function calcular_semana_lunes(string $fecha_jornada): string
 
 // ── Mora ─────────────────────────────────────────────────────
 
+// Días hábiles de gracia antes de aplicar mora (período libre de interés)
+define('MORA_DIAS_GRACIA', 6);
+
 /**
- * Calcula mora prorateada a días hábiles.
- * 15% semanal / 6 días hábiles = 2.5% por día hábil de atraso.
+ * Calcula mora prorateada a días hábiles con período de gracia de 6 días.
+ * Los primeros 6 días hábiles de atraso no generan mora.
+ * A partir del 7.° día se cobra solo sobre los días que exceden el período de gracia.
  */
 function calcular_mora(float $monto_cuota, int $dias_habiles_atraso, float $pct_mora_semanal = 15.0): float
 {
-    if ($dias_habiles_atraso <= 0)
+    $dias_efectivos = max(0, $dias_habiles_atraso - MORA_DIAS_GRACIA);
+    if ($dias_efectivos <= 0)
         return 0.0;
-    $pct_diario = $pct_mora_semanal / 6.0; // 2.5%
-    return round($monto_cuota * ($pct_diario / 100) * $dias_habiles_atraso, 2);
+    $pct_diario = $pct_mora_semanal / 6.0;
+    return round($monto_cuota * ($pct_diario / 100) * $dias_efectivos, 2);
 }
 
 /**
