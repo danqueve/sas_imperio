@@ -26,6 +26,7 @@ if (!$cobrador) die('Cobrador no encontrado.');
 $dstmt = $pdo->prepare("
     SELECT pc.*,
            cr.id AS credito_id,
+           cr.dia_cobro,
            COALESCE(pc.cliente_nombres_snap,   cl.nombres)    AS nombres,
            COALESCE(pc.cliente_apellidos_snap, cl.apellidos)  AS apellidos,
            cl.id AS cliente_id,
@@ -93,19 +94,18 @@ $apr_fecha  = !empty($primer['fecha_aprobacion'])
 $total_efectivo      = 0.0;
 $total_transferencia = 0.0;
 $total_general       = 0.0;
-$total_mora_cobrada  = 0.0;
-$total_mora_pend     = 0.0;
 
 foreach ($pagos as $p) {
     $total_efectivo      += (float) $p['monto_efectivo'];
     $total_transferencia += (float) $p['monto_transferencia'];
     $total_general       += (float) $p['monto_total'];
-    if ((int)($p['es_cuota_pura'] ?? 0)) {
-        $total_mora_pend += (float) $p['monto_mora_cobrada'];
-    } else {
-        $total_mora_cobrada += (float) $p['monto_mora_cobrada'];
-    }
 }
+
+// Mapa de número de día a nombre
+$dias_semana = [
+    0 => 'Dom', 1 => 'Lun', 2 => 'Mar', 3 => 'Mie',
+    4 => 'Jue', 5 => 'Vie', 6 => 'Sab'
+];
 
 // ── Exportación CSV ──────────────────────────────────────────────
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
@@ -130,22 +130,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     fputcsv($out, [], ';'); // línea en blanco
 
     // Cabeceras de columnas
-    fputcsv($out, ['#', 'Cliente', 'Artículo', 'Cuota(s)', 'Valor Cuota', 'Efectivo', 'Transferencia', 'Mora', 'Total'], ';');
+    fputcsv($out, ['#', 'Cliente', 'Artículo', 'Cuota(s)', 'Valor Cuota', 'Efectivo', 'Transferencia', 'Día Cobro', 'Total'], ';');
 
     // Filas de datos
+    $dias_semana_csv = [0=>'Dom',1=>'Lun',2=>'Mar',3=>'Mie',4=>'Jue',5=>'Vie',6=>'Sab'];
     $index = 1;
     foreach ($pagos as $p) {
-        $es_pura    = (int)($p['es_cuota_pura'] ?? 0);
-        $mora_val   = (float) $p['monto_mora_cobrada'];
         $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
-
-        if ($es_pura && $mora_val > 0) {
-            $mora_str = number_format($mora_val, 2, ',', '.') . ' (Pend.)';
-        } elseif ($mora_val > 0) {
-            $mora_str = number_format($mora_val, 2, ',', '.');
-        } else {
-            $mora_str = '';
-        }
+        $dia_num    = $p['dia_cobro'] ?? null;
+        $dia_str    = ($dia_num !== null && isset($dias_semana_csv[(int)$dia_num]))
+                        ? $dias_semana_csv[(int)$dia_num]
+                        : '';
 
         fputcsv($out, [
             $index,
@@ -155,7 +150,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             number_format((float)$p['monto_cuota_sum'], 2, ',', '.'),
             number_format((float)$p['monto_efectivo'], 2, ',', '.'),
             number_format((float)$p['monto_transferencia'], 2, ',', '.'),
-            $mora_str,
+            $dia_str,
             number_format((float)$p['monto_total'], 2, ',', '.'),
         ], ';');
         $index++;
@@ -182,10 +177,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas: suma = 190mm (A4 portrait 210mm − 10mm izq − 10mm der)
-// #(8) + Cliente(42) + Articulo(35) + Cuota(s)(14) + Vlr.Cuota(20) + Efectivo(20) + Transfer.(20) + Mora(18) + Total(13)
+// #(8) + Cliente(42) + Articulo(35) + Cuota(s)(14) + Vlr.Cuota(20) + Efectivo(20) + Transfer.(20) + Dia(18) + Total(13)
 $COLS   = [8, 42, 35, 14, 20, 20, 20, 18, 13];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Mora', 'Total'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Dia Cobro', 'Total'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'C', 'R'];
 
 class RendicionHistorialPDF extends PDFBase
 {
@@ -293,8 +288,6 @@ foreach ($secciones as $sec) {
     $sec_total    = 0.0;
 
     foreach ($sec['datos'] as $p) {
-        $es_pura = (int)($p['es_cuota_pura'] ?? 0);
-
         $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
         if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
             $cliente_raw .= ' (At. ' . $p['cuotas_atrasadas_cliente'] . ')';
@@ -303,37 +296,26 @@ foreach ($secciones as $sec) {
         $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
         $vlr_cuota  = (float) $p['monto_cuota_sum'];
 
-        // Mora
-        $mora_val = (float) $p['monto_mora_cobrada'];
-        if ($es_pura && $mora_val > 0) {
-            $mora_str = fmt($mora_val) . ' (Pend.)';
-        } elseif ($mora_val > 0) {
-            $mora_str = fmt($mora_val);
-        } else {
-            $mora_str = '-';
-        }
+        // Día de cobro
+        $dia_num = $p['dia_cobro'] ?? null;
+        $dia_str = ($dia_num !== null && isset($dias_semana[(int)$dia_num]))
+                     ? $dias_semana[(int)$dia_num]
+                     : '-';
 
         $sec_efectivo += (float)$p['monto_efectivo'];
         $sec_transfer += (float)$p['monto_transferencia'];
         $sec_total    += (float)$p['monto_total'];
-        $sec_mora     += $es_pura ? 0.0 : $mora_val;
 
         $pdf->SetFont('Helvetica', '', 8);
         $pdf->Cell($COLS[0], 6, $index,                                      1, 0, 'C', false);
         $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
         $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
         $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
-        $pdf->Cell($COLS[4], 6, fmt($vlr_cuota),                 1, 0, 'R', false);
-        $pdf->Cell($COLS[5], 6, fmt((float)$p['monto_efectivo']),       1, 0, 'R', false);
-        $pdf->Cell($COLS[6], 6, fmt((float)$p['monto_transferencia']),  1, 0, 'R', false);
-
-        if ($es_pura && $mora_val > 0) {
-            $pdf->SetFont('Helvetica', 'I', 7);
-        }
-        $pdf->Cell($COLS[7], 6, lat($mora_str),                  1, 0, 'R', false);
-        $pdf->SetFont('Helvetica', '', 8);
-
-        $pdf->Cell($COLS[8], 6, fmt((float)$p['monto_total']),   1, 0, 'R', false);
+        $pdf->Cell($COLS[4], 6, fmt($vlr_cuota),                             1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 6, fmt((float)$p['monto_efectivo']),            1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 6, fmt((float)$p['monto_transferencia']),       1, 0, 'R', false);
+        $pdf->Cell($COLS[7], 6, lat($dia_str),                               1, 0, 'C', false);
+        $pdf->Cell($COLS[8], 6, fmt((float)$p['monto_total']),               1, 0, 'R', false);
         $pdf->Ln();
         $index++;
     }
@@ -345,7 +327,7 @@ foreach ($secciones as $sec) {
     $pdf->Cell($ancho_label, 6, lat($label_total), 1, 0, 'R', false);
     $pdf->Cell($COLS[5], 6, fmt($sec_efectivo), 1, 0, 'R', false);
     $pdf->Cell($COLS[6], 6, fmt($sec_transfer), 1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 6, fmt($sec_mora),     1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 6, '',                 1, 0, 'C', false);
     $pdf->Cell($COLS[8], 6, fmt($sec_total),    1, 0, 'R', false);
     $pdf->Ln();
 }
@@ -356,7 +338,7 @@ $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
 $pdf->Cell($ancho_label, 7, lat('TOTALES'), 1, 0, 'R', false);
 $pdf->Cell($COLS[5], 7, fmt($total_efectivo),      1, 0, 'R', false);
 $pdf->Cell($COLS[6], 7, fmt($total_transferencia), 1, 0, 'R', false);
-$pdf->Cell($COLS[7], 7, fmt($total_mora_cobrada),  1, 0, 'R', false);
+$pdf->Cell($COLS[7], 7, '',                        1, 0, 'C', false);
 $pdf->Cell($COLS[8], 7, fmt($total_general),       1, 0, 'R', false);
 $pdf->Ln();
 
@@ -370,16 +352,10 @@ $bw1 = 55;
 $bw2 = 45;
 
 $resumen = [
-    ['Total Efectivo',               fmt($total_efectivo)],
-    ['Total Transferencias',         fmt($total_transferencia)],
+    ['Total Efectivo',       fmt($total_efectivo)],
+    ['Total Transferencias', fmt($total_transferencia)],
+    ['TOTAL RENDIDO',        fmt($total_general)],
 ];
-if ($total_mora_cobrada > 0) {
-    $resumen[] = ['Mora Cobrada', fmt($total_mora_cobrada)];
-}
-if ($total_mora_pend > 0) {
-    $resumen[] = ['Mora Pendiente (cuota pura)', fmt($total_mora_pend)];
-}
-$resumen[] = ['TOTAL RENDIDO', fmt($total_general)];
 
 foreach ($resumen as $i => [$label, $valor]) {
     $es_total = ($i === count($resumen) - 1);
@@ -388,17 +364,6 @@ foreach ($resumen as $i => [$label, $valor]) {
     $pdf->Cell($bw1, 7, lat($label), 1, 0, 'L', false);
     $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->Cell($bw2, 7, lat($valor), 1, 1, 'R', false);
-}
-
-// ── Nota al pie sobre mora pendiente ─────────────────────────
-if ($total_mora_pend > 0) {
-    $pdf->Ln(6);
-    $pdf->SetFont('Helvetica', 'I', 8);
-    $pdf->SetTextColor(80, 80, 80);
-    $pdf->SetX(10);
-    $ancho_total = array_sum($COLS);
-    $pdf->Cell($ancho_total, 5, lat('(Pend.) = Mora pendiente de cobro (cuota pura). Estos montos NO estan incluidos en los subtotales ni en el Total Rendido.'), 0, 1, 'L');
-    $pdf->SetTextColor(0, 0, 0);
 }
 
 $nombre = 'rendicion_historica_' . $origen_sel . '_' . str_replace('-', '', $fecha_sel) . '_' . $cobrador_id . '.pdf';
