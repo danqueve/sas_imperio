@@ -33,13 +33,21 @@ if (($_GET['export'] ?? '') === 'csv') {
 
     $stmtCsv = $pdo->prepare("
         SELECT
+            cl.id AS cliente_id,
             cl.apellidos, cl.nombres,
-            COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
-            CONCAT(cu.numero_cuota, '/', cr.cant_cuotas)   AS cuota,
-            (cu.monto_cuota - cu.saldo_pagado)              AS monto_adeudado,
-            DATEDIFF(CURDATE(), cu.fecha_vencimiento)       AS dias_atraso,
-            cu.fecha_vencimiento,
-            CONCAT(u.apellido, ', ', u.nombre)              AS cobrador,
+            cl.dni,
+            cl.telefono AS celular,
+            SUM(cu.monto_cuota - cu.saldo_pagado)                   AS total_adeudado,
+            COUNT(*)                                                AS cant_cuotas_vencidas,
+            MAX(DATEDIFF(CURDATE(), cu.fecha_vencimiento))          AS max_dias_atraso,
+            (SELECT MAX(pc.fecha_pago)
+             FROM ic_pagos_confirmados pc
+             JOIN ic_cuotas cu2 ON pc.cuota_id = cu2.id
+             JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
+             WHERE cr2.cliente_id = cl.id)                         AS ultimo_pago,
+            IF(COUNT(DISTINCT cr.cobrador_id) = 1,
+               MAX(CONCAT(u.apellido, ', ', u.nombre)),
+               CONCAT(COUNT(DISTINCT cr.cobrador_id), ' cobradores')) AS cobrador,
             cl.zona
         FROM ic_cuotas cu
         JOIN ic_creditos cr ON cu.credito_id = cr.id
@@ -47,7 +55,8 @@ if (($_GET['export'] ?? '') === 'csv') {
         LEFT JOIN ic_articulos a ON cr.articulo_id = a.id
         JOIN ic_usuarios u       ON cr.cobrador_id = u.id
         WHERE $wStr
-        ORDER BY dias_atraso DESC, cl.apellidos ASC
+        GROUP BY cl.id, cl.apellidos, cl.nombres, cl.dni, cl.telefono, cl.zona
+        ORDER BY total_adeudado DESC, cl.apellidos ASC
     ");
     $stmtCsv->execute($p);
 
@@ -55,15 +64,16 @@ if (($_GET['export'] ?? '') === 'csv') {
     header('Content-Disposition: attachment; filename="atrasados_' . date('Y-m-d') . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // BOM UTF-8
-    fputcsv($out, ['Cliente', 'Artículo', 'Cuota', 'Monto Adeudado', 'Días Atraso', 'Fecha Vencimiento', 'Cobrador', 'Zona'], ';');
+    fputcsv($out, ['Cliente', 'DNI', 'Celular', 'Cuotas Vencidas', 'Total Adeudado', 'Máx. Días Atraso', 'Último Pago', 'Cobrador', 'Zona'], ';');
     while ($row = $stmtCsv->fetch()) {
         fputcsv($out, [
             $row['apellidos'] . ', ' . $row['nombres'],
-            $row['articulo'],
-            $row['cuota'],
-            number_format((float)$row['monto_adeudado'], 2, ',', '.'),
-            dias_atraso_habiles($row['fecha_vencimiento']),
-            date('d/m/Y', strtotime($row['fecha_vencimiento'])),
+            $row['dni'] ?: '—',
+            $row['celular'] ?: '—',
+            $row['cant_cuotas_vencidas'],
+            number_format((float)$row['total_adeudado'], 2, ',', '.'),
+            $row['max_dias_atraso'],
+            $row['ultimo_pago'] ? date('d/m/Y', strtotime($row['ultimo_pago'])) : '—',
             $row['cobrador'],
             $row['zona'] ?: '—',
         ], ';');
