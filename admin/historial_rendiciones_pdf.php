@@ -130,7 +130,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     fputcsv($out, [], ';'); // línea en blanco
 
     // Cabeceras de columnas
-    fputcsv($out, ['#', 'Cliente', 'Artículo', 'Cuota(s)', 'Valor Cuota', 'Efectivo', 'Transferencia', 'Día Cobro', 'Total'], ';');
+    fputcsv($out, ['#', 'Cliente', 'Artículo', 'Cuota(s)', 'Valor Cuota', 'Efectivo', 'Transferencia', 'Día', 'Total'], ';');
 
     // Filas de datos
     $dias_semana_csv = [0=>'Dom',1=>'Lun',2=>'Mar',3=>'Mie',4=>'Jue',5=>'Vie',6=>'Sab'];
@@ -177,9 +177,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas: suma = 190mm (A4 portrait 210mm − 10mm izq − 10mm der)
-// #(8) + Cliente(42) + Articulo(35) + Cuota(s)(14) + Vlr.Cuota(20) + Efectivo(20) + Transfer.(20) + Dia(18) + Total(13)
-$COLS   = [8, 42, 35, 14, 20, 20, 20, 18, 13];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Dia Cobro', 'Total'];
+// #(7) + Cliente(46) + Articulo(36) + Cuota(s)(14) + Vlr.Cuota(19) + Efectivo(19) + Transfer.(19) + Dia(11) + Total(19)
+$COLS   = [7, 46, 36, 14, 19, 19, 19, 11, 19];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Dia', 'Total'];
 $ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'C', 'R'];
 
 class RendicionHistorialPDF extends PDFBase
