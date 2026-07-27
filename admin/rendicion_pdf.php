@@ -27,6 +27,7 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
+               cr.dia_cobro,
                cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
                cu.saldo_pagado, cu.estado AS cuota_estado,
@@ -53,6 +54,7 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
+               cr.dia_cobro,
                cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
                cu.saldo_pagado, cu.estado AS cuota_estado,
@@ -143,10 +145,10 @@ foreach ($pagos as $p) {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas: suma = 190mm (portrait A4)
-// #(7) + Cliente(38) + Articulo(30) + Cuota(s)(13) + Vlr.Cuota(20) + Efectivo(22) + Transfer.(22) + Mora(20) + Total(18)
+// #(7) + Cliente(38) + Articulo(30) + Cuota(s)(13) + Vlr.Cuota(20) + Efectivo(22) + Transfer.(22) + Dia(20) + Total(18)
 $COLS   = [7, 38, 30, 13, 20, 22, 22, 20, 18];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Mora', 'Total'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'R', 'R'];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Dia', 'Total'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'C', 'R'];
 $ANCHO_TOTAL = array_sum($COLS); // 190
 
 class RendicionPDF extends PDFBase
@@ -284,13 +286,10 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
             $vlr_cuota  = (float) $p['monto_cuota_sum'];
 
             $mora_val = (float) $p['monto_mora_cobrada'];
-            if ($es_pura && $mora_val > 0) {
-                $mora_str = fmt($mora_val) . ' (P.)';
-            } elseif ($mora_val > 0) {
-                $mora_str = fmt($mora_val);
-            } else {
-                $mora_str = '-';
-            }
+
+            // Día de cobro asignado
+            $dia_num = (int)($p['dia_cobro'] ?? 0);
+            $dia_str = $dia_num > 0 ? nombre_dia($dia_num) : '-';
 
             $ef = (float) $p['monto_efectivo'];
             $tr = (float) $p['monto_transferencia'];
@@ -309,14 +308,8 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
             $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($vlr_cuota), $COLS[4] - 1), 1, 0, 'R', false);
             $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($ef), $COLS[5] - 1),     1, 0, 'R', false);
             $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($tr), $COLS[6] - 1),     1, 0, 'R', false);
-
-            if ($es_pura && $mora_val > 0) {
-                $pdf->SetFont('Helvetica', 'I', 7);
-            }
-            $pdf->Cell($COLS[7], 6, $pdf->fitText($mora_str, $COLS[7] - 1),  1, 0, 'R', false);
-            $pdf->SetFont('Helvetica', '', 8);
-
-            $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1), 1, 0, 'R', false);
+            $pdf->Cell($COLS[7], 6, $pdf->fitText($dia_str, $COLS[7] - 1),     1, 0, 'C', false);
+            $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1),     1, 0, 'R', false);
             $pdf->Ln();
 
             // Nota: sobrante no aplicado a ninguna cuota
@@ -353,7 +346,7 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
         $pdf->Cell($ancho_label, 6, lat($label_total), 1, 0, 'R', false);
         $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($sec_efectivo), $COLS[5] - 1),  1, 0, 'R', false);
         $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($sec_transfer), $COLS[6] - 1),  1, 0, 'R', false);
-        $pdf->Cell($COLS[7], 6, $pdf->fitText(fmt($sec_mora), $COLS[7] - 1),      1, 0, 'R', false);
+        $pdf->Cell($COLS[7], 6, '',                                                1, 0, 'C', false);
         $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($sec_total), $COLS[8] - 1),     1, 0, 'R', false);
         $pdf->Ln();
         
@@ -371,7 +364,7 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
     $pdf->Cell($ancho_label, 7, lat($label_total), 1, 0, 'R', true);
     $pdf->Cell($COLS[5], 7, $pdf->fitText(fmt($j_efectivo), $COLS[5] - 1),  1, 0, 'R', true);
     $pdf->Cell($COLS[6], 7, $pdf->fitText(fmt($j_transfer), $COLS[6] - 1),  1, 0, 'R', true);
-    $pdf->Cell($COLS[7], 7, $pdf->fitText(fmt($j_mora), $COLS[7] - 1),      1, 0, 'R', true);
+    $pdf->Cell($COLS[7], 7, '',                                              1, 0, 'C', true);
     $pdf->Cell($COLS[8], 7, $pdf->fitText(fmt($j_total), $COLS[8] - 1),     1, 0, 'R', true);
     $pdf->SetFillColor(255, 255, 255);
     $pdf->Ln();
@@ -390,7 +383,7 @@ if ($es_multi) {
     $pdf->Cell($ancho_label, 8, lat('TOTAL GENERAL'), 1, 0, 'R', false);
     $pdf->Cell($COLS[5], 8, $pdf->fitText(fmt($total_efectivo), $COLS[5] - 1),      1, 0, 'R', false);
     $pdf->Cell($COLS[6], 8, $pdf->fitText(fmt($total_transferencia), $COLS[6] - 1), 1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 8, $pdf->fitText(fmt($total_mora_cobrada), $COLS[7] - 1),  1, 0, 'R', false);
+    $pdf->Cell($COLS[7], 8, '',                                                      1, 0, 'C', false);
     $pdf->Cell($COLS[8], 8, $pdf->fitText(fmt($total_general + $total_sobrante), $COLS[8] - 1), 1, 0, 'R', false);
     $pdf->Ln();
 }
