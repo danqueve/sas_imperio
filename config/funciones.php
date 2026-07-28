@@ -336,6 +336,21 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 );
             }
 
+            // Salvaguarda: el monto del pago no puede superar lo que esta cuota realmente
+            // debe (capital + mora). Si lo supera (p.ej. por una edicion manual incorrecta),
+            // se rechaza esta aprobacion puntual en vez de inflar el saldo de la cuota
+            // (ver incidente credito #1304: un monto editado de mas quedo acreditado entero
+            // a una sola cuota, dejando otra cuota impaga pese a haber sido cobrada).
+            $pendiente_max = max(0, ($monto_base + $mora_frozen) - $saldo_prev);
+            if ((float) $pago['monto_total'] > $pendiente_max + 0.01) {
+                $pdo->rollBack();
+                $resultado['errores']++;
+                registrar_log($pdo, $aprobador_id, 'RENDICION_ERROR_MONTO', 'pago_temporal', $pago['id'],
+                    'Monto ' . formato_pesos((float) $pago['monto_total']) . ' supera el saldo pendiente de la cuota #'
+                    . $pago['numero_cuota'] . ' (' . formato_pesos($pendiente_max) . '). No se aprobo; corregir el monto primero.');
+                continue;
+            }
+
             $nuevo_saldo  = $saldo_prev + (float) $pago['monto_total'];
             $nuevo_estado = determinar_estado_cuota($monto_base, $mora_frozen, $nuevo_saldo);
 

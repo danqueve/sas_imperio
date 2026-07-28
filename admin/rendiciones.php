@@ -68,11 +68,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($ef < 0 || $tr < 0 || $total <= 0) {
             $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Montos inválidos.'];
         } else {
-            $pdo->prepare("UPDATE ic_pagos_temporales SET monto_efectivo=?, monto_transferencia=?, monto_total=? WHERE id=? AND cobrador_id=? AND estado='PENDIENTE'")
-                ->execute([$ef, $tr, $total, $pago_id, $cobrador_id]);
-            registrar_log($pdo, $_SESSION['user_id'], 'PAGO_EDITADO', 'pago_temporal', $pago_id,
-                'Ef: ' . formato_pesos($ef) . ' | Tr: ' . formato_pesos($tr));
-            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago actualizado correctamente.'];
+            // Tope: el monto editado no puede superar lo que esta cuota puntual todavia debe
+            // (evita que un pago quede acreditado de mas a una sola cuota, ver incidente credito #1304)
+            $ci_stmt = $pdo->prepare("
+                SELECT cu.numero_cuota, cu.monto_cuota, cu.saldo_pagado, cu.monto_mora, cu.estado AS cuota_estado,
+                       pt.mora_congelada, pt.es_cuota_pura
+                FROM ic_pagos_temporales pt
+                JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+                WHERE pt.id = ? AND pt.cobrador_id = ? AND pt.estado = 'PENDIENTE'
+            ");
+            $ci_stmt->execute([$pago_id, $cobrador_id]);
+            $ci = $ci_stmt->fetch();
+
+            if (!$ci) {
+                $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Pago no encontrado o ya fue aprobado.'];
+            } else {
+                $mora = (float) $ci['mora_congelada'];
+                if ($mora <= 0) $mora = (float) $ci['monto_mora'];
+                $es_pura     = ((int) $ci['es_cuota_pura'] === 1) && $ci['cuota_estado'] !== 'CAP_PAGADA';
+                $total_cuota = $es_pura ? (float) $ci['monto_cuota'] : (float) $ci['monto_cuota'] + $mora;
+                $pendiente   = max(0, $total_cuota - (float) $ci['saldo_pagado']);
+
+                if ($total > $pendiente + 0.01) {
+                    $_SESSION['flash'] = ['type' => 'danger', 'msg' =>
+                        'El monto (' . formato_pesos($total) . ') supera el saldo pendiente de la cuota #' . $ci['numero_cuota']
+                        . ' (' . formato_pesos($pendiente) . '). Si el cliente pagó de más, registrá el excedente como un pago aparte para la cuota siguiente.'];
+                } else {
+                    $pdo->prepare("UPDATE ic_pagos_temporales SET monto_efectivo=?, monto_transferencia=?, monto_total=? WHERE id=? AND cobrador_id=? AND estado='PENDIENTE'")
+                        ->execute([$ef, $tr, $total, $pago_id, $cobrador_id]);
+                    registrar_log($pdo, $_SESSION['user_id'], 'PAGO_EDITADO', 'pago_temporal', $pago_id,
+                        'Ef: ' . formato_pesos($ef) . ' | Tr: ' . formato_pesos($tr));
+                    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago actualizado correctamente.'];
+                }
+            }
         }
     } elseif ($accion === 'solicitar_baja_temporal' && !empty($_POST['pago_id'])) {
         $pago_id = (int) $_POST['pago_id'];
