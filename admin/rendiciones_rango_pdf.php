@@ -48,9 +48,11 @@ if ($estado_filtro !== 'pendiente') {
                COALESCE(pc.articulo_snap, cr.articulo_desc, a.descripcion, '—')   AS articulo,
                pc.monto_efectivo, pc.monto_transferencia,
                pc.monto_mora_cobrada, pc.monto_total,
-               COALESCE(pc.es_cuota_pura, 0) AS es_cuota_pura
+               COALESCE(pc.es_cuota_pura, 0) AS es_cuota_pura,
+               CONCAT(apr.apellido, ', ', apr.nombre)                              AS cargado_por
         FROM ic_pagos_confirmados pc
         JOIN ic_usuarios u        ON pc.cobrador_id  = u.id
+        LEFT JOIN ic_usuarios apr ON pc.aprobador_id = apr.id
         LEFT JOIN ic_cuotas cu    ON pc.cuota_id     = cu.id
         LEFT JOIN ic_creditos cr  ON cu.credito_id   = cr.id
         LEFT JOIN ic_clientes cl  ON cr.cliente_id   = cl.id
@@ -82,7 +84,8 @@ if ($estado_filtro !== 'aprobado') {
                COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
                pt.monto_efectivo, pt.monto_transferencia,
                pt.monto_mora_cobrada, pt.monto_total,
-               COALESCE(pt.es_cuota_pura, 0) AS es_cuota_pura
+               COALESCE(pt.es_cuota_pura, 0) AS es_cuota_pura,
+               NULL AS cargado_por
         FROM ic_pagos_temporales pt
         JOIN ic_usuarios u  ON pt.cobrador_id  = u.id
         JOIN ic_cuotas cu   ON pt.cuota_id     = cu.id
@@ -137,10 +140,14 @@ if ($cobrador_id > 0) {
 // ── PDF ────────────────────────────────────────────────────────
 require_once __DIR__ . '/../lib/PDFBase.php';
 
-// Columnas: #(7)+Cliente(42)+Artículo(33)+Cuota(11)+Efectivo(20)+Transfer.(20)+Mora(16)+Total(22)+Estado(19) = 190
+// Con Origen = Solo Admin, la columna Estado es redundante (un pago manual nace ya APROBADO),
+// así que en ese modo se reemplaza por el nombre del admin/supervisor que cargó el pago.
+$mostrar_cargado_por = ($origen_filtro === 'admin');
+
+// Columnas: #(7)+Cliente(42)+Artículo(33)+Cuota(11)+Efectivo(20)+Transfer.(20)+Mora(16)+Total(22)+Estado/CargadoPor(19) = 190
 $COLS   = [7,  42, 33, 11, 20, 20, 16, 22, 19];
-$LABELS = ['#','Cliente','Articulo','Cuota','Efectivo','Transfer.','Mora','Total','Estado'];
-$ALIGNS = ['C','L','L','C','R','R','R','R','C'];
+$LABELS = ['#','Cliente','Articulo','Cuota','Efectivo','Transfer.','Mora','Total', $mostrar_cargado_por ? 'Cargado por' : 'Estado'];
+$ALIGNS = ['C','L','L','C','R','R','R','R', $mostrar_cargado_por ? 'L' : 'C'];
 
 class RendicionesRangoPDF extends PDFBase
 {
@@ -288,16 +295,21 @@ foreach ($grupos as $cid => $grupo_cob) {
 
             $pdf->Cell($COLS[7], 5.5, lat(fmt((float)$p['monto_total'])), 1, 0, 'R', true);
 
-            // Columna Estado con color
-            if ($p['estado_pago'] === 'APROBADO') {
-                $pdf->SetTextColor(22, 163, 74);  // verde
-                $pdf->SetFont('Helvetica', 'B', 6);
+            // Columna Estado (con color) o Cargado por (nombre del admin), según filtro
+            if ($mostrar_cargado_por) {
+                $pdf->SetFont('Helvetica', '', 6);
+                $pdf->Cell($COLS[8], 5.5, $pdf->fitText($p['cargado_por'] ?? '—', $COLS[8] - 2), 1, 0, 'L', true);
             } else {
-                $pdf->SetTextColor(161, 98, 7);   // ámbar oscuro legible
-                $pdf->SetFont('Helvetica', 'B', 6);
+                if ($p['estado_pago'] === 'APROBADO') {
+                    $pdf->SetTextColor(22, 163, 74);  // verde
+                    $pdf->SetFont('Helvetica', 'B', 6);
+                } else {
+                    $pdf->SetTextColor(161, 98, 7);   // ámbar oscuro legible
+                    $pdf->SetFont('Helvetica', 'B', 6);
+                }
+                $pdf->Cell($COLS[8], 5.5, lat($estado_str), 1, 0, 'C', true);
+                $pdf->SetTextColor(0, 0, 0);
             }
-            $pdf->Cell($COLS[8], 5.5, lat($estado_str), 1, 0, 'C', true);
-            $pdf->SetTextColor(0, 0, 0);
 
             $pdf->Ln();
 
@@ -365,7 +377,9 @@ $pdf->Ln(4);
 $pdf->SetFont('Helvetica', 'I', 7);
 $pdf->SetTextColor(80, 80, 80);
 $pdf->SetX(10);
-$nota = 'Estado: APROBADO = rendicion aprobada | PEND. = pendiente de aprobacion.';
+$nota = $mostrar_cargado_por
+    ? 'Cargado por: admin o supervisor que registro el pago manualmente.'
+    : 'Estado: APROBADO = rendicion aprobada | PEND. = pendiente de aprobacion.';
 if ($hay_mora_pend) {
     $nota .= '   (*) Mora pendiente de cobro (cuota pura), no incluida en el total.';
 }
