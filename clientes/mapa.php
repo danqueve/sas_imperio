@@ -77,10 +77,14 @@ require_once __DIR__ . '/../views/layout.php';
 
 <!-- Mapa -->
 <div class="card-ic" style="padding:0;overflow:hidden">
-    <div style="padding:12px 20px;border-bottom:1px solid var(--dark-border);display:flex;align-items:center;justify-content:space-between">
+    <div style="padding:12px 20px;border-bottom:1px solid var(--dark-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <span class="card-title" style="font-size:.9rem"><i class="fa fa-map-location-dot"></i> Mapa de Clientes
             <span class="text-muted" style="font-weight:400;font-size:.78rem">(<?= count($clientes_mapa) ?> con coordenadas)</span>
         </span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text-muted);cursor:pointer;white-space:nowrap">
+            <input type="checkbox" id="chk-solo-activos" onchange="toggleSoloActivos()">
+            Solo créditos activos
+        </label>
         <div id="leyenda-mapa" style="display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--text-muted)"></div>
     </div>
     <div id="mapa" style="height:580px;width:100%"></div>
@@ -144,6 +148,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 let markers   = [];
 let polygons  = [];
 let seleccionados = []; // array de cobrador_id seleccionados (máx 4)
+let soloActivos = false;
 
 const ESTADO_COLOR = { 'EN_CURSO':'#10b981', 'MOROSO':'#ef4444', 'sin_credito':'#6b7280' };
 const ESTADO_LABEL = { 'EN_CURSO':'En Curso', 'MOROSO':'Moroso', 'sin_credito':'Sin crédito activo' };
@@ -183,13 +188,17 @@ function renderizar() {
     polygons.forEach(p => map.removeLayer(p));
     markers = []; polygons = [];
 
-    const lista = seleccionados.length
+    let lista = seleccionados.length
         ? clientes.filter(cl => seleccionados.includes(cl.cobrador_id))
         : clientes;
+    if (soloActivos) {
+        lista = lista.filter(cl => cl.estado_cr === 'EN_CURSO' || cl.estado_cr === 'MOROSO');
+    }
 
     // Marcadores
     lista.forEach(cl => {
-        const color   = colorPorCobrador[cl.cobrador_id || 0] || '#64748b';
+        const activo  = (cl.estado_cr === 'EN_CURSO' || cl.estado_cr === 'MOROSO');
+        const color   = activo ? (colorPorCobrador[cl.cobrador_id || 0] || '#64748b') : '#6b7280';
         const ecColor = ESTADO_COLOR[cl.estado_cr] || '#6b7280';
         const ecLabel = ESTADO_LABEL[cl.estado_cr] || cl.estado_cr;
         const m = L.marker([cl.lat, cl.lng], { icon: makeIcon(color) })
@@ -208,7 +217,7 @@ function renderizar() {
     // Polígonos convex hull (solo en modo comparativa)
     if (seleccionados.length >= 2) {
         seleccionados.forEach(cobId => {
-            const pts = clientes
+            const pts = lista
                 .filter(cl => cl.cobrador_id === cobId)
                 .map(cl => [cl.lat, cl.lng]);
             if (pts.length < 2) return;
@@ -297,6 +306,11 @@ function limpiarSeleccion() {
         label.style.background  = 'transparent';
     });
     actualizarContador();
+    renderizar();
+}
+
+function toggleSoloActivos() {
+    soloActivos = document.getElementById('chk-solo-activos').checked;
     renderizar();
 }
 

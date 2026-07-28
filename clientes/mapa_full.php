@@ -214,6 +214,10 @@ $cobradores_mapa = $pdo->query("
             <span id="contador-sel">0 de 4</span>
         </div>
         <div id="panel-btns">
+            <label style="display:flex;align-items:center;gap:5px;font-size:.72rem;color:#cbd5e1;cursor:pointer;white-space:nowrap">
+                <input type="checkbox" id="chk-solo-activos" onchange="toggleSoloActivos()">
+                Solo activos
+            </label>
             <button class="btn-panel" onclick="seleccionarTodos()">Ver todos</button>
             <button class="btn-panel" onclick="limpiarSeleccion()">Limpiar</button>
         </div>
@@ -288,6 +292,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 let markers = [], polygons = [], seleccionados = [];
+let soloActivos = false;
 
 const ESTADO_COLOR = { 'EN_CURSO':'#10b981','MOROSO':'#ef4444','sin_credito':'#6b7280' };
 const ESTADO_LABEL = { 'EN_CURSO':'En Curso','MOROSO':'Moroso','sin_credito':'Sin crédito' };
@@ -323,12 +328,16 @@ function renderizar() {
     polygons.forEach(p => map.removeLayer(p));
     markers = []; polygons = [];
 
-    const lista = seleccionados.length
+    let lista = seleccionados.length
         ? clientes.filter(cl => seleccionados.includes(cl.cobrador_id))
         : clientes;
+    if (soloActivos) {
+        lista = lista.filter(cl => cl.estado_cr === 'EN_CURSO' || cl.estado_cr === 'MOROSO');
+    }
 
     lista.forEach(cl => {
-        const color   = colorPorCobrador[cl.cobrador_id||0] || '#64748b';
+        const activo  = (cl.estado_cr === 'EN_CURSO' || cl.estado_cr === 'MOROSO');
+        const color   = activo ? (colorPorCobrador[cl.cobrador_id||0] || '#64748b') : '#6b7280';
         const ecColor = ESTADO_COLOR[cl.estado_cr] || '#6b7280';
         const ecLabel = ESTADO_LABEL[cl.estado_cr] || cl.estado_cr;
         const m = L.marker([cl.lat, cl.lng], { icon: makeIcon(color) })
@@ -347,7 +356,7 @@ function renderizar() {
     // Polígonos en modo comparativa
     if (seleccionados.length >= 2) {
         seleccionados.forEach(cobId => {
-            const pts = clientes.filter(cl => cl.cobrador_id===cobId).map(cl=>[cl.lat,cl.lng]);
+            const pts = lista.filter(cl => cl.cobrador_id===cobId).map(cl=>[cl.lat,cl.lng]);
             if (pts.length < 2) return;
             const color = colorPorCobrador[cobId] || '#64748b';
             if (pts.length === 2) {
@@ -414,6 +423,11 @@ function seleccionarTodos() {
 }
 
 function limpiarSeleccion() { seleccionarTodos(); }
+
+function toggleSoloActivos() {
+    soloActivos = document.getElementById('chk-solo-activos').checked;
+    renderizar();
+}
 
 renderizar();
 </script>
