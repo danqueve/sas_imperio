@@ -414,6 +414,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="kpi-value"><?= number_format($clientes_dormidos) ?></div>
             <div class="kpi-sub">
                 <span class="text-muted">sin crédito activo +90 días</span>
+                &nbsp;<a href="<?= BASE_URL ?>admin/clientes_dormidos" style="color:var(--text-muted);text-decoration:underline dotted;font-size:.72rem">ver →</a>
             </div>
         </div>
     </div>
