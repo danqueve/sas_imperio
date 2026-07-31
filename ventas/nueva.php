@@ -54,6 +54,7 @@ $error = '';
 $v = ['cantidad' => 1, 'forma_pago' => 'efectivo'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $v = $_POST;
     $articulo_id   = (int)($v['articulo_id'] ?? 0);
     $cantidad      = max(1, (int)($v['cantidad'] ?? 1));
@@ -136,6 +137,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
+        <?php csrf_input(); ?>
         <div class="card-ic mb-4">
             <div class="card-ic-header">
                 <span class="card-title"><i class="fa fa-cart-plus"></i> Datos de la Venta</span>
@@ -252,6 +254,20 @@ $page_scripts = <<<JS
 const artMapV    = $art_map_json;
 const artSrchV   = $art_search_json;
 
+function aplicarPrecioSegunFormaPago(artId) {
+    if (!artId || !artMapV[artId]) return;
+    const info = artMapV[artId];
+    const formaSel = document.querySelector('[name=forma_pago]:checked');
+    const forma = formaSel ? formaSel.value : '';
+    if (forma === 'tarjeta' && info.tarjeta > 0) {
+        document.getElementById('precio_v').value = info.tarjeta.toFixed(2);
+    } else if (forma === 'efectivo' && info.contado > 0) {
+        document.getElementById('precio_v').value = info.contado.toFixed(2);
+    } else {
+        document.getElementById('precio_v').value = info.precio.toFixed(2);
+    }
+}
+
 document.getElementById('art_search_v').addEventListener('change', function() {
     const val  = this.value.trim();
     const item = artSrchV[val];
@@ -259,7 +275,7 @@ document.getElementById('art_search_v').addEventListener('change', function() {
         document.getElementById('articulo_id_v').value = item.id;
         const info = artMapV[item.id];
         if (info) {
-            document.getElementById('precio_v').value = info.precio.toFixed(2);
+            aplicarPrecioSegunFormaPago(item.id);
             document.getElementById('stock_info_v').textContent = 'Stock disponible: ' + info.stock;
             calcTotal();
         }
@@ -272,16 +288,7 @@ document.getElementById('art_search_v').addEventListener('change', function() {
 // Actualizar precio según forma_pago seleccionada
 document.querySelectorAll('[name=forma_pago]').forEach(function(radio) {
     radio.addEventListener('change', function() {
-        const artId = parseInt(document.getElementById('articulo_id_v').value);
-        if (!artId || !artMapV[artId]) return;
-        const info = artMapV[artId];
-        if (this.value === 'tarjeta' && info.tarjeta > 0) {
-            document.getElementById('precio_v').value = info.tarjeta.toFixed(2);
-        } else if (this.value === 'efectivo' && info.contado > 0) {
-            document.getElementById('precio_v').value = info.contado.toFixed(2);
-        } else {
-            document.getElementById('precio_v').value = info.precio.toFixed(2);
-        }
+        aplicarPrecioSegunFormaPago(parseInt(document.getElementById('articulo_id_v').value));
         calcTotal();
     });
 });

@@ -5,14 +5,25 @@ require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('alta_creditos');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: index');
+    exit;
+}
+verificar_csrf();
+
 $pdo = obtener_conexion();
-$id = (int) ($_GET['id'] ?? 0);
+$id = (int) ($_POST['id'] ?? 0);
 if (!$id) {
     header('Location: index');
     exit;
 }
-$usados = $pdo->prepare("SELECT COUNT(*) FROM ic_creditos WHERE articulo_id=?");
-$usados->execute([$id]);
+$usados = $pdo->prepare("
+    SELECT
+        (SELECT COUNT(*) FROM ic_creditos WHERE articulo_id = ?) +
+        (SELECT COUNT(*) FROM ic_credito_articulos WHERE articulo_id = ?)
+");
+$usados->execute([$id, $id]);
 if ((int) $usados->fetchColumn() > 0) {
     $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'No se puede eliminar: el artículo está asociado a créditos.'];
 } else {

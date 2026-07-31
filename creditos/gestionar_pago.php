@@ -66,9 +66,15 @@ if ($accion === 'revertir_confirmado') {
         $venc->execute([$cuota_id_rev]);
         $cuota_row = $venc->fetch();
 
-        if ($saldo_restante >= ($cuota_row['monto_cuota'] - 0.005)) {
-            // Aún cubre el capital: sigue PAGADA (no debería ocurrir normalmente)
+        $monto_base_rev = (float) $cuota_row['monto_cuota'];
+        $mora_actual_rev = (float) $cuota_row['monto_mora'];
+
+        if ($saldo_restante >= ($monto_base_rev + $mora_actual_rev - 0.005)) {
+            // Aún cubre capital + mora: sigue PAGADA (no debería ocurrir normalmente)
             $nuevo_estado_cuota = 'PAGADA';
+        } elseif ($saldo_restante >= ($monto_base_rev - 0.005)) {
+            // Cubre el capital pero la mora vuelve a quedar pendiente de cobro
+            $nuevo_estado_cuota = 'CAP_PAGADA';
         } elseif ($saldo_restante > 0.005) {
             // Pago parcial restante
             $nuevo_estado_cuota = 'PARCIAL';

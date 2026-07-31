@@ -132,7 +132,11 @@ function render_tbody(array $lista): string {
             .   '<button onclick="verClientes(' . (int)$a['id'] . ',\'' . $desc_js . '\')" class="btn-ic btn-ghost btn-sm btn-icon" title="Ver clientes con crédito"><i class="fa fa-users"></i></button> '
             .   '<a href="qr_label?id=' . (int)$a['id'] . '" target="_blank" class="btn-ic btn-ghost btn-sm btn-icon" title="Etiqueta QR"><i class="fa fa-qrcode"></i></a> '
             .   '<a href="editar?id=' . (int)$a['id'] . '" class="btn-ic btn-ghost btn-sm btn-icon" title="Editar"><i class="fa fa-pencil"></i></a> '
-            .   '<a href="eliminar?id=' . (int)$a['id'] . '" class="btn-ic btn-danger btn-sm btn-icon" title="Eliminar" data-confirm="¿Eliminar el artículo «' . e($a['descripcion']) . '»?"><i class="fa fa-trash"></i></a>'
+            .   '<form method="POST" action="eliminar" style="display:inline">'
+            .     '<input type="hidden" name="_csrf" value="' . e(csrf_token()) . '">'
+            .     '<input type="hidden" name="id" value="' . (int)$a['id'] . '">'
+            .     '<button type="submit" class="btn-ic btn-danger btn-sm btn-icon" title="Eliminar" data-confirm="¿Eliminar el artículo «' . e($a['descripcion']) . '»?"><i class="fa fa-trash"></i></button>'
+            .   '</form>'
             . '</td>'
             . '</tr>';
     }

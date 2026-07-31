@@ -37,17 +37,41 @@ if (!$c) { http_response_code(404); die('Página no encontrada.'); }
 $verificado = !empty($_SESSION[$session_key]);
 $error_dni  = '';
 
+// Rate limit de intentos de DNI: máx 5 intentos fallidos en 15 min por token
+// (mismo mecanismo que auth/login.php, persistido en ic_login_intentos, keyed por token en vez de IP).
+const PORTAL_DNI_MAX_INTENTOS = 5;
+const PORTAL_DNI_VENTANA_SEG  = 15 * 60;
+$portal_ident = 'portal:' . $token;
+
+function contar_intentos_dni_portal(PDO $pdo, string $ident): int
+{
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM ic_login_intentos
+        WHERE ip = ? AND fecha > DATE_SUB(NOW(), INTERVAL " . PORTAL_DNI_VENTANA_SEG . " SECOND)
+    ");
+    $stmt->execute([$ident]);
+    return (int) $stmt->fetchColumn();
+}
+
 // POST: verificar DNI
 if (!$verificado && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dni'])) {
-    $dni_input = preg_replace('/\D/', '', trim($_POST['dni']));
-    $dni_real  = preg_replace('/\D/', '', trim($c['dni'] ?? ''));
-    if ($dni_input && $dni_real && $dni_input === $dni_real) {
-        $_SESSION[$session_key] = true;
-        $verificado = true;
-        header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?') . '?token=' . urlencode($token));
-        exit;
+    if (contar_intentos_dni_portal($pdo, $portal_ident) >= PORTAL_DNI_MAX_INTENTOS) {
+        $error_dni = 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.';
     } else {
-        $error_dni = 'DNI incorrecto. Verificá el número e intentá nuevamente.';
+        $dni_input = preg_replace('/\D/', '', trim($_POST['dni']));
+        $dni_real  = preg_replace('/\D/', '', trim($c['dni'] ?? ''));
+        if ($dni_input && $dni_real && $dni_input === $dni_real) {
+            $pdo->prepare("DELETE FROM ic_login_intentos WHERE ip = ?")->execute([$portal_ident]);
+            $_SESSION[$session_key] = true;
+            $verificado = true;
+            header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?') . '?token=' . urlencode($token));
+            exit;
+        } else {
+            $pdo->prepare("INSERT INTO ic_login_intentos (ip, usuario_intentado) VALUES (?, ?)")
+                ->execute([$portal_ident, 'DNI portal']);
+            $pdo->exec("DELETE FROM ic_login_intentos WHERE fecha < DATE_SUB(NOW(), INTERVAL 1 DAY)");
+            $error_dni = 'DNI incorrecto. Verificá el número e intentá nuevamente.';
+        }
     }
 }
 

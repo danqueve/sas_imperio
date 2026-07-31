@@ -22,6 +22,11 @@ if (!$credito_id) {
 }
 
 if ($metodo === 'GET') {
+    if (!$es_admin) {
+        http_response_code(403);
+        echo json_encode(['error' => 'No autorizado']);
+        exit;
+    }
     // Listar notas del crédito
     $stmt = $pdo->prepare("
         SELECT n.id, n.nota, n.created_at,

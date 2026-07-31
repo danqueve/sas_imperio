@@ -89,12 +89,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && es_admin()) {
     } elseif ($accion === 'quitar_acceso') {
         $uid = (int)$vend_row['usuario_id'];
         if ($uid) {
-            $pdo->beginTransaction();
-            $pdo->prepare("UPDATE ic_vendedores SET usuario_id = NULL WHERE id = ?")->execute([$vendedor_id]);
-            $pdo->prepare("DELETE FROM ic_usuarios WHERE id = ? AND rol = 'vendedor'")->execute([$uid]);
-            $pdo->commit();
-            registrar_log($pdo, $_SESSION['user_id'], 'USUARIO_ELIMINADO', 'usuario', $uid, 'acceso vendedor removido');
-            $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Acceso eliminado.'];
+            try {
+                $pdo->beginTransaction();
+                $pdo->prepare("UPDATE ic_vendedores SET usuario_id = NULL WHERE id = ?")->execute([$vendedor_id]);
+                // No se borra el usuario (rompería la FK desde ic_log_actividades en cuanto
+                // haya iniciado sesión alguna vez) — se desactiva, igual que el resto de bajas de usuario.
+                $pdo->prepare("UPDATE ic_usuarios SET activo = 0 WHERE id = ? AND rol = 'vendedor'")->execute([$uid]);
+                $pdo->commit();
+                registrar_log($pdo, $_SESSION['user_id'], 'USUARIO_DESACTIVADO', 'usuario', $uid, 'acceso vendedor removido');
+                $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Acceso eliminado.'];
+            } catch (PDOException $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al quitar el acceso.'];
+            }
         }
     }
 
@@ -220,15 +227,25 @@ require_once __DIR__ . '/../views/layout.php';
                                         <i class="fa fa-user-xmark"></i>
                                     </button>
                                 <?php elseif ($v['activo']): ?>
-                                    <a href="eliminar?id=<?= $v['id'] ?>&accion=baja" class="btn-ic btn-danger btn-sm btn-icon" title="Dar de baja"
-                                       onclick="return confirm('¿Seguro que deseas dar de baja a este vendedor?')">
-                                        <i class="fa fa-arrow-down"></i>
-                                    </a>
+                                    <form method="POST" action="eliminar" style="display:inline">
+                                        <?php csrf_input(); ?>
+                                        <input type="hidden" name="id" value="<?= $v['id'] ?>">
+                                        <input type="hidden" name="accion" value="baja">
+                                        <button type="submit" class="btn-ic btn-danger btn-sm btn-icon" title="Dar de baja"
+                                                onclick="return confirm('¿Seguro que deseas dar de baja a este vendedor?')">
+                                            <i class="fa fa-arrow-down"></i>
+                                        </button>
+                                    </form>
                                 <?php else: ?>
-                                    <a href="eliminar?id=<?= $v['id'] ?>&accion=alta" class="btn-ic btn-success btn-sm btn-icon" title="Dar de alta"
-                                       onclick="return confirm('¿Seguro que deseas reactivar a este vendedor?')">
-                                        <i class="fa fa-arrow-up"></i>
-                                    </a>
+                                    <form method="POST" action="eliminar" style="display:inline">
+                                        <?php csrf_input(); ?>
+                                        <input type="hidden" name="id" value="<?= $v['id'] ?>">
+                                        <input type="hidden" name="accion" value="alta">
+                                        <button type="submit" class="btn-ic btn-success btn-sm btn-icon" title="Dar de alta"
+                                                onclick="return confirm('¿Seguro que deseas reactivar a este vendedor?')">
+                                            <i class="fa fa-arrow-up"></i>
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
                             </td>
                             <?php endif; ?>

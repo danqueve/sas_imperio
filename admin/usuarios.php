@@ -114,6 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ->execute([$nombre, $apellido, $usuario, $rol, $telefono, $zona, $id]);
                 }
                 if (!$error) {
+                    // Si el rol pasó a vendedor y no existe su registro vinculado, crearlo
+                    if ($rol === 'vendedor') {
+                        $chk_vend = $pdo->prepare("SELECT id FROM ic_vendedores WHERE usuario_id=?");
+                        $chk_vend->execute([$id]);
+                        if (!$chk_vend->fetchColumn()) {
+                            $pdo->prepare("INSERT INTO ic_vendedores (usuario_id, nombre, apellido, telefono) VALUES (?,?,?,?)")
+                                ->execute([$id, $nombre, $apellido, $telefono]);
+                        }
+                    }
                     registrar_log($pdo, $_SESSION['user_id'], 'USUARIO_EDITADO', 'usuario', $id,
                         $nombre . ' ' . $apellido);
                     $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Usuario actualizado.'];

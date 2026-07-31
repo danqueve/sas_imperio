@@ -53,6 +53,25 @@ function verificar_sesion(): void
         exit;
     }
 
+    // ── Usuario desactivado: invalidar sesión activa (todos los roles) ──
+    try {
+        $pdo_chk  = obtener_conexion();
+        $chk_stmt = $pdo_chk->prepare("SELECT activo FROM ic_usuarios WHERE id=?");
+        $chk_stmt->execute([$_SESSION['user_id']]);
+        $activo = $chk_stmt->fetchColumn();
+        if ($activo === false || (int) $activo === 0) {
+            session_unset();
+            session_destroy();
+            session_start();
+            $_SESSION['flash_login'] = 'Tu usuario fue desactivado. Contactá a un administrador.';
+            header('Location: ' . BASE_URL . 'auth/login');
+            exit;
+        }
+    } catch (Throwable $e) {
+        error_log('Chequeo activo de usuario: ' . $e->getMessage());
+        // fail-open: no bloquear por error de DB
+    }
+
     // ── Restricción horaria para supervisores ─────────────────
     if ($_SESSION['rol'] === 'supervisor') {
         $hora   = (int) date('G');

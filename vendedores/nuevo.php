@@ -8,6 +8,7 @@ verificar_rol('admin');
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $nombre = trim($_POST['nombre'] ?? '');
     $apellido = trim($_POST['apellido'] ?? '');
     $telefono = trim($_POST['telefono'] ?? '');
@@ -40,6 +41,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
     
     <form method="POST" class="form-ic card-ic">
+        <?php csrf_input(); ?>
         <label>Nombre *</label>
         <input type="text" name="nombre" class="form-control" required value="<?= e($_POST['nombre'] ?? '') ?>">
         

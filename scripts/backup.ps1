@@ -13,7 +13,8 @@
 $ErrorActionPreference = "Stop"
 
 $BaseDir   = Split-Path -Parent $PSScriptRoot
-$BackupDir = Join-Path $BaseDir "backups"
+# Fuera del document root a proposito (dump completo de la BD, con PII) — nunca dentro de $BaseDir.
+$BackupDir = "C:\wamp64\backups_creditos"
 $CfgFile   = Join-Path $BaseDir "config\conexion.local.php"
 $LogFile   = Join-Path $BaseDir "logs\backup.log"
 

@@ -12,7 +12,7 @@ $pdo = obtener_conexion();
 $cliente_id = (int) ($_GET['cliente_id'] ?? 0);
 
 $clientes = $pdo->query("
-    SELECT c.id, c.nombres, c.apellidos, c.cobrador_id, c.zona, c.puntaje_pago,
+    SELECT c.id, c.nombres, c.apellidos, c.cobrador_id, c.zona, c.puntaje_pago, c.dia_cobro,
            CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre,
            (SELECT COUNT(*) FROM ic_creditos cr
             WHERE cr.cliente_id = c.id AND cr.estado IN ('EN_CURSO','MOROSO')) AS creditos_activos
@@ -50,6 +50,7 @@ foreach ($clientes as $cl) {
         'zona'            => $cl['zona'] ?? '',
         'puntaje'         => $cl['puntaje_pago'] ? (int)$cl['puntaje_pago'] : null,
         'creditos_activos'=> (int)($cl['creditos_activos'] ?? 0),
+        'dia_cobro'       => $cl['dia_cobro'] ? (int)$cl['dia_cobro'] : null,
     ];
 }
 
@@ -564,7 +565,7 @@ require_once __DIR__ . '/../views/layout.php';
 
                 <div class="form-group" id="grupo_dia_cobro">
                     <label>Día de Cobro (semanal)</label>
-                    <select name="dia_cobro">
+                    <select name="dia_cobro" id="dia_cobro_sel">
                         <option value="">— Cualquier día —</option>
                         <?php foreach ([1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado'] as $n => $d): ?>
                             <option value="<?= $n ?>" <?= ($v['dia_cobro'] ?? '') == $n ? 'selected' : '' ?>>
@@ -690,13 +691,15 @@ const puntajeMap = {
     4: { label: '✗ Sin mora',              color: 'var(--danger)'  },
 };
 
-function actualizarCobrador() {
+function actualizarCobrador(sugerirDia) {
+    if (sugerirDia === undefined) sugerirDia = true;
     const cid   = parseInt(document.getElementById('cliente_id_sel').value) || 0;
     const info  = clientesCob[cid];
     const disp  = document.getElementById('cobrador_display');
     const hid   = document.getElementById('cobrador_id');
     const zdis  = document.getElementById('zona_display');
     const clinf = document.getElementById('cliente-info');
+    const diaSel = document.getElementById('dia_cobro_sel');
 
     if (cid && info && info.cob_id) {
         disp.innerHTML = '<span style="color:var(--primary-light)">' + info.cob_nombre + '</span>';
@@ -713,6 +716,13 @@ function actualizarCobrador() {
         zdis.innerHTML = '<span style="color:var(--primary-light)">' + info.zona + '</span>';
     } else {
         zdis.innerHTML = '<span style="color:var(--text-muted)">— Selección pendiente —</span>';
+    }
+
+    // Sugerir Día de Cobro según el día ya asignado al cliente (ic_clientes.dia_cobro).
+    // Solo al cambiar de cliente manualmente — no pisa un valor ya elegido al recargar
+    // la página (p.ej. tras un error de validación del formulario).
+    if (sugerirDia && diaSel) {
+        diaSel.value = (cid && info && info.dia_cobro) ? String(info.dia_cobro) : '';
     }
 
     if (cid && info) {
@@ -950,7 +960,7 @@ document.addEventListener('DOMContentLoaded', function() {
         comboIni.forEach(function(item) { addComboRow(item); });
     }
     setModo(document.getElementById('modo').value);
-    actualizarCobrador();
+    actualizarCobrador(false);
     toggleDiaCobro();
     calcularCuotas();
     previsualizarFechas();

@@ -63,9 +63,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $upd->execute([$motivo, $id]);
 
             // Si es retiro de producto, incobrable o mala reputación, cancelar cuotas pendientes
+            // (incluye PARCIAL/CAP_PAGADA: el saldo o mora que quedó sin cobrar se da de baja junto con el crédito)
             if ($motivo === 'RETIRO_PRODUCTO' || $motivo === 'INCOBRABILIDAD' || $motivo === 'FINALIZADO_CREDITO') {
-                $pdo->prepare("UPDATE ic_cuotas SET estado = 'CANCELADA' WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA')")
+                $pdo->prepare("UPDATE ic_cuotas SET estado = 'CANCELADA' WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')")
                     ->execute([$id]);
+            }
+
+            // Retiro de producto: restaurar stock (artículo simple o cada ítem si es crédito combo)
+            if ($motivo === 'RETIRO_PRODUCTO') {
+                if ($cr['articulo_id']) {
+                    $pdo->prepare("UPDATE ic_articulos SET stock = stock + 1 WHERE id = ?")
+                        ->execute([$cr['articulo_id']]);
+                }
+                $combo_items = $pdo->prepare("
+                    SELECT articulo_id, cantidad FROM ic_credito_articulos
+                    WHERE credito_id = ? AND articulo_id IS NOT NULL
+                ");
+                $combo_items->execute([$id]);
+                $upd_stock = $pdo->prepare("UPDATE ic_articulos SET stock = stock + ? WHERE id = ?");
+                foreach ($combo_items->fetchAll() as $item) {
+                    $upd_stock->execute([(int) $item['cantidad'], (int) $item['articulo_id']]);
+                }
             }
 
             // Log de actividad

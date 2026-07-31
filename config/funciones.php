@@ -379,6 +379,7 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 $pdo->rollBack();
                 continue; // Ya fue procesado por concurrencia, no duplicar
             }
+            $resultado['aprobados']++;
 
             // 4. Recalcular estado del crédito (FINALIZADO, MOROSO o EN_CURSO)
             $cr_stmt = $pdo->prepare("SELECT cr.estado, cr.cliente_id FROM ic_creditos cr WHERE cr.id=?");

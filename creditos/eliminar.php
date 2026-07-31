@@ -63,6 +63,23 @@ if ($cant_confirmados > 0) {
     exit;
 }
 
+// Verificar que no tenga pagos temporales PENDIENTE (efectivo ya cobrado por el cobrador,
+// aun no aprobado) — eliminarlo borraría ese cobro sin dejar ningun rastro del dinero.
+$chk_pend = $pdo->prepare("
+    SELECT COUNT(*) FROM ic_pagos_temporales pt
+    JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+    WHERE cu.credito_id = ? AND pt.estado = 'PENDIENTE'
+");
+$chk_pend->execute([$id]);
+if ((int) $chk_pend->fetchColumn() > 0) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' =>
+        "No se puede eliminar el crédito #{$id}: tiene pagos pendientes de aprobación. " .
+        "Apruebe o rechace esa rendición antes de eliminar el crédito."
+    ];
+    header("Location: ver?id=$id");
+    exit;
+}
+
 try {
     $pdo->beginTransaction();
 
@@ -71,16 +88,26 @@ try {
     $cuota_ids_stmt->execute([$id]);
     $cuota_ids = $cuota_ids_stmt->fetchAll(PDO::FETCH_COLUMN);
 
-    // Borrar pagos temporales (no tienen CASCADE desde cuotas)
+    // Borrar pagos temporales (no tienen CASCADE desde cuotas) — ya no pueden ser PENDIENTE,
+    // solo quedan aca los RECHAZADO/APROBADO (estos ultimos ya bloqueados arriba por confirmados)
     if (!empty($cuota_ids)) {
         $ph = implode(',', array_fill(0, count($cuota_ids), '?'));
         $pdo->prepare("DELETE FROM ic_pagos_temporales WHERE cuota_id IN ($ph)")->execute($cuota_ids);
     }
 
-    // Restaurar stock del artículo si corresponde
+    // Restaurar stock: articulo simple, o cada item si es un credito combo
     if ($cr['articulo_id']) {
         $pdo->prepare("UPDATE ic_articulos SET stock = stock + 1 WHERE id = ?")
             ->execute([$cr['articulo_id']]);
+    }
+    $combo_items = $pdo->prepare("
+        SELECT articulo_id, cantidad FROM ic_credito_articulos
+        WHERE credito_id = ? AND articulo_id IS NOT NULL
+    ");
+    $combo_items->execute([$id]);
+    $upd_stock = $pdo->prepare("UPDATE ic_articulos SET stock = stock + ? WHERE id = ?");
+    foreach ($combo_items->fetchAll() as $item) {
+        $upd_stock->execute([(int) $item['cantidad'], (int) $item['articulo_id']]);
     }
 
     // Eliminar crédito (ON DELETE CASCADE elimina ic_cuotas automáticamente)

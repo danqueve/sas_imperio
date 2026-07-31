@@ -201,11 +201,15 @@ require_once __DIR__ . '/../views/layout.php';
                                     <i class="fa fa-print"></i>
                                 </a>
                                 <?php if (es_admin()): ?>
-                                    <a href="eliminar?id=<?= $vt['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
-                                       title="Eliminar y restaurar stock"
-                                       data-confirm="¿Eliminar esta venta? El stock del artículo se restaurará.">
-                                        <i class="fa fa-trash"></i>
-                                    </a>
+                                    <form method="POST" action="eliminar" style="display:inline">
+                                        <?php csrf_input(); ?>
+                                        <input type="hidden" name="id" value="<?= $vt['id'] ?>">
+                                        <button type="submit" class="btn-ic btn-danger btn-sm btn-icon"
+                                                title="Eliminar y restaurar stock"
+                                                data-confirm="¿Eliminar esta venta? El stock del artículo se restaurará.">
+                                            <i class="fa fa-trash"></i>
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
                             </td>
                         </tr>

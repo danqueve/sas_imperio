@@ -118,7 +118,7 @@ try {
         $pago_tr = $pago_en_esta - $pago_ef;
 
         $nuevo_saldo  = round($saldo_prev + $pago_en_esta, 2);
-        $nuevo_estado = ($nuevo_saldo >= round($cuota['monto_cuota'] + $mora_frozen, 2) - 0.01) ? 'PAGADA' : 'PARCIAL';
+        $nuevo_estado = determinar_estado_cuota((float) $cuota['monto_cuota'], $mora_frozen, $nuevo_saldo);
 
         // Fase 4: CAP_PAGADA en pago manual (consistente con flujo cobrador)
         if ($nuevo_estado === 'PARCIAL') {
@@ -172,6 +172,13 @@ try {
         $tr_remaining -= $pago_tr;
         $remaining    -= $pago_en_esta;
         $cuotas_ok++;
+    }
+
+    if ($cuotas_ok === 0) {
+        $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'No hay cuotas pendientes para cobrar en este crédito. No se registró ningún pago.'];
+        header('Location: ver?id=' . $credito_id);
+        exit;
     }
 
     // Recalcular estado del crédito — misma lógica que aprobar_rendicion()

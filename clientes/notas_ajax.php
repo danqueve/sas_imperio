@@ -15,6 +15,7 @@ $puede_escribir = in_array($rol, ['admin', 'supervisor']);
 if (!$cliente_id) { echo json_encode(['ok' => false, 'error' => 'ID inválido']); exit; }
 
 if ($method === 'GET') {
+    if (!$puede_escribir) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'Sin permiso']); exit; }
     $stmt = $pdo->prepare("
         SELECT n.id, n.nota, n.created_at,
                CONCAT(u.nombre, ' ', u.apellido) AS autor,

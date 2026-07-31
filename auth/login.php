@@ -18,19 +18,24 @@ if (!empty($_SESSION['user_id'])) {
 
 $error = '';
 
-// Rate limit: máx 5 intentos fallidos en 15 min por IP
-const LOGIN_MAX_INTENTOS  = 5;
-const LOGIN_VENTANA_SEG   = 15 * 60;
+// Rate limit: máx 5 intentos fallidos en 15 min por IP.
+// Persistido en ic_login_intentos (no en $_SESSION): una sesión nueva/descartada
+// no debe resetear el contador, si no el límite es trivial de evadir.
+const LOGIN_MAX_INTENTOS = 5;
+const LOGIN_VENTANA_SEG  = 15 * 60;
 
-if (!isset($_SESSION['login_intentos'])) {
-    $_SESSION['login_intentos'] = [];
+$ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$pdo = obtener_conexion();
+
+function contar_intentos_fallidos(PDO $pdo, string $ip): int
+{
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM ic_login_intentos
+        WHERE ip = ? AND fecha > DATE_SUB(NOW(), INTERVAL " . LOGIN_VENTANA_SEG . " SECOND)
+    ");
+    $stmt->execute([$ip]);
+    return (int) $stmt->fetchColumn();
 }
-// Limpiar intentos fuera de ventana
-$ahora = time();
-$_SESSION['login_intentos'] = array_filter(
-    $_SESSION['login_intentos'],
-    fn($t) => ($ahora - $t) < LOGIN_VENTANA_SEG
-);
 
 if (!empty($_SESSION['flash_login'])) {
     $error = $_SESSION['flash_login'];
@@ -38,9 +43,10 @@ if (!empty($_SESSION['flash_login'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (count($_SESSION['login_intentos']) >= LOGIN_MAX_INTENTOS) {
-        $proximo = LOGIN_VENTANA_SEG - ($ahora - min($_SESSION['login_intentos']));
-        $error = 'Demasiados intentos fallidos. Probá de nuevo en ' . max(1, ceil($proximo / 60)) . ' min.';
+    $intentos_previos = contar_intentos_fallidos($pdo, $ip);
+
+    if ($intentos_previos >= LOGIN_MAX_INTENTOS) {
+        $error = 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.';
     } else {
         $usuario  = trim($_POST['usuario'] ?? '');
         $password = $_POST['password'] ?? '';
@@ -48,7 +54,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($usuario === '' || $password === '') {
             $error = 'Completá usuario y contraseña.';
         } else {
-            $pdo  = obtener_conexion();
             $stmt = $pdo->prepare("SELECT * FROM ic_usuarios WHERE usuario = ? AND activo = 1 LIMIT 1");
             $stmt->execute([$usuario]);
             $user = $stmt->fetch();
@@ -60,7 +65,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['apellido']      = $user['apellido'];
                 $_SESSION['rol']           = $user['rol'];
                 $_SESSION['last_activity'] = time();
-                $_SESSION['login_intentos'] = [];
+
+                // Limpiar intentos fallidos de esta IP tras un login exitoso
+                $pdo->prepare("DELETE FROM ic_login_intentos WHERE ip = ?")->execute([$ip]);
 
                 registrar_log($pdo, (int)$user['id'], 'LOGIN', 'usuario', (int)$user['id'], 'Login exitoso');
 
@@ -72,8 +79,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header("Location: $destino");
                 exit;
             } else {
-                $_SESSION['login_intentos'][] = $ahora;
-                $restantes = LOGIN_MAX_INTENTOS - count($_SESSION['login_intentos']);
+                $pdo->prepare("INSERT INTO ic_login_intentos (ip, usuario_intentado) VALUES (?, ?)")
+                    ->execute([$ip, substr($usuario, 0, 60)]);
+                // Purga oportunista de intentos viejos (evita crecimiento indefinido de la tabla)
+                $pdo->exec("DELETE FROM ic_login_intentos WHERE fecha < DATE_SUB(NOW(), INTERVAL 1 DAY)");
+
+                $restantes = LOGIN_MAX_INTENTOS - ($intentos_previos + 1);
                 $error = 'Usuario o contraseña incorrectos.'
                     . ($restantes > 0 ? " ({$restantes} intento(s) restante(s))" : '');
             }

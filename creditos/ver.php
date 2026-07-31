@@ -15,6 +15,13 @@ if (!$id) {
     exit;
 }
 
+// Un cobrador solo puede ver créditos de sus propios clientes (evita IDOR por enumeración de id)
+$params_ver = [$id];
+$where_cob_ver = '';
+if (es_cobrador()) {
+    $where_cob_ver = ' AND cr.cobrador_id = ?';
+    $params_ver[] = $_SESSION['user_id'];
+}
 $stmt = $pdo->prepare("
     SELECT cr.*, cl.nombres, cl.apellidos, cl.telefono, cl.dni, cl.id AS cid,
            cl.puntaje_pago,
@@ -26,9 +33,9 @@ $stmt = $pdo->prepare("
     LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
     LEFT JOIN ic_vendedores v ON cr.vendedor_id=v.id
-    WHERE cr.id=?
+    WHERE cr.id=?{$where_cob_ver}
 ");
-$stmt->execute([$id]);
+$stmt->execute($params_ver);
 $cr = $stmt->fetch();
 if (!$cr) {
     header('Location: index');

@@ -12,6 +12,17 @@ $pdo = obtener_conexion();
 $id  = (int)($_GET['id'] ?? 0);
 if (!$id) die('ID de venta inválido.');
 
+// Un vendedor solo puede ver recibos de sus propias ventas (evita IDOR por enumeración de id)
+$params_recibo = [$id];
+$where_vend = '';
+if (es_vendedor()) {
+    $mv = $pdo->prepare("SELECT id FROM ic_vendedores WHERE usuario_id=? AND activo=1 LIMIT 1");
+    $mv->execute([$_SESSION['user_id']]);
+    $mi_vendedor_id = $mv->fetchColumn() ?: 0;
+    $where_vend = ' AND v.vendedor_id = ?';
+    $params_recibo[] = $mi_vendedor_id;
+}
+
 $stmt = $pdo->prepare("
     SELECT v.*,
            a.sku,
@@ -20,9 +31,9 @@ $stmt = $pdo->prepare("
     FROM ic_ventas v
     LEFT JOIN ic_articulos  a  ON a.id  = v.articulo_id
     LEFT JOIN ic_vendedores vd ON vd.id = v.vendedor_id
-    WHERE v.id = ?
+    WHERE v.id = ?{$where_vend}
 ");
-$stmt->execute([$id]);
+$stmt->execute($params_recibo);
 $v = $stmt->fetch();
 if (!$v) die('Recibo no encontrado.');
 

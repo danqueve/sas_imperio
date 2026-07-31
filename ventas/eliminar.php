@@ -6,8 +6,14 @@ require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_rol('admin');
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: index');
+    exit;
+}
+verificar_csrf();
+
 $pdo = obtener_conexion();
-$id  = (int)($_GET['id'] ?? 0);
+$id  = (int)($_POST['id'] ?? 0);
 
 if (!$id) {
     header('Location: index');

@@ -148,6 +148,13 @@ try {
         $cuotas_ok++;
     }
 
+    if ($cuotas_ok === 0) {
+        $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'No hay cuotas pendientes para cobrar en este crédito. No se registró ningún pago.'];
+        header('Location: agenda');
+        exit;
+    }
+
     // Si el cobrador ingresó más de lo que había pendiente, guardar el sobrante
     if ($remaining > 0.005 && $last_pt_id) {
         $pdo->prepare("UPDATE ic_pagos_temporales SET monto_sobrante = ? WHERE id = ?")
@@ -163,20 +170,16 @@ try {
     exit;
 }
 
-if ($cuotas_ok > 0) {
-    $msg = $cuotas_ok > 1
-        ? "Pago registrado para {$cuotas_ok} cuotas. Pendiente de aprobación."
-        : 'Pago registrado correctamente. Pendiente de aprobación del supervisor.';
-    // Avisar si el monto ingresado superó lo pendiente (excedente no aplicado)
-    if ($remaining > 0.005) {
-        $excedente = number_format($remaining, 0, ',', '.');
-        $msg .= " ⚠ Atención: $" . $excedente . " no fueron aplicados (exceden el saldo pendiente de las cuotas).";
-        $_SESSION['flash'] = ['type' => 'warning', 'msg' => $msg];
-    } else {
-        $_SESSION['flash'] = ['type' => 'success', 'msg' => $msg];
-    }
+$msg = $cuotas_ok > 1
+    ? "Pago registrado para {$cuotas_ok} cuotas. Pendiente de aprobación."
+    : 'Pago registrado correctamente. Pendiente de aprobación del supervisor.';
+// Avisar si el monto ingresado superó lo pendiente (excedente no aplicado)
+if ($remaining > 0.005) {
+    $excedente = number_format($remaining, 0, ',', '.');
+    $msg .= " ⚠ Atención: $" . $excedente . " no fueron aplicados (exceden el saldo pendiente de las cuotas).";
+    $_SESSION['flash'] = ['type' => 'warning', 'msg' => $msg];
 } else {
-    $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Todas las cuotas ya tienen un pago pendiente de aprobación.'];
+    $_SESSION['flash'] = ['type' => 'success', 'msg' => $msg];
 }
 
 header('Location: agenda');

@@ -1,5 +1,13 @@
 Options -Indexes
+
+# Bloquear acceso directo a carpetas sensibles (dumps de BD, backups, logs)
 RewriteEngine On
+RewriteRule ^(sql|sql_back|backups|logs)(/|$) - [F,L]
+
+# Bloquear por extension en cualquier ruta (dumps, configs, backups sueltos)
+<FilesMatch "\.(sql|sql\.gz|log)$">
+    Require all denied
+</FilesMatch>
 
 # If the request is for an existing file or directory, serve it directly
 RewriteCond %{REQUEST_FILENAME} -f [OR]

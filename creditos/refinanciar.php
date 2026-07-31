@@ -139,6 +139,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($tiene_pagos_pendientes) {
         $error = 'Hay cobros pendientes de aprobación en la rendición. Aprobá o rechazá esas entradas antes de refinanciar.';
+    } elseif ($mora_cap_pagada > 0 && !$f['capitalizar_mora']) {
+        $error = 'Hay ' . formato_pesos($mora_cap_pagada) . ' de mora en cuotas con capital ya pagado (CAP_PAGADA). '
+            . 'Tildá "Capitalizar mora" para incluirla en el nuevo crédito, o condonala manualmente antes de refinanciar '
+            . '(si no, quedaría como deuda incobrable al finalizar este crédito).';
     } elseif ($f['nuevas_cuotas'] < 1 || $f['nuevas_cuotas'] > 520) {
         $error = 'La cantidad de nuevas cuotas debe estar entre 1 y 520.';
     } elseif (empty($f['primer_vencimiento'])) {
@@ -156,6 +160,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 $pdo->beginTransaction();
+
+                // Re-chequear el estado con lock: evita que un doble submit/doble clic
+                // refinancie el mismo crédito dos veces (crea dos créditos nuevos duplicados).
+                $lock = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id = ? FOR UPDATE");
+                $lock->execute([$id]);
+                $estado_actual = $lock->fetchColumn();
+                if (!in_array($estado_actual, ['EN_CURSO', 'MOROSO'], true)) {
+                    $pdo->rollBack();
+                    $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Este crédito ya fue refinanciado (probablemente por un envío duplicado).'];
+                    header("Location: ver?id=$id");
+                    exit;
+                }
 
                 // 1. Eliminar cuotas PENDIENTE y VENCIDA del crédito original.
                 //    Primero borrar pagos_temporales RECHAZADOS que referencian esas cuotas

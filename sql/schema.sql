@@ -373,4 +373,15 @@ ALTER TABLE `ic_cuotas`
     ENUM('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA','CANCELADA')
     DEFAULT 'PENDIENTE';
 
+-- ------------------------------------------------------------
+-- Tabla ic_login_intentos — rate limiting de login por IP
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ic_login_intentos` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `ip` VARCHAR(45) NOT NULL,
+  `usuario_intentado` VARCHAR(60) NULL,
+  `fecha` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_ip_fecha` (`ip`, `fecha`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

@@ -12,13 +12,20 @@ $pdo = obtener_conexion();
 $id  = (int)($_GET['id'] ?? 0);
 if (!$id) { header('Location: index'); exit; }
 
+// Un cobrador solo puede ver la ficha de sus propios clientes (evita IDOR por enumeración de id)
+$params_ver = [$id];
+$where_cob_ver = '';
+if (es_cobrador()) {
+    $where_cob_ver = ' AND c.cobrador_id = ?';
+    $params_ver[] = $_SESSION['user_id'];
+}
 $stmt = $pdo->prepare("
     SELECT c.*, u.nombre AS cobrador_nombre, u.apellido AS cobrador_apellido
     FROM ic_clientes c
     LEFT JOIN ic_usuarios u ON c.cobrador_id = u.id
-    WHERE c.id = ?
+    WHERE c.id = ?{$where_cob_ver}
 ");
-$stmt->execute([$id]);
+$stmt->execute($params_ver);
 $c = $stmt->fetch();
 if (!$c) { header('Location: index'); exit; }
 

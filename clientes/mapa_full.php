@@ -297,6 +297,12 @@ let soloActivos = false;
 const ESTADO_COLOR = { 'EN_CURSO':'#10b981','MOROSO':'#ef4444','sin_credito':'#6b7280' };
 const ESTADO_LABEL = { 'EN_CURSO':'En Curso','MOROSO':'Moroso','sin_credito':'Sin crédito' };
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+}
+
 function makeIcon(color) {
     return L.divIcon({
         className: '',
@@ -343,10 +349,10 @@ function renderizar() {
         const m = L.marker([cl.lat, cl.lng], { icon: makeIcon(color) })
             .bindPopup(`
                 <div style="min-width:190px;font-family:Arial,sans-serif;font-size:13px">
-                    <strong><a href="../clientes/ver?id=${cl.id}" target="_blank">${cl.nombre}</a></strong><br>
-                    <span style="color:#6b7280;font-size:11px">${cl.zona||'—'} · <span style="color:${color};font-weight:700">${cl.cobrador||'—'}</span></span><br><br>
+                    <strong><a href="../clientes/ver?id=${cl.id}" target="_blank">${escapeHtml(cl.nombre)}</a></strong><br>
+                    <span style="color:#6b7280;font-size:11px">${escapeHtml(cl.zona||'—')} · <span style="color:${color};font-weight:700">${escapeHtml(cl.cobrador||'—')}</span></span><br><br>
                     <span style="padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:${ecColor}22;color:${ecColor}">${ecLabel}</span>
-                    ${cl.tel ? `<br><a href="https://wa.me/${cl.tel.replace(/\D/g,'')}">📱 ${cl.tel}</a>` : ''}
+                    ${cl.tel ? `<br><a href="https://wa.me/${cl.tel.replace(/\D/g,'')}">📱 ${escapeHtml(cl.tel)}</a>` : ''}
                 </div>
             `);
         m.addTo(map);
@@ -380,7 +386,7 @@ function renderizar() {
         const nombre = clientes.find(d => d.cobrador_id==id)?.cobrador || 'Sin cobrador';
         return `<span style="display:flex;align-items:center;gap:5px">
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,.3)"></span>
-            ${nombre}
+            ${escapeHtml(nombre)}
         </span>`;
     }).join('');
 

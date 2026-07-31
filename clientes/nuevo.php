@@ -45,6 +45,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'El DNI ' . e($dni_input) . ' ya está registrado para el cliente: <strong>' . e($dup['apellidos'] . ', ' . $dup['nombres']) . '</strong>. <a href="ver?id=' . (int)$dup['id'] . '">Ver cliente</a>';
             }
         }
+
+        // Verificar DNI/CUIL único del garante
+        if (!$error && !empty($v['tiene_garante'])) {
+            $g_dni_input = trim($v['g_dni'] ?? '');
+            $g_cuil_input = trim($v['g_cuil'] ?? '');
+            if ($g_dni_input !== '') {
+                $stmt_gdni = $pdo->prepare("
+                    SELECT g.id, cl.nombres, cl.apellidos, cl.id AS cliente_id
+                    FROM ic_garantes g JOIN ic_clientes cl ON g.cliente_id = cl.id
+                    WHERE g.dni = ? LIMIT 1
+                ");
+                $stmt_gdni->execute([$g_dni_input]);
+                $gdup = $stmt_gdni->fetch();
+                if ($gdup) {
+                    $error = 'El DNI ' . e($g_dni_input) . ' del garante ya está registrado como garante del cliente: <strong>' . e($gdup['apellidos'] . ', ' . $gdup['nombres']) . '</strong>. <a href="ver?id=' . (int)$gdup['cliente_id'] . '">Ver cliente</a>';
+                }
+            }
+            if (!$error && $g_cuil_input !== '') {
+                $stmt_gcuil = $pdo->prepare("
+                    SELECT g.id, cl.nombres, cl.apellidos, cl.id AS cliente_id
+                    FROM ic_garantes g JOIN ic_clientes cl ON g.cliente_id = cl.id
+                    WHERE g.cuil = ? LIMIT 1
+                ");
+                $stmt_gcuil->execute([$g_cuil_input]);
+                $gdup2 = $stmt_gcuil->fetch();
+                if ($gdup2) {
+                    $error = 'El CUIL ' . e($g_cuil_input) . ' del garante ya está registrado como garante del cliente: <strong>' . e($gdup2['apellidos'] . ', ' . $gdup2['nombres']) . '</strong>. <a href="ver?id=' . (int)$gdup2['cliente_id'] . '">Ver cliente</a>';
+                }
+            }
+        }
     }
 
     if (!$error) {
