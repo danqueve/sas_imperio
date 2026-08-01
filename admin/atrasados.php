@@ -87,6 +87,24 @@ $cobrador_id = (int) ($_GET['cobrador_id'] ?? 0);
 $zona_sel    = trim($_GET['zona'] ?? '');
 $vista       = ($_GET['vista'] ?? 'cuotas') === 'clientes' ? 'clientes' : 'cuotas';
 
+// ── Rango de fechas — sólo afecta "Monto Cobrado" del resumen por zona ──
+$hoy            = date('Y-m-d');
+$primer_dia_mes = date('Y-m-01');
+$desde = (isset($_GET['desde']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['desde']))
+    ? $_GET['desde'] : $primer_dia_mes;
+$hasta = (isset($_GET['hasta']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['hasta']))
+    ? $_GET['hasta'] : $hoy;
+if ($desde > $hasta) [$desde, $hasta] = [$hasta, $desde];
+$hasta_ext = (date('N', strtotime($hasta)) == 6) ? date('Y-m-d', strtotime($hasta . ' +1 day')) : $hasta;
+
+$mes_ant_ini = date('Y-m-01', strtotime('first day of last month'));
+$mes_ant_fin = date('Y-m-t',  strtotime('first day of last month'));
+$trim_ini    = date('Y-m-01', strtotime('-2 months'));
+$periodo_activo = 'custom';
+if ($desde === $primer_dia_mes && $hasta === $hoy) $periodo_activo = 'mes';
+elseif ($desde === $mes_ant_ini && $hasta === $mes_ant_fin) $periodo_activo = 'mes_ant';
+elseif ($desde === $trim_ini && $hasta === $hoy) $periodo_activo = 'trimestre';
+
 // ── Paginación ───────────────────────────────────────────────
 $page   = max(1, (int) ($_GET['page'] ?? 1));
 $limit  = 50;
@@ -127,6 +145,81 @@ $stmtCob = $pdo->prepare("
 ");
 $stmtCob->execute($params);
 $resumen_cob = $stmtCob->fetchAll();
+
+// ── Resumen por zona (siempre, independiente de paginación) ──
+// Z1: Saldo vencido + días máx de atraso + clientes atrasados, por zona
+$stmtZonaSaldo = $pdo->prepare("
+    SELECT
+        cl.zona,
+        SUM(cu.monto_cuota - cu.saldo_pagado)          AS saldo_zona,
+        MAX(DATEDIFF(CURDATE(), cu.fecha_vencimiento)) AS max_dias_zona,
+        COUNT(DISTINCT cl.id)                          AS clientes_atrasados_zona
+    FROM ic_cuotas cu
+    JOIN ic_creditos cr ON cu.credito_id = cr.id
+    JOIN ic_clientes cl ON cr.cliente_id = cl.id
+    WHERE $whereStr
+    GROUP BY cl.zona
+");
+$stmtZonaSaldo->execute($params);
+
+// Z2: Clientes activos por zona (denominador del %) — condición propia
+$whereActivos  = ["cr.estado IN ('EN_CURSO','MOROSO')"];
+$paramsActivos = [];
+if ($cobrador_id > 0) { $whereActivos[] = 'cr.cobrador_id = ?'; $paramsActivos[] = $cobrador_id; }
+if ($zona_sel !== '') { $whereActivos[] = 'cl.zona = ?';        $paramsActivos[] = $zona_sel; }
+$stmtZonaActivos = $pdo->prepare("
+    SELECT cl.zona, COUNT(DISTINCT cl.id) AS clientes_activos_zona
+    FROM ic_creditos cr
+    JOIN ic_clientes cl ON cr.cliente_id = cl.id
+    WHERE " . implode(' AND ', $whereActivos) . "
+    GROUP BY cl.zona
+");
+$stmtZonaActivos->execute($paramsActivos);
+
+// Z3: Monto cobrado por zona, entre $desde y $hasta_ext
+$whereMC  = ['pc.fecha_pago BETWEEN ? AND ?'];
+$paramsMC = [$desde, $hasta_ext];
+if ($cobrador_id > 0) { $whereMC[] = 'cr.cobrador_id = ?'; $paramsMC[] = $cobrador_id; }
+if ($zona_sel !== '') { $whereMC[] = 'cl.zona = ?';        $paramsMC[] = $zona_sel; }
+$stmtZonaCobrado = $pdo->prepare("
+    SELECT cl.zona, SUM(pc.monto_total) AS monto_cobrado_zona
+    FROM ic_pagos_confirmados pc
+    JOIN ic_cuotas cu   ON pc.cuota_id = cu.id
+    JOIN ic_creditos cr ON cu.credito_id = cr.id
+    JOIN ic_clientes cl ON cr.cliente_id = cl.id
+    WHERE " . implode(' AND ', $whereMC) . "
+    GROUP BY cl.zona
+");
+$stmtZonaCobrado->execute($paramsMC);
+
+// ── Reshape en PHP → $por_zona[zona] = [...] ─────────────────
+$por_zona = [];
+$zInit = ['saldo' => 0.0, 'max_dias' => 0, 'clientes_atrasados' => 0, 'clientes_activos' => 0, 'monto_cobrado' => 0.0];
+
+foreach ($stmtZonaSaldo->fetchAll() as $r) {
+    $z = $r['zona'] ?: 'Sin zona';
+    $por_zona[$z] = $por_zona[$z] ?? $zInit;
+    $por_zona[$z]['saldo']              = (float) $r['saldo_zona'];
+    $por_zona[$z]['max_dias']           = (int) $r['max_dias_zona'];
+    $por_zona[$z]['clientes_atrasados'] = (int) $r['clientes_atrasados_zona'];
+}
+foreach ($stmtZonaActivos->fetchAll() as $r) {
+    $z = $r['zona'] ?: 'Sin zona';
+    $por_zona[$z] = $por_zona[$z] ?? $zInit;
+    $por_zona[$z]['clientes_activos'] = (int) $r['clientes_activos_zona'];
+}
+foreach ($stmtZonaCobrado->fetchAll() as $r) {
+    $z = $r['zona'] ?: 'Sin zona';
+    $por_zona[$z] = $por_zona[$z] ?? $zInit;
+    $por_zona[$z]['monto_cobrado'] = (float) $r['monto_cobrado_zona'];
+}
+foreach ($por_zona as &$dz) {
+    $dz['pct_atrasados'] = $dz['clientes_activos'] > 0
+        ? round($dz['clientes_atrasados'] / $dz['clientes_activos'] * 100, 1)
+        : 0.0;
+}
+unset($dz);
+uasort($por_zona, fn($a, $b) => $b['saldo'] <=> $a['saldo']);
 
 // ── Datos: VISTA POR CUOTA ───────────────────────────────────
 if ($vista === 'cuotas') {
@@ -252,6 +345,8 @@ function url_vista(string $v, array $get): string {
 <div class="card-ic mb-4">
     <form method="GET" class="filter-bar">
         <input type="hidden" name="vista" value="<?= e($vista) ?>">
+        <input type="hidden" name="desde" value="<?= e($desde) ?>">
+        <input type="hidden" name="hasta" value="<?= e($hasta) ?>">
         <select name="cobrador_id">
             <option value="">Todos los cobradores</option>
             <?php foreach ($cobradores as $c): ?>
@@ -305,6 +400,82 @@ function url_vista(string $v, array $get): string {
     <?php endforeach; ?>
 </div>
 <?php endif; ?>
+
+<!-- RESUMEN POR ZONA -->
+<div class="card-ic mb-4">
+    <div class="card-ic-header" style="flex-wrap:wrap;gap:8px">
+        <span class="card-title"><i class="fa fa-map-location-dot"></i> Resumen por Zona</span>
+        <span class="text-muted" style="font-size:.78rem">
+            Cobrado del <?= date('d/m/Y', strtotime($desde)) ?> al <?= date('d/m/Y', strtotime($hasta)) ?>
+        </span>
+    </div>
+
+    <!-- Selector de período: sólo afecta la columna "Monto Cobrado" -->
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;flex-wrap:wrap;gap:8px">
+        <span style="font-size:.75rem;color:var(--text-muted)">Período cobrado:</span>
+        <?php $qs_base = array_filter(['cobrador_id' => $cobrador_id ?: null, 'zona' => $zona_sel ?: null, 'vista' => $vista]); ?>
+        <a href="?<?= e(http_build_query(array_merge($qs_base, ['desde' => $primer_dia_mes, 'hasta' => $hoy]))) ?>"
+           class="btn-ic btn-sm <?= $periodo_activo === 'mes' ? 'btn-primary' : 'btn-ghost' ?>">Mes actual</a>
+        <a href="?<?= e(http_build_query(array_merge($qs_base, ['desde' => $mes_ant_ini, 'hasta' => $mes_ant_fin]))) ?>"
+           class="btn-ic btn-sm <?= $periodo_activo === 'mes_ant' ? 'btn-primary' : 'btn-ghost' ?>">Mes anterior</a>
+        <a href="?<?= e(http_build_query(array_merge($qs_base, ['desde' => $trim_ini, 'hasta' => $hoy]))) ?>"
+           class="btn-ic btn-sm <?= $periodo_activo === 'trimestre' ? 'btn-primary' : 'btn-ghost' ?>">Último trimestre</a>
+        <form method="GET" style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap">
+            <input type="hidden" name="cobrador_id" value="<?= $cobrador_id ?>">
+            <input type="hidden" name="zona" value="<?= e($zona_sel) ?>">
+            <input type="hidden" name="vista" value="<?= e($vista) ?>">
+            <input type="date" name="desde" value="<?= e($desde) ?>" max="<?= $hoy ?>" style="min-width:130px">
+            <input type="date" name="hasta" value="<?= e($hasta) ?>" max="<?= $hoy ?>" style="min-width:130px">
+            <button type="submit" class="btn-ic btn-ghost btn-sm"><i class="fa fa-search"></i></button>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table-ic">
+            <thead>
+                <tr>
+                    <th>Zona</th>
+                    <th class="text-right">Saldo</th>
+                    <th class="text-center">Atraso (días)</th>
+                    <th class="text-center">% Atrasados</th>
+                    <th class="text-right">Monto Cobrado</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($por_zona)): ?>
+                <tr><td colspan="5" class="text-center text-muted" style="padding:30px">
+                    No hay datos de zona con los filtros aplicados.
+                </td></tr>
+            <?php else: $tot_saldo = 0.0; $tot_cobrado = 0.0; ?>
+                <?php foreach ($por_zona as $zona_nombre => $dz):
+                    $tot_saldo   += $dz['saldo'];
+                    $tot_cobrado += $dz['monto_cobrado'];
+                    $col_pct = $dz['pct_atrasados'] > 20 ? 'var(--danger)' : ($dz['pct_atrasados'] > 10 ? '#f97316' : 'var(--success)');
+                ?>
+                <tr>
+                    <td><span class="badge" style="background:var(--info,#0ea5e9);color:#fff;font-size:.75rem"><?= e($zona_nombre) ?></span></td>
+                    <td class="text-right fw-bold" style="color:var(--danger)"><?= formato_pesos($dz['saldo']) ?></td>
+                    <td class="text-center"><?= $dz['max_dias'] ?> d.</td>
+                    <td class="text-center" style="font-weight:700;color:<?= $col_pct ?>">
+                        <?= $dz['pct_atrasados'] ?>%
+                        <div style="font-size:.7rem;color:var(--text-muted);font-weight:400">
+                            <?= $dz['clientes_atrasados'] ?>/<?= $dz['clientes_activos'] ?>
+                        </div>
+                    </td>
+                    <td class="text-right" style="color:var(--success)"><?= formato_pesos($dz['monto_cobrado']) ?></td>
+                </tr>
+                <?php endforeach; ?>
+                <tr style="background:var(--bg-card);border-top:2px solid var(--border)">
+                    <td class="text-right fw-bold">TOTALES</td>
+                    <td class="text-right fw-bold" style="color:var(--danger)"><?= formato_pesos($tot_saldo) ?></td>
+                    <td colspan="2"></td>
+                    <td class="text-right fw-bold" style="color:var(--success)"><?= formato_pesos($tot_cobrado) ?></td>
+                </tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
 
 <!-- TABLA -->
 <div class="card-ic">
