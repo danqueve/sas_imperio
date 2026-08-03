@@ -8,6 +8,20 @@ require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('alta_creditos');
 
+// Evita que un crédito semanal quede fosilizado en el día de semana equivocado:
+// generar_cuotas() nunca vuelve a leer dia_cobro, así que si el Primer Vencimiento
+// no cae en ese día, todas las cuotas futuras heredan el error para siempre.
+function validar_dia_cobro_vs_fecha(string $frecuencia, $dia_cobro, string $primer_vencimiento): ?string
+{
+    if ($frecuencia !== 'semanal' || empty($dia_cobro)) return null;
+    $dias = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    $dow_fecha  = (int) date('N', strtotime($primer_vencimiento));
+    $dia_cobro  = (int) $dia_cobro;
+    if ($dow_fecha === $dia_cobro) return null;
+    return "La fecha de Primer Vencimiento cae en {$dias[$dow_fecha]}, pero el Día de Cobro elegido es {$dias[$dia_cobro]}. "
+         . "Elegí una fecha que caiga en {$dias[$dia_cobro]} para que las cuotas no queden desalineadas.";
+}
+
 $pdo = obtener_conexion();
 $cliente_id = (int) ($_GET['cliente_id'] ?? 0);
 
@@ -96,6 +110,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Completá todos los campos obligatorios.';
         } elseif (empty($raw_art_ids)) {
             $error = 'Agregá al menos un artículo al combo.';
+        } elseif ($msg = validar_dia_cobro_vs_fecha($v['frecuencia'], $v['dia_cobro'] ?? null, $v['primer_vencimiento'])) {
+            $error = $msg;
         } else {
             $items_validos = [];
             foreach ($raw_art_ids as $i => $aid) {
@@ -249,6 +265,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ($articulo_id === 0 && $articulo_desc_input === '')
         ) {
             $error = 'Completá todos los campos obligatorios (incluido el artículo).';
+        } elseif ($msg = validar_dia_cobro_vs_fecha($v['frecuencia'], $v['dia_cobro'] ?? null, $v['primer_vencimiento'])) {
+            $error = $msg;
         } else {
             $precio     = (float) $v['precio_articulo'];
             $monto_tot  = (float) $v['monto_total'];

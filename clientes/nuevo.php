@@ -14,8 +14,9 @@ $cobradores = $pdo->query("SELECT id, nombre, apellido, usuario FROM ic_usuarios
 // Zona predeterminada por cobrador (según username)
 $zona_por_usuario = [
     'santizalazar' => 'Zona 1',
-    'jpbicego'     => 'Zona 2',
-    'enzoteceira'  => 'Zona 3',
+    'jpbicego'     => 'Norte',
+    'enzoteceira'  => 'Sur',
+    'sebadelga'    => 'Este',
     'masanchez'    => 'Zona 4-6',
 ];
 $cob_zona_map = [];
