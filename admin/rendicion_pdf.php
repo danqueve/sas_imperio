@@ -17,10 +17,22 @@ $multi_jornada = ($fecha_sel === '' || $fecha_sel === 'all');
 
 if (!$cobrador_id) die('Cobrador no especificado.');
 
-$cob_stmt = $pdo->prepare("SELECT nombre, apellido FROM ic_usuarios WHERE id = ?");
+$cob_stmt = $pdo->prepare("SELECT nombre, apellido, usuario FROM ic_usuarios WHERE id = ?");
 $cob_stmt->execute([$cobrador_id]);
 $cobrador = $cob_stmt->fetch();
 if (!$cobrador) die('Cobrador no encontrado.');
+
+// Resumen semanal (Lun-Mié): solo para los 3 cobradores con ese esquema de visita
+$es_cobrador_semanal = in_array($cobrador['usuario'], ['enzoteceira', 'jpbicego', 'sebadelga'], true);
+
+$clientes_semanal_cobrados  = 0;
+$clientes_semanal_faltan    = 0;
+$clientes_semanal_criticos  = 0;
+$clientes_quincenal         = 0;
+$clientes_mensual           = 0;
+$dinero_faltante_semanal    = 0.0;
+$dinero_faltante_quincenal  = 0.0;
+$dinero_faltante_mensual    = 0.0;
 
 // ── Query: una fecha o todas las pendientes ─────────────────
 if ($multi_jornada) {
@@ -81,6 +93,102 @@ if ($multi_jornada) {
 $pagos_raw = $dstmt->fetchAll();
 
 if (empty($pagos_raw)) die('No hay pagos pendientes para esta rendicion.');
+
+if ($es_cobrador_semanal) {
+    // Cuotas que ya tienen un pago pendiente de aprobar en ESTA rendición (todas las
+    // jornadas que se están mostrando, unificadas) — cuentan como "cobradas" aunque
+    // ic_cuotas.saldo_pagado todavía no lo refleje (recién se actualiza al aprobar).
+    $cuotas_con_pago_pendiente = array_flip(array_column($pagos_raw, 'cuota_id'));
+
+    // Ventana Lunes-Miércoles de la semana en curso
+    $hoy_dt    = new DateTime();
+    $dow_hoy   = (int) $hoy_dt->format('N'); // 1=Lunes ... 7=Domingo
+    $lunes_sem = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->format('Y-m-d');
+    $mier_sem  = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->modify('+2 days')->format('Y-m-d');
+
+    // Semanal: clientes con cuota venciendo esta semana, cobrados vs faltan
+    $stmt_sem = $pdo->prepare("
+        SELECT cu.id, cu.estado, cu.monto_cuota, cu.monto_mora, cu.saldo_pagado, cu.fecha_vencimiento,
+               cr.interes_moratorio_pct, cr.cliente_id,
+               (SELECT COUNT(*)
+                FROM ic_cuotas cu2
+                JOIN ic_creditos cr2 ON cu2.credito_id = cr2.id
+                WHERE cr2.cliente_id = cr.cliente_id
+                  AND cu2.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+                  AND cr2.estado IN ('EN_CURSO','MOROSO')
+                  AND cu2.fecha_vencimiento < CURDATE()
+                  AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
+               ) AS cuotas_atrasadas_cliente
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        WHERE cr.cobrador_id = ? AND cr.estado IN ('EN_CURSO','MOROSO')
+          AND cr.frecuencia = 'semanal'
+          AND cu.fecha_vencimiento BETWEEN ? AND ?
+          AND cu.estado != 'CANCELADA'
+    ");
+    $stmt_sem->execute([$cobrador_id, $lunes_sem, $mier_sem]);
+
+    $clientes_cobrados_set = [];
+    $clientes_faltan_set   = [];
+    $clientes_criticos_set = [];
+    foreach ($stmt_sem->fetchAll() as $cu) {
+        $cobrado = ((float) $cu['saldo_pagado'] > 0)
+            || in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA'], true)
+            || isset($cuotas_con_pago_pendiente[$cu['id']]);
+        if ($cobrado) {
+            $clientes_cobrados_set[$cu['cliente_id']] = true;
+        } else {
+            $clientes_faltan_set[$cu['cliente_id']] = true;
+            if ((int) $cu['cuotas_atrasadas_cliente'] >= 5) {
+                $clientes_criticos_set[$cu['cliente_id']] = true;
+            }
+            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+            $mora = (float) $cu['monto_mora'] > 0
+                ? (float) $cu['monto_mora']
+                : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
+            $dinero_faltante_semanal += max(0, (float) $cu['monto_cuota'] + $mora - (float) $cu['saldo_pagado']);
+        }
+    }
+    $clientes_semanal_cobrados = count($clientes_cobrados_set);
+    $clientes_semanal_faltan   = count($clientes_faltan_set);
+    $clientes_semanal_criticos = count($clientes_criticos_set);
+
+    // Quincenal/Mensual: solo lo ya vencido o venciendo hoy — NO las cuotas futuras
+    // del mismo crédito (un mensual a 12 meses tiene ~11 cuotas en PENDIENTE en
+    // cualquier momento; sumarlas todas mostraría el saldo total del préstamo,
+    // no la deuda actual realmente exigible).
+    $stmt_qm = $pdo->prepare("
+        SELECT cr.frecuencia, cr.cliente_id, cr.interes_moratorio_pct,
+               cu.monto_cuota, cu.monto_mora, cu.saldo_pagado, cu.fecha_vencimiento
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        WHERE cr.cobrador_id = ? AND cr.estado IN ('EN_CURSO','MOROSO')
+          AND cr.frecuencia IN ('quincenal','mensual')
+          AND cu.estado IN ('PENDIENTE','VENCIDA','PARCIAL','CAP_PAGADA')
+          AND cu.fecha_vencimiento <= CURDATE()
+    ");
+    $stmt_qm->execute([$cobrador_id]);
+
+    $clientes_quincenal_set = [];
+    $clientes_mensual_set   = [];
+    foreach ($stmt_qm->fetchAll() as $cu) {
+        $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+        $mora = (float) $cu['monto_mora'] > 0
+            ? (float) $cu['monto_mora']
+            : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
+        $faltante = max(0, (float) $cu['monto_cuota'] + $mora - (float) $cu['saldo_pagado']);
+
+        if ($cu['frecuencia'] === 'quincenal') {
+            $clientes_quincenal_set[$cu['cliente_id']] = true;
+            $dinero_faltante_quincenal += $faltante;
+        } else {
+            $clientes_mensual_set[$cu['cliente_id']] = true;
+            $dinero_faltante_mensual += $faltante;
+        }
+    }
+    $clientes_quincenal = count($clientes_quincenal_set);
+    $clientes_mensual   = count($clientes_mensual_set);
+}
 
 // ── Agrupar pagos multi-cuota por crédito + jornada ─────────
 $agrupado = [];
@@ -392,6 +500,63 @@ if ($es_multi) {
 $pdf->Ln(10);
 $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
+
+$y_inicio_resumen = $pdf->GetY();
+
+// ── Resumen semanal (Lun-Mié) — solo enzoteceira/jpbicego/sebadelga ──
+// Layout tipo "fila de KPIs": pares label/valor en 2 columnas para los conteos,
+// filas completas para los montos — evita una lista larga de una sola columna.
+if ($es_cobrador_semanal) {
+    $bx_s = 10;
+    $bw_s = 85; // ancho total de la caja (hasta x=95, donde arranca la caja de Total Rendido)
+    $bwq  = $bw_s / 4; // 4 cuartos: label|valor|label|valor por fila de 2 KPIs
+
+    $pct_cobrado = ($clientes_semanal_cobrados + $clientes_semanal_faltan) > 0
+        ? round($clientes_semanal_cobrados / ($clientes_semanal_cobrados + $clientes_semanal_faltan) * 100)
+        : 0;
+
+    $pdf->SetFont('Helvetica', 'B', 9);
+    $pdf->SetFillColor(230, 230, 230);
+    $pdf->SetX($bx_s);
+    $pdf->Cell($bw_s, 6, lat('Resumen Semanal (Lun-Mie)'), 1, 1, 'L', true);
+    $pdf->SetFillColor(255, 255, 255);
+
+    // Filas de 2 KPIs (label + valor, label + valor)
+    $kpis_pares = [
+        ['Cobrados',            (string) $clientes_semanal_cobrados,  'Faltan cobrar',   (string) $clientes_semanal_faltan],
+        ['Criticos (5+ atr.)',  (string) $clientes_semanal_criticos,  '% Cobrado',       $pct_cobrado . '%'],
+        ['Quincenal (cli.)',    (string) $clientes_quincenal,          'Mensual (cli.)',  (string) $clientes_mensual],
+    ];
+    foreach ($kpis_pares as [$l1, $v1, $l2, $v2]) {
+        $pdf->SetX($bx_s);
+        $pdf->SetFont('Helvetica', '', 8);
+        $pdf->Cell($bwq, 7, $pdf->fitText($l1, $bwq - 1), 1, 0, 'L', false);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->Cell($bwq, 7, $pdf->fitText($v1, $bwq - 1), 1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', '', 8);
+        $pdf->Cell($bwq, 7, $pdf->fitText($l2, $bwq - 1), 1, 0, 'L', false);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->Cell($bwq, 7, $pdf->fitText($v2, $bwq - 1), 1, 1, 'R', false);
+    }
+
+    // Filas de dinero faltante, ancho completo (label con cantidad de clientes + monto)
+    $bw1_m = $bw_s * 0.6;
+    $bw2_m = $bw_s * 0.4;
+    $dinero_faltan = [
+        ['Falta cobrar Semanal (' . $clientes_semanal_faltan . ' cli.)', fmt($dinero_faltante_semanal)],
+        ['Falta cobrar Quincenal (' . $clientes_quincenal . ' cli.)',    fmt($dinero_faltante_quincenal)],
+        ['Falta cobrar Mensual (' . $clientes_mensual . ' cli.)',       fmt($dinero_faltante_mensual)],
+    ];
+    foreach ($dinero_faltan as [$label, $valor]) {
+        $pdf->SetX($bx_s);
+        $pdf->SetFont('Helvetica', '', 8);
+        $pdf->Cell($bw1_m, 7, $pdf->fitText($label, $bw1_m - 1), 1, 0, 'L', false);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->Cell($bw2_m, 7, $pdf->fitText($valor, $bw2_m - 1), 1, 1, 'R', false);
+    }
+
+    $pdf->SetY($y_inicio_resumen);
+}
 
 $bx  = 95;
 $bw1 = 55;
