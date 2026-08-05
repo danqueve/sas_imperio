@@ -33,6 +33,7 @@ $clientes_mensual           = 0;
 $dinero_faltante_semanal    = 0.0;
 $dinero_faltante_quincenal  = 0.0;
 $dinero_faltante_mensual    = 0.0;
+$monto_estimado_semanal     = 0.0;
 
 // ── Query: una fecha o todas las pendientes ─────────────────
 if ($multi_jornada) {
@@ -132,6 +133,12 @@ if ($es_cobrador_semanal) {
     $clientes_faltan_set   = [];
     $clientes_criticos_set = [];
     foreach ($stmt_sem->fetchAll() as $cu) {
+        $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+        $mora = (float) $cu['monto_mora'] > 0
+            ? (float) $cu['monto_mora']
+            : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
+        $monto_estimado_semanal += (float) $cu['monto_cuota'] + $mora;
+
         $cobrado = ((float) $cu['saldo_pagado'] > 0)
             || in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA'], true)
             || isset($cuotas_con_pago_pendiente[$cu['id']]);
@@ -142,10 +149,6 @@ if ($es_cobrador_semanal) {
             if ((int) $cu['cuotas_atrasadas_cliente'] >= 5) {
                 $clientes_criticos_set[$cu['cliente_id']] = true;
             }
-            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
-            $mora = (float) $cu['monto_mora'] > 0
-                ? (float) $cu['monto_mora']
-                : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
             $dinero_faltante_semanal += max(0, (float) $cu['monto_cuota'] + $mora - (float) $cu['saldo_pagado']);
         }
     }
@@ -520,7 +523,7 @@ if ($total_sobrante > 0.005) {
 $resumen[] = ['TOTAL RENDIDO', fmt($total_general + $total_sobrante)];
 
 $alto_caja_resumen = count($resumen) * 7;
-$alto_caja_semanal = $es_cobrador_semanal ? (6 + 3 * 7 + 3 * 7) : 0; // header + 3 filas KPI + 3 filas dinero
+$alto_caja_semanal = $es_cobrador_semanal ? (6 + 3 * 7 + 4 * 7) : 0; // header + 3 filas KPI + 4 filas dinero
 $alto_necesario     = 10 + max($alto_caja_resumen, $alto_caja_semanal); // + Ln(10) previo
 
 if ($pdf->GetY() + $alto_necesario > $pdf->GetPageHeight() - 16) {
@@ -576,6 +579,7 @@ if ($es_cobrador_semanal) {
         ['Falta cobrar Semanal (' . $clientes_semanal_faltan . ' cli.)', fmt($dinero_faltante_semanal)],
         ['Falta cobrar Quincenal (' . $clientes_quincenal . ' cli.)',    fmt($dinero_faltante_quincenal)],
         ['Falta cobrar Mensual (' . $clientes_mensual . ' cli.)',       fmt($dinero_faltante_mensual)],
+        ['Monto Estimado Semana',                                       fmt($monto_estimado_semanal)],
     ];
     foreach ($dinero_faltan as [$label, $valor]) {
         $pdf->SetX($bx_s);
@@ -607,6 +611,15 @@ if ($es_cobrador_semanal) {
     }
 }
 
+// ── Nota aclaratoria: alcance del Resumen Semanal ────────────
+if ($es_cobrador_semanal) {
+    $pdf->Ln(6);
+    $pdf->SetFont('Helvetica', 'I', 8);
+    $pdf->SetTextColor(80, 80, 80);
+    $pdf->SetX(10);
+    $pdf->Cell($ANCHO_TOTAL, 5, lat('Nota: incluye TODOS los clientes de la semana (tambien Criticos) - puede diferir del "Subtotal Semanales" de la Agenda de Cobro.'), 0, 1, 'L');
+    $pdf->SetTextColor(0, 0, 0);
+}
 // ── Nota al pie sobre mora pendiente ─────────────────────────
 if ($total_mora_pend > 0) {
     $pdf->Ln(6);

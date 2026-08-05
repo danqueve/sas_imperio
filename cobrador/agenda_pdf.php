@@ -663,6 +663,11 @@ if (!empty($resumen)) {
     $total_gral_cant  += $sub_cant_dias;
     $total_gral_monto += $sub_monto_dias;
 
+    $pdf->SetFont('Helvetica', 'I', 7);
+    $pdf->SetTextColor(80, 80, 80);
+    $pdf->Cell(190, 4, lat('Nota: excluye Criticos (5+ atrasadas) y toma 1 cuota por cliente (la mas antigua pendiente) - puede diferir del Monto Estimado de la Rendicion.'), 0, 1, 'L');
+    $pdf->SetTextColor(0, 0, 0);
+
     // ── Grupo Quincenales y Mensuales ───────────────────────────
     if (!empty($frec_res)) {
         $pdf->Ln(2);
