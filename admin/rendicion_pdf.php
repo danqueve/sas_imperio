@@ -497,7 +497,37 @@ if ($es_multi) {
 }
 
 // ── Resumen al pie ──────────────────────────────────────────
-$pdf->Ln(10);
+// Armar antes de dibujar nada: hace falta la cantidad de filas de ambas cajas
+// para calcular la altura total y decidir si hace falta un salto de página
+// manual (si no, FPDF puede cortar una caja a la mitad con el salto automático).
+$bx  = 95;
+$bw1 = 55;
+$bw2 = 40;
+
+$resumen = [
+    ['Total Efectivo',               fmt($total_efectivo)],
+    ['Total Transferencias',         fmt($total_transferencia)],
+];
+if ($total_mora_cobrada > 0) {
+    $resumen[] = ['Mora Cobrada', fmt($total_mora_cobrada)];
+}
+if ($total_mora_pend > 0) {
+    $resumen[] = ['Mora Pendiente (cuota pura)', fmt($total_mora_pend)];
+}
+if ($total_sobrante > 0.005) {
+    $resumen[] = ['!! Sobrante no aplicado', fmt($total_sobrante)];
+}
+$resumen[] = ['TOTAL RENDIDO', fmt($total_general + $total_sobrante)];
+
+$alto_caja_resumen = count($resumen) * 7;
+$alto_caja_semanal = $es_cobrador_semanal ? (6 + 3 * 7 + 3 * 7) : 0; // header + 3 filas KPI + 3 filas dinero
+$alto_necesario     = 10 + max($alto_caja_resumen, $alto_caja_semanal); // + Ln(10) previo
+
+if ($pdf->GetY() + $alto_necesario > $pdf->GetPageHeight() - 16) {
+    $pdf->AddPage();
+} else {
+    $pdf->Ln(10);
+}
 $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
 
@@ -558,25 +588,6 @@ if ($es_cobrador_semanal) {
     $pdf->SetY($y_inicio_resumen);
 }
 
-$bx  = 95;
-$bw1 = 55;
-$bw2 = 40;
-
-$resumen = [
-    ['Total Efectivo',               fmt($total_efectivo)],
-    ['Total Transferencias',         fmt($total_transferencia)],
-];
-if ($total_mora_cobrada > 0) {
-    $resumen[] = ['Mora Cobrada', fmt($total_mora_cobrada)];
-}
-if ($total_mora_pend > 0) {
-    $resumen[] = ['Mora Pendiente (cuota pura)', fmt($total_mora_pend)];
-}
-if ($total_sobrante > 0.005) {
-    $resumen[] = ['!! Sobrante no aplicado', fmt($total_sobrante)];
-}
-$resumen[] = ['TOTAL RENDIDO', fmt($total_general + $total_sobrante)];
-
 foreach ($resumen as $i => [$label, $valor]) {
     $es_total = ($i === count($resumen) - 1);
     $pdf->SetFont('Helvetica', $es_total ? 'B' : '', 9);
@@ -584,6 +595,16 @@ foreach ($resumen as $i => [$label, $valor]) {
     $pdf->Cell($bw1, 7, lat($label), 1, 0, 'L', false);
     $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->Cell($bw2, 7, $pdf->fitText($valor, $bw2 - 1), 1, 1, 'R', false);
+}
+
+// La caja de la izquierda (Resumen Semanal) puede terminar más abajo que esta;
+// las notas al pie deben arrancar después de la más alta de las dos, si no se
+// solapan con las últimas filas de la caja que quedó más larga.
+if ($es_cobrador_semanal) {
+    $y_fin_semanal = $y_inicio_resumen + $alto_caja_semanal;
+    if ($y_fin_semanal > $pdf->GetY()) {
+        $pdf->SetY($y_fin_semanal);
+    }
 }
 
 // ── Nota al pie sobre mora pendiente ─────────────────────────
