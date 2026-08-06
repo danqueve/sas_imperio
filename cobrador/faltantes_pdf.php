@@ -40,6 +40,11 @@ $stmt = $pdo->prepare("
             JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
             JOIN ic_cuotas cu2          ON cu2.id = pc.cuota_id
             WHERE cu2.credito_id = cr.id) AS ultimo_pago,
+           (SELECT COUNT(*) FROM ic_cuotas cu3
+            WHERE cu3.credito_id = cr.id
+              AND cu3.fecha_vencimiento < CURDATE()
+              AND cu3.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+           ) AS cuotas_atrasadas,
            'semanal' AS frecuencia
     FROM ic_clientes cl
     JOIN ic_creditos cr ON cr.cliente_id = cl.id
@@ -72,6 +77,11 @@ $stmt2 = $pdo->prepare("
             JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
             JOIN ic_cuotas cu2          ON cu2.id = pc.cuota_id
             WHERE cu2.credito_id = cr.id) AS ultimo_pago,
+           (SELECT COUNT(*) FROM ic_cuotas cu3
+            WHERE cu3.credito_id = cr.id
+              AND cu3.fecha_vencimiento < CURDATE()
+              AND cu3.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+           ) AS cuotas_atrasadas,
            cr.frecuencia
     FROM ic_clientes cl
     JOIN ic_creditos cr ON cr.cliente_id = cl.id
@@ -246,12 +256,17 @@ foreach ($por_zona as $zona => $lista) {
         $pdf->SetXY($x0 + $CA[0] + 0.8, $has_phone ? $y0 + 0.8 : $y_centro);
         $pdf->Cell($CA[1] - 1, 4, lat($cliente_name), 0, 0, 'L', false);
 
-        // Texto cliente — línea 2 (teléfono)
+        // Texto cliente — línea 2 (teléfono + cantidad de cuotas atrasadas)
         if ($has_phone) {
+            $atrasadas = (int) ($r['cuotas_atrasadas'] ?? 0);
+            $tel_txt   = 'Tel: ' . mb_strimwidth($r['telefono'], 0, 24, '');
+            if ($atrasadas > 0) {
+                $tel_txt .= '  ' . $atrasadas . '*';
+            }
             $pdf->SetFont('Helvetica', 'I', 6);
             $pdf->SetTextColor(80, 80, 80);
             $pdf->SetXY($x0 + $CA[0] + 0.8, $y0 + 4.5);
-            $pdf->Cell($CA[1] - 1, 3.5, lat('Tel: ' . mb_strimwidth($r['telefono'], 0, 24, '')), 0, 0, 'L', false);
+            $pdf->Cell($CA[1] - 1, 3.5, lat($tel_txt), 0, 0, 'L', false);
             $pdf->SetTextColor(0, 0, 0);
         }
 
