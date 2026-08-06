@@ -109,8 +109,20 @@ if ($accion === 'revertir_confirmado') {
         }
 
         $pdo->commit();
+
+        $cliente_stmt = $pdo->prepare("
+            SELECT cl.apellidos, cl.nombres, cl.dni
+            FROM ic_clientes cl
+            JOIN ic_creditos cr ON cr.cliente_id = cl.id
+            WHERE cr.id = ?
+        ");
+        $cliente_stmt->execute([$credito_id]);
+        $cliente_rev = $cliente_stmt->fetch();
+
         registrar_log($pdo, $uid, 'PAGO_REVERTIDO', 'pago_confirmado', $pc_id,
-            'Cuota #' . $pc['cuota_id'] . ' — Crédito #' . $credito_id);
+            'Cuota #' . $pc['cuota_id'] . ' — Crédito #' . $credito_id
+            . ' — Cliente: ' . $cliente_rev['apellidos'] . ', ' . $cliente_rev['nombres']
+            . ' — DNI: ' . ($cliente_rev['dni'] ?: '—'));
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago revertido. La cuota volvió a estado ' . $nuevo_estado_cuota . '.'];
 
     } catch (Exception $e) {

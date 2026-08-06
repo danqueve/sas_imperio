@@ -27,17 +27,21 @@ if (!$pt_id) {
 // cobrador solo puede anular los propios.
 if (in_array($rol, ['admin', 'supervisor'], true)) {
     $stmt = $pdo->prepare("
-        SELECT pt.id, pt.cobrador_id, cu.numero_cuota
+        SELECT pt.id, pt.cobrador_id, cu.numero_cuota, cl.apellidos, cl.nombres, cl.dni
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
         WHERE pt.id = ? AND pt.estado = 'PENDIENTE'
     ");
     $stmt->execute([$pt_id]);
 } else {
     $stmt = $pdo->prepare("
-        SELECT pt.id, pt.cobrador_id, cu.numero_cuota
+        SELECT pt.id, pt.cobrador_id, cu.numero_cuota, cl.apellidos, cl.nombres, cl.dni
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
         WHERE pt.id = ? AND pt.cobrador_id = ? AND pt.estado = 'PENDIENTE'
     ");
     $stmt->execute([$pt_id, $uid]);
@@ -56,7 +60,8 @@ $pdo->prepare("
 ")->execute([$pt_id]);
 
 registrar_log($pdo, $uid, 'PAGO_ANULADO', 'pago_temporal', $pt_id,
-    'Cuota #' . $row['numero_cuota'] . ' — pago anulado por ' . $rol);
+    'Cuota #' . $row['numero_cuota'] . ' — pago anulado por ' . $rol
+    . ' — Cliente: ' . $row['apellidos'] . ', ' . $row['nombres'] . ' — DNI: ' . ($row['dni'] ?: '—'));
 
 $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago de cuota #' . $row['numero_cuota'] . ' anulado correctamente.'];
 header('Location: ' . BASE_URL . 'cobrador/agenda');

@@ -82,6 +82,36 @@ function badge_accion(string $accion): string {
     return '<span class="badge-ic ' . $clase . '">' . e($accion) . '</span>';
 }
 
+// ── Resolver cliente (apellidos, nombres, dni) a partir de la entidad del log ──
+function resolver_cliente_log(PDO $pdo, string $entidad, ?int $entidad_id): ?array
+{
+    if (!$entidad_id) return null;
+    $sql = match ($entidad) {
+        'cuota' => "SELECT cl.apellidos, cl.nombres, cl.dni
+                    FROM ic_cuotas cu
+                    JOIN ic_creditos cr ON cr.id = cu.credito_id
+                    JOIN ic_clientes cl ON cl.id = cr.cliente_id
+                    WHERE cu.id = ?",
+        'pago_temporal' => "SELECT cl.apellidos, cl.nombres, cl.dni
+                    FROM ic_pagos_temporales pt
+                    JOIN ic_cuotas cu   ON cu.id = pt.cuota_id
+                    JOIN ic_creditos cr ON cr.id = cu.credito_id
+                    JOIN ic_clientes cl ON cl.id = cr.cliente_id
+                    WHERE pt.id = ?",
+        'pago_confirmado' => "SELECT cl.apellidos, cl.nombres, cl.dni
+                    FROM ic_pagos_confirmados pc
+                    JOIN ic_cuotas cu   ON cu.id = pc.cuota_id
+                    JOIN ic_creditos cr ON cr.id = cu.credito_id
+                    JOIN ic_clientes cl ON cl.id = cr.cliente_id
+                    WHERE pc.id = ?",
+        default => null,
+    };
+    if (!$sql) return null;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$entidad_id]);
+    return $stmt->fetch() ?: null;
+}
+
 // ── URL helper para paginación manteniendo filtros ────────────
 function page_url(int $p): string {
     $q = $_GET;
@@ -177,6 +207,12 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td style="font-size:.82rem;max-width:260px;white-space:normal">
                                 <?= e($row['detalle'] ?? '') ?>
+                                <?php if ($cliente = resolver_cliente_log($pdo, $row['entidad'], $row['entidad_id'])): ?>
+                                    <br><span class="text-muted" style="font-size:.78rem">
+                                        Cliente: <?= e($cliente['apellidos'] . ', ' . $cliente['nombres']) ?>
+                                        — DNI: <?= e($cliente['dni'] ?: '—') ?>
+                                    </span>
+                                <?php endif; ?>
                             </td>
                             <td class="text-muted" style="font-size:.78rem">
                                 <?= e($row['ip'] ?? '') ?>
