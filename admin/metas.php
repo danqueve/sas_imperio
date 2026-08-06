@@ -33,6 +33,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'guard
     exit;
 }
 
+// ── Snapshot manual de la semana pasada (respaldo si el cron no corrió) ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'snapshot_manual') {
+    $semana_pasada = new DateTimeImmutable('-7 days');
+    $ids_activos   = $pdo->query("SELECT id FROM ic_usuarios WHERE rol = 'cobrador' AND activo = 1")
+        ->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($ids_activos as $cid) {
+        registrar_snapshot_metas_semana($pdo, (int) $cid, $semana_pasada);
+    }
+    $dow_ref   = (int) $semana_pasada->format('N');
+    $lunes_ref = $semana_pasada->modify('-' . ($dow_ref - 1) . ' days')->format('Y-m-d');
+    registrar_log($pdo, $_SESSION['user_id'], 'SNAPSHOT_METAS_MANUAL', 'usuario', 0,
+        'Snapshot manual registrado para la semana del ' . $lunes_ref . ' — ' . count($ids_activos) . ' cobrador(es)');
+    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Snapshot de la semana del ' . date('d/m', strtotime($lunes_ref)) . ' registrado para ' . count($ids_activos) . ' cobrador(es).'];
+    header('Location: metas');
+    exit;
+}
+
 // ── Semana actual (Lun-Sáb) ────────────────────────────────
 $dow       = (int) date('N');
 $lunes     = date('Y-m-d', strtotime('-' . ($dow - 1) . ' days'));
@@ -67,7 +84,7 @@ foreach ($stmt_cobrado->fetchAll() as $r) {
 // ── Layout ─────────────────────────────────────────────────
 $page_title   = 'Metas Semanales';
 $page_current = 'metas';
-$topbar_actions = '';
+$topbar_actions = '<a href="historial_metas" class="btn-ic btn-ghost btn-sm"><i class="fa fa-history"></i> Historial de Metas</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
@@ -79,11 +96,20 @@ require_once __DIR__ . '/../views/layout.php';
 <?php endif; ?>
 
 <div class="card-ic mb-4" style="padding:16px">
-    <div style="font-size:.85rem;color:var(--text-muted)">
-        <i class="fa fa-info-circle"></i>
-        Semana actual: <strong><?= date('d/m', strtotime($lunes)) ?> — <?= date('d/m', strtotime($sabado)) ?></strong>
-        · Los montos cobrados solo incluyen pagos registrados por los cobradores (no manuales).
-        · La meta se calcula sola: semanales por vencimiento dentro de esta semana, quincenales/mensuales/diarios por toda la cartera ya vencida. Dejá el campo vacío para usar el cálculo automático, o cargá un monto para fijarlo manualmente.
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div style="font-size:.85rem;color:var(--text-muted)">
+            <i class="fa fa-info-circle"></i>
+            Semana actual: <strong><?= date('d/m', strtotime($lunes)) ?> — <?= date('d/m', strtotime($sabado)) ?></strong>
+            · Los montos cobrados solo incluyen pagos registrados por los cobradores (no manuales).
+            · La meta se calcula sola: semanales por vencimiento dentro de esta semana, quincenales/mensuales/diarios por toda la cartera ya vencida. Dejá el campo vacío para usar el cálculo automático, o cargá un monto para fijarlo manualmente.
+        </div>
+        <form method="POST" style="flex-shrink:0">
+            <input type="hidden" name="accion" value="snapshot_manual">
+            <button type="submit" class="btn-ic btn-ghost btn-sm" style="white-space:nowrap"
+                onclick="return confirm('Esto guarda en el historial las metas y lo cobrado de la semana pasada. Si ya existe un snapshot de esa semana, se actualiza. ¿Continuar?')">
+                <i class="fa fa-camera"></i> Snapshot semana pasada
+            </button>
+        </form>
     </div>
 </div>
 

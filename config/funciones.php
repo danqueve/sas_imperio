@@ -179,6 +179,110 @@ function calcular_meta_semanal_pura(PDO $pdo, int $cobrador_id, ?DateTimeImmutab
     return (float) $stmt->fetchColumn();
 }
 
+/**
+ * Total cobrado por un cobrador en la semana de $hoy (Lun-Dom: incluye
+ * entradas tardías del domingo para jornadas del sábado). Comparable de
+ * calcular_meta_semanal_auto() — mismo criterio que ya usaba
+ * cobrador/agenda.php de forma inline, ahora reutilizable para semanas
+ * pasadas (historial de metas).
+ */
+function calcular_cobrado_semanal_real(PDO $pdo, int $cobrador_id, ?DateTimeImmutable $hoy = null): float
+{
+    $hoy     = $hoy ?? new DateTimeImmutable('today');
+    $dow     = (int) $hoy->format('N');
+    $lunes   = $hoy->modify('-' . ($dow - 1) . ' days')->format('Y-m-d');
+    $domingo = $hoy->modify('-' . ($dow - 1) . ' days')->modify('+6 days')->format('Y-m-d');
+
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(monto_total), 0)
+        FROM ic_pagos_temporales
+        WHERE cobrador_id = ? AND fecha_jornada BETWEEN ? AND ?
+          AND estado IN ('PENDIENTE','APROBADO') AND origen = 'cobrador'
+    ");
+    $stmt->execute([$cobrador_id, $lunes, $domingo]);
+    return (float) $stmt->fetchColumn();
+}
+
+/**
+ * Cobrado semanal "puro" (sin mora, solo cuotas de frecuencia semanal) en la
+ * semana de $hoy. Comparable de calcular_meta_semanal_pura().
+ */
+function calcular_cobrado_semanal_puro(PDO $pdo, int $cobrador_id, ?DateTimeImmutable $hoy = null): float
+{
+    $hoy     = $hoy ?? new DateTimeImmutable('today');
+    $dow     = (int) $hoy->format('N');
+    $lunes   = $hoy->modify('-' . ($dow - 1) . ' days')->format('Y-m-d');
+    $domingo = $hoy->modify('-' . ($dow - 1) . ' days')->modify('+6 days')->format('Y-m-d');
+
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(pt.monto_total - pt.monto_mora_cobrada), 0)
+        FROM ic_pagos_temporales pt
+        JOIN ic_cuotas cu   ON cu.id = pt.cuota_id
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        WHERE pt.cobrador_id = ? AND pt.fecha_jornada BETWEEN ? AND ?
+          AND pt.estado IN ('PENDIENTE','APROBADO') AND pt.origen = 'cobrador'
+          AND cr.frecuencia = 'semanal'
+    ");
+    $stmt->execute([$cobrador_id, $lunes, $domingo]);
+    return (float) $stmt->fetchColumn();
+}
+
+/**
+ * Calcula las 4 métricas de meta semanal de un cobrador para la semana de
+ * $semana_referencia (cualquier fecha de esa semana). El criterio "cartera
+ * vencida a hoy" de meta_automatica/meta_fija_semanal se evalúa al domingo
+ * de esa semana (cierre de semana), no al día exacto de $semana_referencia
+ * — así el snapshot de una semana pasada refleja toda la deuda que venció
+ * durante esa semana, igual que si se hubiera tomado la foto el último día.
+ * Usada por registrar_snapshot_metas_semana() y por el preview del cron
+ * (para que el log y lo que se guarda sean siempre el mismo número).
+ */
+function calcular_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImmutable $semana_referencia): array
+{
+    $dow        = (int) $semana_referencia->format('N');
+    $lunes      = $semana_referencia->modify('-' . ($dow - 1) . ' days');
+    $fin_semana = $lunes->modify('+6 days');
+
+    return [
+        'semana_lunes'         => $lunes->format('Y-m-d'),
+        'meta_automatica'      => calcular_meta_semanal_auto($pdo, $cobrador_id, $fin_semana),
+        'cobrado_real'         => calcular_cobrado_semanal_real($pdo, $cobrador_id, $fin_semana),
+        'meta_fija_semanal'    => calcular_meta_semanal_pura($pdo, $cobrador_id, $fin_semana),
+        'cobrado_semanal_puro' => calcular_cobrado_semanal_puro($pdo, $cobrador_id, $fin_semana),
+    ];
+}
+
+/**
+ * Calcula y persiste (INSERT..ON DUPLICATE KEY UPDATE) el snapshot de la
+ * semana de $semana_referencia. Idempotente por el UNIQUE(cobrador_id,
+ * semana_lunes) — correrla de nuevo para la misma semana actualiza en vez
+ * de duplicar. La comparten cron/snapshot_metas_semanales.php y el botón
+ * manual de admin/metas.php.
+ */
+function registrar_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImmutable $semana_referencia): void
+{
+    $s = calcular_snapshot_metas_semana($pdo, $cobrador_id, $semana_referencia);
+
+    $stmt = $pdo->prepare("
+        INSERT INTO ic_historial_metas
+            (cobrador_id, semana_lunes, meta_automatica, cobrado_real, meta_fija_semanal, cobrado_semanal_puro)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            meta_automatica = VALUES(meta_automatica),
+            cobrado_real = VALUES(cobrado_real),
+            meta_fija_semanal = VALUES(meta_fija_semanal),
+            cobrado_semanal_puro = VALUES(cobrado_semanal_puro)
+    ");
+    $stmt->execute([
+        $cobrador_id,
+        $s['semana_lunes'],
+        $s['meta_automatica'],
+        $s['cobrado_real'],
+        $s['meta_fija_semanal'],
+        $s['cobrado_semanal_puro'],
+    ]);
+}
+
 // ── Cuotas ───────────────────────────────────────────────────
 
 /**

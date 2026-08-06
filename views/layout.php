@@ -182,6 +182,12 @@ if ($rol === 'admin') {
                         <i class="fa fa-bullseye"></i>
                         <span class="nav-text">Metas</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'historial_metas' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/historial_metas"
+                       data-tooltip="Historial de Metas">
+                        <i class="fa fa-history"></i>
+                        <span class="nav-text">Historial de Metas</span>
+                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'log' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/log"
                        data-tooltip="Actividad">

@@ -334,30 +334,13 @@ $lunes_sem    = date('Y-m-d', strtotime('-' . ($dow_cobro - 1) . ' days'));
 $sabado_sem   = date('Y-m-d', strtotime($lunes_sem . ' +5 days'));
 $domingo_sem  = date('Y-m-d', strtotime($lunes_sem . ' +6 days')); // incluye entradas tardías del sábado
 
-$stmt_meta = $pdo->prepare("
-    SELECT COALESCE(SUM(monto_total), 0) AS cobrado_semana
-    FROM ic_pagos_temporales
-    WHERE cobrador_id = ? AND fecha_jornada BETWEEN ? AND ?
-      AND estado IN ('PENDIENTE','APROBADO') AND origen = 'cobrador'
-");
-$stmt_meta->execute([$cobrador_filtro, $lunes_sem, $domingo_sem]);
-$cobrado_semana = (float) $stmt_meta->fetchColumn();
+$cobrado_semana = calcular_cobrado_semanal_real($pdo, $cobrador_filtro);
 $pct_meta       = $META_SEMANAL > 0 ? min(100, round($cobrado_semana / $META_SEMANAL * 100)) : 0;
 $falta_meta     = max(0, $META_SEMANAL - $cobrado_semana);
 
 // Meta Fija Semanal (solo semanal, sin mora) — punto de comparación adicional
-$META_FIJA_SEMANAL = calcular_meta_semanal_pura($pdo, $cobrador_filtro);
-$stmt_meta_pura = $pdo->prepare("
-    SELECT COALESCE(SUM(pt.monto_total - pt.monto_mora_cobrada), 0) AS total
-    FROM ic_pagos_temporales pt
-    JOIN ic_cuotas cu   ON cu.id = pt.cuota_id
-    JOIN ic_creditos cr ON cr.id = cu.credito_id
-    WHERE pt.cobrador_id = ? AND pt.fecha_jornada BETWEEN ? AND ?
-      AND pt.estado IN ('PENDIENTE','APROBADO') AND pt.origen = 'cobrador'
-      AND cr.frecuencia = 'semanal'
-");
-$stmt_meta_pura->execute([$cobrador_filtro, $lunes_sem, $domingo_sem]);
-$cobrado_semanal_puro = (float) $stmt_meta_pura->fetchColumn();
+$META_FIJA_SEMANAL    = calcular_meta_semanal_pura($pdo, $cobrador_filtro);
+$cobrado_semanal_puro = calcular_cobrado_semanal_puro($pdo, $cobrador_filtro);
 $pct_meta_pura        = $META_FIJA_SEMANAL > 0 ? min(100, round($cobrado_semanal_puro / $META_FIJA_SEMANAL * 100)) : 0;
 $falta_meta_pura      = max(0, $META_FIJA_SEMANAL - $cobrado_semanal_puro);
 
