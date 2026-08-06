@@ -83,40 +83,66 @@ function dias_atraso_habiles(string $fecha_vencimiento, ?string $fecha_ref = nul
 }
 
 /**
- * Meta semanal automática por cobrador: suma de monto_cuota + mora de todas las
- * cuotas (cualquier frecuencia) con vencimiento dentro de la semana en curso
- * (Lunes a Sábado), de créditos EN_CURSO/MOROSO. No distingue cobradores
- * "especiales" (Lun-Mié) porque sus créditos semanales solo tienen dia_cobro
- * 1-3, así que nunca tienen cuotas venciendo jueves-sábado — la ventana
- * Lun-Sáb da el mismo resultado para todos.
+ * Meta semanal automática por cobrador: suma de monto_cuota + mora de créditos
+ * EN_CURSO/MOROSO, con criterio distinto según frecuencia:
+ * - Semanal: cuotas con vencimiento dentro de la semana en curso (Lun-Sáb). No
+ *   distingue cobradores "especiales" (Lun-Mié) porque sus créditos semanales
+ *   solo tienen dia_cobro 1-3, así que nunca tienen cuotas venciendo
+ *   jueves-sábado — la ventana Lun-Sáb da el mismo resultado para todos.
+ * - Diario/Quincenal/Mensual: cartera vencida a hoy (deuda ya exigible), igual
+ *   criterio que admin/rendicion_pdf.php/admin/estadisticas_cobranza.php. No se
+ *   usa la ventana semanal acá porque el vencimiento fijo de estas cuotas rara
+ *   vez cae justo dentro de una semana calendario puntual — usar esa ventana
+ *   dejaría afuera casi toda la deuda real acumulada.
  */
 function calcular_metas_semanales_auto(PDO $pdo, array $cobrador_ids, ?DateTimeImmutable $hoy = null): array
 {
     if (empty($cobrador_ids)) return [];
-    $hoy    = $hoy ?? new DateTimeImmutable('today');
-    $dow    = (int) $hoy->format('N');
-    $lunes  = $hoy->modify('-' . ($dow - 1) . ' days')->format('Y-m-d');
-    $sabado = $hoy->modify('-' . ($dow - 1) . ' days')->modify('+5 days')->format('Y-m-d');
+    $hoy     = $hoy ?? new DateTimeImmutable('today');
+    $dow     = (int) $hoy->format('N');
+    $lunes   = $hoy->modify('-' . ($dow - 1) . ' days')->format('Y-m-d');
+    $sabado  = $hoy->modify('-' . ($dow - 1) . ' days')->modify('+5 days')->format('Y-m-d');
+    $hoy_str = $hoy->format('Y-m-d');
 
     $ph = implode(',', array_fill(0, count($cobrador_ids), '?'));
+    $totales = array_fill_keys($cobrador_ids, 0.0);
+
+    $acumular = function (array $rows) use (&$totales) {
+        foreach ($rows as $cu) {
+            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+            $mora = (float) $cu['monto_mora'] > 0
+                ? (float) $cu['monto_mora']
+                : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
+            $totales[(int) $cu['cobrador_id']] += (float) $cu['monto_cuota'] + $mora;
+        }
+    };
+
+    // Semanales: vencimiento dentro de esta semana (Lun-Sáb)
     $stmt = $pdo->prepare("
         SELECT cr.cobrador_id, cu.monto_cuota, cu.monto_mora, cu.fecha_vencimiento, cr.interes_moratorio_pct
         FROM ic_cuotas cu
         JOIN ic_creditos cr ON cr.id = cu.credito_id
         WHERE cr.cobrador_id IN ($ph) AND cr.estado IN ('EN_CURSO','MOROSO')
+          AND cr.frecuencia = 'semanal'
           AND cu.fecha_vencimiento BETWEEN ? AND ?
           AND cu.estado != 'CANCELADA'
     ");
     $stmt->execute([...$cobrador_ids, $lunes, $sabado]);
+    $acumular($stmt->fetchAll());
 
-    $totales = array_fill_keys($cobrador_ids, 0.0);
-    foreach ($stmt->fetchAll() as $cu) {
-        $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
-        $mora = (float) $cu['monto_mora'] > 0
-            ? (float) $cu['monto_mora']
-            : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
-        $totales[(int) $cu['cobrador_id']] += (float) $cu['monto_cuota'] + $mora;
-    }
+    // Diario/Quincenal/Mensual: cartera vencida a hoy
+    $stmt2 = $pdo->prepare("
+        SELECT cr.cobrador_id, cu.monto_cuota, cu.monto_mora, cu.fecha_vencimiento, cr.interes_moratorio_pct
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        WHERE cr.cobrador_id IN ($ph) AND cr.estado IN ('EN_CURSO','MOROSO')
+          AND cr.frecuencia IN ('diario','quincenal','mensual')
+          AND cu.estado IN ('PENDIENTE','VENCIDA','PARCIAL','CAP_PAGADA')
+          AND cu.fecha_vencimiento <= ?
+    ");
+    $stmt2->execute([...$cobrador_ids, $hoy_str]);
+    $acumular($stmt2->fetchAll());
+
     return $totales;
 }
 

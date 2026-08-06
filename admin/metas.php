@@ -83,7 +83,7 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-info-circle"></i>
         Semana actual: <strong><?= date('d/m', strtotime($lunes)) ?> — <?= date('d/m', strtotime($sabado)) ?></strong>
         · Los montos cobrados solo incluyen pagos registrados por los cobradores (no manuales).
-        · La meta se calcula sola en base a las cuotas (de cualquier frecuencia) que vencen esta semana. Dejá el campo vacío para usar el cálculo automático, o cargá un monto para fijarlo manualmente.
+        · La meta se calcula sola: semanales por vencimiento dentro de esta semana, quincenales/mensuales/diarios por toda la cartera ya vencida. Dejá el campo vacío para usar el cálculo automático, o cargá un monto para fijarlo manualmente.
     </div>
 </div>
 
