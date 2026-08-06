@@ -34,7 +34,7 @@ $params = array_merge([$cobrador_id], $dias_sel);
 
 $stmt = $pdo->prepare("
     SELECT cl.id AS cliente_id,
-           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cr.dia_cobro,
+           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.direccion, cr.dia_cobro,
            cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas,
            cr.estado AS credito_estado,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
@@ -88,10 +88,10 @@ function fmt(float $v): string {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas = 190mm total (A4 210mm − 10mm izq − 10mm der)
-// #(8) + Cliente(57) + Articulo(45) + Cuota(15) + Vencim.(22) + Monto(43)
-$COLS   = [8, 57, 45, 15, 22, 43];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Monto'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'C', 'R'];
+// #(8) + Cliente(46) + Articulo(26) + Cuota(14) + Vencim.(13) + Monto(33) + Direccion(50)
+$COLS   = [8, 46, 26, 14, 13, 33, 50];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Monto', 'Direccion'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'C', 'R', 'L'];
 
 class AgendaPDF extends PDFBase
 {
@@ -143,22 +143,25 @@ class AgendaPDF extends PDFBase
         $row_h      = ($has_phone || $has_monto2) ? 9 : 6;
         $es_moroso  = ($r['credito_estado'] ?? '') === 'MOROSO';
 
-        $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 32, '..');
+        $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 24, '..');
         if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
-        $articulo = mb_strimwidth($r['articulo'] ?? '-', 0, 35, '..');
+        $articulo = mb_strimwidth($r['articulo'] ?? '-', 0, 17, '..');
 
-        // Dibujar celdas con bordes
+        // Dibujar celdas con bordes, todas vacías — el texto se superpone centrado
         $this->Cell($cols[0], $row_h, $num > 0 ? (string)$num : '', 1, 0, 'C', false); // número
-        $this->Cell($cols[1], $row_h, '', 1, 0, 'L', false);                            // cliente (solo borde)
-        $this->Cell($cols[2], $row_h, lat($articulo), 1, 0, 'L', false);
-        $this->Cell($cols[3], $row_h, lat($cuota_label), 1, 0, 'C', false);
-        $this->Cell($cols[4], $row_h, $venc, 1, 0, 'C', false);
-        $this->Cell($cols[5], $row_h, '', 1, 0, 'R', false);                            // monto (solo borde)
+        $this->Cell($cols[1], $row_h, '', 1, 0, 'L', false); // cliente (solo borde)
+        $this->Cell($cols[2], $row_h, '', 1, 0, 'L', false); // articulo (solo borde)
+        $this->Cell($cols[3], $row_h, '', 1, 0, 'C', false); // cuota (solo borde)
+        $this->Cell($cols[4], $row_h, '', 1, 0, 'C', false); // vencim (solo borde)
+        $this->Cell($cols[5], $row_h, '', 1, 0, 'R', false); // monto (solo borde)
+        $this->Cell($cols[6], $row_h, '', 1, 0, 'L', false); // direccion (solo borde)
         $this->Ln();
+
+        $y_centro = $y0 + ($row_h - 3.5) / 2; // centrado vertical para texto de 1 línea
 
         // Texto cliente — línea 1
         $this->SetFont('Helvetica', $es_moroso ? 'B' : '', 7);
-        $this->SetXY($x0 + $cols[0] + 0.8, $y0 + 0.8);
+        $this->SetXY($x0 + $cols[0] + 0.8, $has_phone ? $y0 + 0.8 : $y_centro);
         $this->Cell($cols[1] - 1, 4, lat($cliente_name), 0, 0, 'L', false);
 
         // Texto cliente — línea 2 (teléfono)
@@ -170,8 +173,24 @@ class AgendaPDF extends PDFBase
             $this->SetTextColor(0, 0, 0);
         }
 
+        // Texto artículo (centrado)
+        $ax = $x0 + $cols[0] + $cols[1];
+        $this->SetFont('Helvetica', '', 7);
+        $this->SetXY($ax + 0.8, $y_centro);
+        $this->Cell($cols[2] - 1, 4, lat($articulo), 0, 0, 'L', false);
+
+        // Texto cuota (centrado)
+        $qx = $ax + $cols[2];
+        $this->SetXY($qx, $y_centro);
+        $this->Cell($cols[3], 4, lat($cuota_label), 0, 0, 'C', false);
+
+        // Texto vencimiento (centrado)
+        $vx = $qx + $cols[3];
+        $this->SetXY($vx, $y_centro);
+        $this->Cell($cols[4], 4, $venc, 0, 0, 'C', false);
+
         // Texto monto — línea 1: monto de la cuota
-        $mx        = $x0 + $cols[0] + $cols[1] + $cols[2] + $cols[3] + $cols[4];
+        $mx        = $vx + $cols[4];
         $y_monto1  = $has_monto2 ? $y0 + 0.8 : $y0 + 1.5;
         $this->SetFont('Helvetica', '', 7);
         $this->SetXY($mx + 0.5, $y_monto1);
@@ -191,6 +210,14 @@ class AgendaPDF extends PDFBase
             $this->Cell($cols[5] - 1, 3.5, lat($detalle), 0, 0, 'R', false);
             $this->SetTextColor(0, 0, 0);
         }
+
+        // Texto dirección — 1 línea, centrada verticalmente según alto de fila
+        $dx = $mx + $cols[5];
+        $this->SetFont('Helvetica', 'I', 6);
+        $this->SetTextColor(80, 80, 80);
+        $this->SetXY($dx + 0.8, $y_centro);
+        $this->Cell($cols[6] - 1, 3.5, lat(mb_strimwidth(trim($r['direccion'] ?? '') ?: '-', 0, 40, '..')), 0, 0, 'L', false);
+        $this->SetTextColor(0, 0, 0);
 
         // Restablecer cursor al inicio de la siguiente fila
         $this->SetXY(10, $y0 + $row_h);
@@ -308,6 +335,7 @@ foreach ($dias_sel as $dia) {
     $ancho = array_sum(array_slice($COLS, 0, 5));
     $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($nombre_dia)), 1, 0, 'R', false);
     $pdf->Cell($COLS[5], 6, fmt($total_dia), 1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 6, '', 1, 0, 'L', false);
     $pdf->Ln();
     $pdf->Ln(3);
 
@@ -316,7 +344,7 @@ foreach ($dias_sel as $dia) {
 
 // ── Sección: Quincenales y Mensuales ────────────────────────────
 $stmt_qm = $pdo->prepare("
-    SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.zona,
+    SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.direccion,
            cr.frecuencia, cr.cant_cuotas, cr.estado AS credito_estado,
            cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota, cu.estado AS cuota_estado,
            cu.monto_mora, cu.saldo_pagado,
@@ -434,6 +462,7 @@ if (!empty($rows_qm)) {
         $ancho = array_sum(array_slice($COLS, 0, 5));
         $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($titulo)), 1, 0, 'R', false);
         $pdf->Cell($COLS[5], 6, fmt($total_frec), 1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 6, '', 1, 0, 'L', false);
         $pdf->Ln();
         $pdf->Ln(3);
 

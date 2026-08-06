@@ -10,7 +10,22 @@
       "Bash(mysql -u root -e \"DESCRIBE creditos.ic_pagos_temporales;\")",
       "Bash(git pull)",
       "Bash(git pull origin main)",
-      "Bash(grep -n \"function verificar_permiso\\\\|function usuario_actual\\\\|function obtener_conexion\\\\|function es_admin\" /c/wamp64/www/creditos/config/*.php)"
+      "Bash(grep -n \"function verificar_permiso\\\\|function usuario_actual\\\\|function obtener_conexion\\\\|function es_admin\" /c/wamp64/www/creditos/config/*.php)",
+      "Bash(\"/c/wamp64/bin/php/php8.4.15/php.exe\" -l \"c:/wamp64/www/creditos/creditos/pagar_cuota.php\")",
+      "Bash(\"/c/wamp64/bin/php/php8.4.15/php.exe\" -l \"c:/wamp64/www/creditos/cobrador/registrar_pago.php\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root -e ' *)",
+      "Bash(\"/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe\" -u root -e \"SELECT NOW\\(\\), CURDATE\\(\\);\")",
+      "Bash(\"/c/wamp64/bin/php/php8.4.15/php.exe\" -r \"echo date\\('Y-m-d H:i:s'\\) . PHP_EOL; echo date_default_timezone_get\\(\\) . PHP_EOL;\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root c2881399_credit -e ' *)",
+      "Bash(\"/c/wamp64/bin/php/php8.4.15/php.exe\" -l \"c:/wamp64/www/creditos/admin/atrasados.php\")",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' '')",
+      "Bash(date -d \"$\\(date +%Y-%m-01\\) -1 month\" +%Y-%m-01)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' 'desde=2026-07-01&hasta=2026-07-31')",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' zona=Sur)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' vista=clientes)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' export=csv)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' cobrador_id=5)",
+      "Bash(git restore *)"
     ]
   }
 }
