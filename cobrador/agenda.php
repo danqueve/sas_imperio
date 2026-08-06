@@ -322,10 +322,13 @@ $mensual_rows = array_values($mensual_dedup);
 
 // ── FEATURE 7: Dashboard cobrador mejorado ──────────────────
 
-// Meta semanal (configurable por cobrador en admin/usuarios)
+// Meta semanal: automática (cuotas con vencimiento esta semana) salvo override manual en admin/metas
 $_meta_stmt = $pdo->prepare("SELECT meta_semanal FROM ic_usuarios WHERE id = ?");
 $_meta_stmt->execute([$cobrador_filtro]);
-$META_SEMANAL = (float) ($_meta_stmt->fetchColumn() ?: 500000);
+$_meta_manual = $_meta_stmt->fetchColumn();
+$META_SEMANAL = ($_meta_manual !== false && $_meta_manual !== null)
+    ? (float) $_meta_manual
+    : calcular_meta_semanal_auto($pdo, $cobrador_filtro);
 $dow_cobro    = (int) date('N');
 $lunes_sem    = date('Y-m-d', strtotime('-' . ($dow_cobro - 1) . ' days'));
 $sabado_sem   = date('Y-m-d', strtotime($lunes_sem . ' +5 days'));

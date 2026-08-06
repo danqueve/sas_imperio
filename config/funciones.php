@@ -82,6 +82,49 @@ function dias_atraso_habiles(string $fecha_vencimiento, ?string $fecha_ref = nul
     return dias_habiles($desde, $hoy);
 }
 
+/**
+ * Meta semanal automática por cobrador: suma de monto_cuota + mora de todas las
+ * cuotas (cualquier frecuencia) con vencimiento dentro de la semana en curso
+ * (Lunes a Sábado), de créditos EN_CURSO/MOROSO. No distingue cobradores
+ * "especiales" (Lun-Mié) porque sus créditos semanales solo tienen dia_cobro
+ * 1-3, así que nunca tienen cuotas venciendo jueves-sábado — la ventana
+ * Lun-Sáb da el mismo resultado para todos.
+ */
+function calcular_metas_semanales_auto(PDO $pdo, array $cobrador_ids, ?DateTimeImmutable $hoy = null): array
+{
+    if (empty($cobrador_ids)) return [];
+    $hoy    = $hoy ?? new DateTimeImmutable('today');
+    $dow    = (int) $hoy->format('N');
+    $lunes  = $hoy->modify('-' . ($dow - 1) . ' days')->format('Y-m-d');
+    $sabado = $hoy->modify('-' . ($dow - 1) . ' days')->modify('+5 days')->format('Y-m-d');
+
+    $ph = implode(',', array_fill(0, count($cobrador_ids), '?'));
+    $stmt = $pdo->prepare("
+        SELECT cr.cobrador_id, cu.monto_cuota, cu.monto_mora, cu.fecha_vencimiento, cr.interes_moratorio_pct
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        WHERE cr.cobrador_id IN ($ph) AND cr.estado IN ('EN_CURSO','MOROSO')
+          AND cu.fecha_vencimiento BETWEEN ? AND ?
+          AND cu.estado != 'CANCELADA'
+    ");
+    $stmt->execute([...$cobrador_ids, $lunes, $sabado]);
+
+    $totales = array_fill_keys($cobrador_ids, 0.0);
+    foreach ($stmt->fetchAll() as $cu) {
+        $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+        $mora = (float) $cu['monto_mora'] > 0
+            ? (float) $cu['monto_mora']
+            : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
+        $totales[(int) $cu['cobrador_id']] += (float) $cu['monto_cuota'] + $mora;
+    }
+    return $totales;
+}
+
+function calcular_meta_semanal_auto(PDO $pdo, int $cobrador_id, ?DateTimeImmutable $hoy = null): float
+{
+    return calcular_metas_semanales_auto($pdo, [$cobrador_id], $hoy)[$cobrador_id] ?? 0.0;
+}
+
 // ── Cuotas ───────────────────────────────────────────────────
 
 /**

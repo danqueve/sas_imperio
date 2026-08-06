@@ -10,14 +10,20 @@ verificar_permiso('gestionar_usuarios');
 
 $pdo = obtener_conexion();
 
-// ── Guardar metas ──────────────────────────────────────────
+// ── Guardar metas (override manual opcional; vacío = automático) ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'guardar_metas') {
-    $metas = $_POST['meta'] ?? [];
-    $stmt  = $pdo->prepare("UPDATE ic_usuarios SET meta_semanal = ? WHERE id = ? AND rol = 'cobrador'");
+    $metas   = $_POST['meta'] ?? [];
+    $stmt_set   = $pdo->prepare("UPDATE ic_usuarios SET meta_semanal = ? WHERE id = ? AND rol = 'cobrador'");
+    $stmt_clear = $pdo->prepare("UPDATE ic_usuarios SET meta_semanal = NULL WHERE id = ? AND rol = 'cobrador'");
     $count = 0;
     foreach ($metas as $uid => $val) {
-        $monto = max(0, (float) str_replace(['.', ','], ['', '.'], $val));
-        $stmt->execute([$monto, (int) $uid]);
+        $val = trim((string) $val);
+        if ($val === '') {
+            $stmt_clear->execute([(int) $uid]);
+        } else {
+            $monto = max(0, (float) str_replace(['.', ','], ['', '.'], $val));
+            $stmt_set->execute([$monto, (int) $uid]);
+        }
         $count++;
     }
     registrar_log($pdo, $_SESSION['user_id'], 'METAS_ACTUALIZADAS', 'usuario', 0,
@@ -32,13 +38,16 @@ $dow       = (int) date('N');
 $lunes     = date('Y-m-d', strtotime('-' . ($dow - 1) . ' days'));
 $sabado    = date('Y-m-d', strtotime($lunes . ' +5 days'));
 
-// ── Cobradores activos con su meta ─────────────────────────
+// ── Cobradores activos con su meta (override manual, nullable) ──
 $cobradores = $pdo->query("
     SELECT id, nombre, apellido, meta_semanal
     FROM ic_usuarios
     WHERE rol = 'cobrador' AND activo = 1
     ORDER BY apellido, nombre
 ")->fetchAll();
+
+// ── Meta automática por cobrador (cuotas con vencimiento esta semana) ──
+$metas_auto = calcular_metas_semanales_auto($pdo, array_column($cobradores, 'id'));
 
 // ── Cobrado esta semana por cobrador (solo origen='cobrador') ─
 $stmt_cobrado = $pdo->prepare("
@@ -74,6 +83,7 @@ require_once __DIR__ . '/../views/layout.php';
         <i class="fa fa-info-circle"></i>
         Semana actual: <strong><?= date('d/m', strtotime($lunes)) ?> — <?= date('d/m', strtotime($sabado)) ?></strong>
         · Los montos cobrados solo incluyen pagos registrados por los cobradores (no manuales).
+        · La meta se calcula sola en base a las cuotas (de cualquier frecuencia) que vencen esta semana. Dejá el campo vacío para usar el cálculo automático, o cargá un monto para fijarlo manualmente.
     </div>
 </div>
 
@@ -90,7 +100,8 @@ require_once __DIR__ . '/../views/layout.php';
                 <thead>
                     <tr>
                         <th>Cobrador</th>
-                        <th style="width:180px">Meta Semanal ($)</th>
+                        <th class="text-right">Meta Automática</th>
+                        <th style="width:180px">Override Manual ($)</th>
                         <th class="text-right">Cobrado Semana</th>
                         <th style="min-width:200px">Cumplimiento</th>
                         <th class="text-center">Estado</th>
@@ -99,7 +110,10 @@ require_once __DIR__ . '/../views/layout.php';
                 <tbody>
                 <?php foreach ($cobradores as $cob): ?>
                     <?php
-                    $meta    = (float) ($cob['meta_semanal'] ?: 500000);
+                    $meta_auto     = $metas_auto[(int) $cob['id']] ?? 0.0;
+                    $meta_manual   = $cob['meta_semanal']; // nullable: override opcional
+                    $es_automatico = ($meta_manual === null);
+                    $meta          = $es_automatico ? $meta_auto : (float) $meta_manual;
                     $cobrado = $cobrado_map[(int) $cob['id']] ?? 0.0;
                     $pct     = $meta > 0 ? min(100, round($cobrado / $meta * 100)) : 0;
                     $color   = $pct >= 100 ? '#d4a017' : ($pct >= 70 ? 'var(--success)' : ($pct >= 40 ? '#f97316' : 'var(--danger)'));
@@ -112,12 +126,21 @@ require_once __DIR__ . '/../views/layout.php';
                                 </div>
                                 <div>
                                     <div style="font-weight:700;font-size:.95rem"><?= e($cob['apellido'] . ', ' . $cob['nombre']) ?></div>
+                                    <?php if ($es_automatico): ?>
+                                        <span class="badge-ic badge-primary" style="font-size:.68rem">Automático</span>
+                                    <?php else: ?>
+                                        <span class="badge-ic badge-muted" style="font-size:.68rem">Manual</span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </td>
+                        <td class="text-right" style="color:var(--text-muted)">
+                            <?= formato_pesos($meta_auto) ?>
+                        </td>
                         <td>
-                            <input type="number" name="meta[<?= $cob['id'] ?>]" value="<?= (int) $meta ?>"
-                                step="10000" min="0" style="width:160px;text-align:right">
+                            <input type="number" name="meta[<?= $cob['id'] ?>]"
+                                value="<?= $es_automatico ? '' : (int) $meta_manual ?>"
+                                placeholder="Automático" step="10000" min="0" style="width:160px;text-align:right">
                         </td>
                         <td class="text-right" style="font-weight:700;color:var(--success);font-size:1rem">
                             <?= formato_pesos($cobrado) ?>
