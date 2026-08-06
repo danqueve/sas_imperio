@@ -345,6 +345,22 @@ $cobrado_semana = (float) $stmt_meta->fetchColumn();
 $pct_meta       = $META_SEMANAL > 0 ? min(100, round($cobrado_semana / $META_SEMANAL * 100)) : 0;
 $falta_meta     = max(0, $META_SEMANAL - $cobrado_semana);
 
+// Meta Fija Semanal (solo semanal, sin mora) — punto de comparación adicional
+$META_FIJA_SEMANAL = calcular_meta_semanal_pura($pdo, $cobrador_filtro);
+$stmt_meta_pura = $pdo->prepare("
+    SELECT COALESCE(SUM(pt.monto_total - pt.monto_mora_cobrada), 0) AS total
+    FROM ic_pagos_temporales pt
+    JOIN ic_cuotas cu   ON cu.id = pt.cuota_id
+    JOIN ic_creditos cr ON cr.id = cu.credito_id
+    WHERE pt.cobrador_id = ? AND pt.fecha_jornada BETWEEN ? AND ?
+      AND pt.estado IN ('PENDIENTE','APROBADO') AND pt.origen = 'cobrador'
+      AND cr.frecuencia = 'semanal'
+");
+$stmt_meta_pura->execute([$cobrador_filtro, $lunes_sem, $domingo_sem]);
+$cobrado_semanal_puro = (float) $stmt_meta_pura->fetchColumn();
+$pct_meta_pura        = $META_FIJA_SEMANAL > 0 ? min(100, round($cobrado_semanal_puro / $META_FIJA_SEMANAL * 100)) : 0;
+$falta_meta_pura      = max(0, $META_FIJA_SEMANAL - $cobrado_semanal_puro);
+
 // Racha: días consecutivos cumpliendo meta diaria
 $META_DIARIA = round($META_SEMANAL / 6);
 $stmt_racha = $pdo->prepare("
@@ -610,6 +626,35 @@ $meta_color = $pct_meta >= 100 ? '#d4a017' : ($pct_meta >= 70 ? 'var(--success)'
             <span style="color:#d4a017;font-weight:800"><i class="fa fa-trophy"></i> Meta alcanzada!</span>
         <?php else: ?>
             <span style="color:var(--text-muted)">Faltan: <strong><?= formato_pesos($falta_meta) ?></strong></span>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- META FIJA SEMANAL (solo semanal, sin mora) -->
+<?php
+$meta_pura_color = $pct_meta_pura >= 100 ? '#d4a017' : ($pct_meta_pura >= 70 ? 'var(--success)' : ($pct_meta_pura >= 40 ? '#f97316' : 'var(--danger)'));
+?>
+<div class="card-ic mb-4" style="padding:16px;border-left:4px solid <?= $meta_pura_color ?>">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:.9rem;font-weight:700">
+            <i class="fa fa-calendar-week" style="color:<?= $meta_pura_color ?>"></i> Meta Fija Semanal
+            <span style="font-size:.72rem;font-weight:400;color:var(--text-muted)">(solo semanal, sin mora)</span>
+        </span>
+        <span style="font-size:.85rem;font-weight:800;color:<?= $meta_pura_color ?>">
+            <?= $pct_meta_pura ?>%
+        </span>
+    </div>
+    <div style="background:rgba(255,255,255,.08);border-radius:99px;height:10px;overflow:hidden;margin-bottom:10px">
+        <div style="width:<?= $pct_meta_pura ?>%;height:100%;background:<?= $meta_pura_color ?>;border-radius:99px;transition:width .4s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.82rem">
+        <span style="color:var(--text-muted)">
+            <?= formato_pesos($cobrado_semanal_puro) ?> / <?= formato_pesos($META_FIJA_SEMANAL) ?>
+        </span>
+        <?php if ($pct_meta_pura >= 100): ?>
+            <span style="color:#d4a017;font-weight:800"><i class="fa fa-trophy"></i> Meta alcanzada!</span>
+        <?php else: ?>
+            <span style="color:var(--text-muted)">Faltan: <strong><?= formato_pesos($falta_meta_pura) ?></strong></span>
         <?php endif; ?>
     </div>
 </div>
