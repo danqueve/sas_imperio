@@ -1262,22 +1262,22 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Monto Efectivo $</label>
+                    <label style="color:#0d6efd">Monto Efectivo $</label>
                     <input type="number" name="monto_efectivo" id="inp_efectivo" step="0.01" min="0" value="0"
                         oninput="actualizarTotal()"
                         style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
                 <div class="form-group">
-                    <label>Monto Transferencia $</label>
+                    <label style="color:#0d6efd">Monto Transferencia $</label>
                     <input type="number" name="monto_transferencia" id="inp_transfer" step="0.01" min="0" value="0"
                         oninput="actualizarTotal()"
                         style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
             </div>
             <div
-                style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <span class="text-muted">Total Registrado:</span>
-                <span id="total_display" style="font-size:1.2rem;font-weight:800;color:var(--success)">$ 0,00</span>
+                style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <span style="color:#1e293b;font-weight:600">Total Registrado:</span>
+                <span id="total_display" style="font-size:1.2rem;font-weight:800;color:#15803d">$ 0,00</span>
             </div>
             <input type="hidden" name="monto_mora_cobrada" id="inp_mora_cobrada" value="0">
             <input type="hidden" name="es_cuota_pura" id="inp_cuota_pura" value="0">
