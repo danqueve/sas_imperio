@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manual de Usuario — SAS Imperio</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --primary: #6366f1;
+    --primary-light: #818cf8;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #38bdf8;
+    --purple: #a855f7;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #0ea5e9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+
+  /* COVER */
+  .cover {
+    background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #1e293b 100%);
+    padding: 80px 40px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(99,102,241,.15) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(168,85,247,.1) 0%, transparent 60%);
+  }
+  .cover-badge {
+    display: inline-block;
+    background: rgba(99,102,241,.2);
+    border: 1px solid rgba(99,102,241,.4);
+    color: var(--primary-light);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .cover h1 {
+    font-size: 2.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff 0%, var(--primary-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .cover p {
+    color: var(--muted);
+    font-size: 1.05rem;
+    max-width: 640px;
+    margin: 0 auto 32px;
+    position: relative;
+  }
+  .cover-meta {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 32px;
+    position: relative;
+  }
+  .cover-meta-item { text-align: center; }
+  .cover-meta-item .num {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--primary-light);
+  }
+  .cover-meta-item .lbl {
+    font-size: .75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+
+  /* LAYOUT */
+  .container { max-width: 980px; margin: 0 auto; padding: 48px 24px; }
+
+  /* TOC */
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 48px;
+  }
+  .toc h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+  .toc-group-label {
+    font-size: .72rem;
+    font-weight: 700;
+    color: var(--primary-light);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin: 18px 0 8px;
+  }
+  .toc-group-label:first-of-type { margin-top: 0; }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 8px;
+  }
+  .toc a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: .9rem;
+    transition: background .15s;
+    border: 1px solid transparent;
+  }
+  .toc a:hover {
+    background: rgba(99,102,241,.1);
+    border-color: rgba(99,102,241,.2);
+    color: var(--primary-light);
+  }
+  .toc-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: rgba(99,102,241,.2);
+    color: var(--primary-light);
+    font-size: .68rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* SECTION */
+  .section { margin-bottom: 56px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+  }
+  .section-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+  .section-header h2 { font-size: 1.4rem; font-weight: 800; }
+  .section-header .sub { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+  .section-header .phase-badge {
+    margin-left: auto;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .section-intro { color: var(--muted); margin-bottom: 20px; font-size: .92rem; }
+  .subsection-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--text);
+    margin: 32px 0 14px;
+    padding-left: 12px;
+    border-left: 3px solid var(--primary);
+  }
+  .subsection-title:first-of-type { margin-top: 8px; }
+
+  /* FEATURE CARD (una pantalla del sistema) */
+  .feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 26px;
+    margin-bottom: 16px;
+    transition: border-color .2s;
+  }
+  .feature-card:hover { border-color: rgba(99,102,241,.4); }
+  .feature-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .feature-card h3 { font-size: 1.05rem; font-weight: 700; }
+  .feature-card .file-path {
+    font-size: .72rem;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+    background: rgba(255,255,255,.05);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-top: 5px;
+    display: inline-block;
+  }
+  .feature-card .roles-inline { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; flex-shrink: 0; }
+  .feature-card p { color: var(--muted); font-size: .9rem; margin-bottom: 10px; }
+  .feature-card p:last-child { margin-bottom: 0; }
+  .feature-card strong { color: var(--text); }
+  .feature-card .campo-label {
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--primary-light);
+    margin: 12px 0 4px;
+    display: block;
+  }
+  .feature-card .campo-label:first-of-type { margin-top: 0; }
+
+  /* HOW-TO (qué se puede hacer / pasos simples) */
+  .how-to {
+    background: rgba(255,255,255,.03);
+    border-left: 3px solid var(--primary);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin-top: 12px;
+    font-size: .875rem;
+  }
+  .how-to .how-label {
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--primary-light);
+    margin-bottom: 6px;
+  }
+  .how-to ul { padding-left: 16px; color: var(--muted); }
+  .how-to ul li { margin-bottom: 4px; }
+  .how-to ul li strong { color: var(--text); }
+
+  /* REGLA DE NEGOCIO */
+  .regla-negocio {
+    background: rgba(245,158,11,.07);
+    border-left: 3px solid var(--warning);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin-top: 12px;
+    font-size: .875rem;
+  }
+  .regla-negocio .regla-label {
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--warning);
+    margin-bottom: 6px;
+  }
+  .regla-negocio ul, .regla-negocio ol { padding-left: 18px; color: var(--muted); }
+  .regla-negocio ul li, .regla-negocio ol li { margin-bottom: 5px; }
+  .regla-negocio strong { color: var(--text); }
+  .regla-negocio p { color: var(--muted); margin: 0 0 8px; }
+  .regla-negocio p:last-child { margin-bottom: 0; }
+
+  /* DATO REAL */
+  .dato-real {
+    background: rgba(16,185,129,.05);
+    border: 1px dashed rgba(16,185,129,.4);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-top: 12px;
+    font-size: .85rem;
+  }
+  .dato-real .dato-real-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: .64rem;
+    font-weight: 800;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: var(--success);
+    background: rgba(16,185,129,.15);
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 10px;
+  }
+  .dato-real dl { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; }
+  .dato-real dt { color: var(--muted); font-size: .8rem; }
+  .dato-real dd { color: var(--text); font-weight: 600; font-size: .85rem; }
+  .dato-real .nota { color: var(--muted); font-size: .78rem; margin-top: 10px; font-style: italic; }
+
+  /* FLUJO PASO A PASO */
+  .flujo-pasos { counter-reset: paso; margin-top: 14px; }
+  .flujo-paso { position: relative; padding: 0 0 18px 36px; }
+  .flujo-paso:last-child { padding-bottom: 0; }
+  .flujo-paso::before {
+    counter-increment: paso;
+    content: counter(paso);
+    position: absolute; left: 0; top: 0;
+    width: 25px; height: 25px; border-radius: 50%;
+    background: var(--primary); color: #fff;
+    font-size: .72rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .flujo-paso::after {
+    content: ''; position: absolute; left: 12px; top: 27px; bottom: -2px;
+    width: 2px; background: var(--border);
+  }
+  .flujo-paso:last-child::after { display: none; }
+  .flujo-paso strong { color: var(--text); }
+  .flujo-paso p { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+
+  /* TAGS */
+  .tag {
+    display: inline-block;
+    font-size: .66rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+  }
+  .tag-new { background: rgba(16,185,129,.15); color: var(--success); }
+  .tag-modified { background: rgba(99,102,241,.15); color: var(--primary-light); }
+  .tag-deleted { background: rgba(239,68,68,.15); color: var(--danger); }
+  .tag-db { background: rgba(56,189,248,.15); color: var(--info); }
+  .tag-irrev { background: rgba(239,68,68,.15); color: #fca5a5; }
+
+  /* ROLES */
+  .role { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+  .role-admin { background: rgba(239,68,68,.15); color: #fca5a5; }
+  .role-sup { background: rgba(245,158,11,.15); color: #fcd34d; }
+  .role-cob { background: rgba(16,185,129,.15); color: #6ee7b7; }
+  .role-vend { background: rgba(56,189,248,.15); color: #7dd3fc; }
+  .role-todos { background: rgba(168,85,247,.15); color: #d8b4fe; }
+
+  /* PERMISOS TABLE */
+  .permisos-wrap { overflow-x: auto; margin-top: 8px; }
+  .permisos-table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 600px; }
+  .permisos-table th, .permisos-table td { padding: 9px 12px; text-align: center; border-bottom: 1px solid var(--border); }
+  .permisos-table th:first-child, .permisos-table td:first-child { text-align: left; }
+  .permisos-table thead th { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .5px; border-bottom: 2px solid var(--border); }
+  .permisos-table td:first-child { color: var(--text); font-family: 'Courier New', monospace; font-size: .78rem; }
+  .permisos-table td:last-child { color: var(--muted); font-size: .78rem; text-align: left; }
+  .permisos-table .si { color: var(--success); font-weight: 800; }
+  .permisos-table .no { color: var(--muted); opacity: .35; }
+
+  /* DB / GENERIC TABLE (glosario, resumenes) */
+  .db-table {
+    background: var(--card);
+    border: 1px solid rgba(56,189,248,.25);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 12px;
+  }
+  .db-table h4 {
+    font-family: 'Courier New', monospace;
+    font-size: .95rem;
+    color: var(--info);
+    margin-bottom: 10px;
+  }
+  .db-table table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .db-table th {
+    text-align: left;
+    color: var(--muted);
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .db-table td {
+    padding: 6px 8px 6px 0;
+    color: var(--text);
+    font-size: .82rem;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+    vertical-align: top;
+  }
+  .db-table td:first-child { font-family: 'Courier New', monospace; font-weight: 700; color: var(--primary-light); white-space: nowrap; }
+  .db-table td:last-child { color: var(--muted); font-size: .8rem; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: .82rem;
+  }
+
+  h1, h2, h3, h4 { line-height: 1.3; }
+  a { color: var(--primary-light); }
+  code { font-family: 'Courier New', monospace; }
+
+  @media print {
+    /* Remapeo completo de la paleta: las variables de arriba están pensadas
+       para texto claro sobre fondo oscuro. Sin este remapeo, todo el texto
+       secundario (var(--muted), var(--text)) queda casi ilegible sobre el
+       fondo blanco de la impresión. */
+    :root {
+      --bg: #ffffff;
+      --card: #f8fafc;
+      --border: #cbd5e1;
+      --primary: #4338ca;
+      --primary-light: #4338ca;
+      --success: #047857;
+      --warning: #b45309;
+      --danger: #b91c1c;
+      --info: #0369a1;
+      --purple: #7e22ce;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #0369a1;
+    }
+    body { background: #fff; color: #0f172a; }
+    .cover { background: #eef2ff; }
+    .cover h1 { -webkit-text-fill-color: #1e293b; background: none; }
+    .cover-badge { background: #e0e7ff; border-color: #c7d2fe; }
+    .feature-card, .toc, .db-table, .how-to, .regla-negocio, .dato-real { background: #f8fafc; border-color: #e2e8f0; }
+    .feature-card .file-path { background: #eef2f7; }
+    .role-admin { background: #fee2e2; color: #991b1b; }
+    .role-sup { background: #fef3c7; color: #92400e; }
+    .role-cob { background: #d1fae5; color: #065f46; }
+    .role-vend { background: #e0f2fe; color: #075985; }
+    .role-todos { background: #f3e8ff; color: #6b21a8; }
+    .tag-new { background: #d1fae5; color: #065f46; }
+    .tag-modified { background: #e0e7ff; color: #3730a3; }
+    .tag-deleted, .tag-irrev { background: #fee2e2; color: #991b1b; }
+    .tag-db { background: #e0f2fe; color: #075985; }
+    .permisos-table .si { color: #047857; }
+    .permisos-table .no { color: #94a3b8; opacity: 1; }
+    .feature-card { break-inside: avoid; page-break-inside: avoid; }
+    .db-table { break-inside: avoid; page-break-inside: avoid; }
+    .dato-real, .regla-negocio, .how-to { break-inside: avoid; page-break-inside: avoid; }
+    .section { break-inside: auto; }
+    .section-header { break-after: avoid; }
+    .toc { break-after: page; }
+    a { text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- PORTADA -->
+<div class="cover">
+  <div class="cover-badge">SAS Imperio — Sistema de Gestión de Créditos</div>
+  <h1>Manual de Usuario</h1>
+  <p>Guía completa de todos los módulos del sistema: qué hace cada pantalla, quién puede usarla y cómo, con ejemplos reales de la base de datos y del equipo de cobradores.</p>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <div class="num">10</div>
+      <div class="lbl">Módulos</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="num">4</div>
+      <div class="lbl">Roles de usuario</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="num">23</div>
+      <div class="lbl">Tablas en la base</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="num">98</div>
+      <div class="lbl">Pantallas documentadas</div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ÍNDICE -->
+  <div class="toc" id="indice">
+    <h2>Índice</h2>
+
+    <div class="toc-group-label">Introducción</div>
+    <div class="toc-grid">
+      <a href="#intro"><div class="toc-num">i</div> Qué es el sistema</a>
+      <a href="#roles"><div class="toc-num">ii</div> Roles y Permisos</a>
+      <a href="#auth"><div class="toc-num">iii</div> Acceso al Sistema</a>
+    </div>
+
+    <div class="toc-group-label">Módulos de operación</div>
+    <div class="toc-grid">
+      <a href="#clientes"><div class="toc-num">1</div> Clientes</a>
+      <a href="#articulos"><div class="toc-num">2</div> Artículos</a>
+      <a href="#creditos"><div class="toc-num">3</div> Créditos</a>
+      <a href="#cobrador"><div class="toc-num">4</div> Cobrador — Agenda</a>
+    </div>
+
+    <div class="toc-group-label">Administración</div>
+    <div class="toc-grid">
+      <a href="#admin-panel"><div class="toc-num">5</div> Panel y Usuarios</a>
+      <a href="#admin-cobranza"><div class="toc-num">6</div> Cobranza y Rendiciones</a>
+      <a href="#admin-metas"><div class="toc-num">7</div> Metas</a>
+      <a href="#admin-reportes"><div class="toc-num">8</div> Reportes de Cartera</a>
+      <a href="#admin-rendimiento"><div class="toc-num">9</div> Rendimiento de Cobradores</a>
+      <a href="#admin-liquidaciones"><div class="toc-num">10</div> Liquidaciones</a>
+      <a href="#admin-herramientas"><div class="toc-num">11</div> Herramientas Excepcionales</a>
+    </div>
+
+    <div class="toc-group-label">Otros módulos</div>
+    <div class="toc-grid">
+      <a href="#supervisor"><div class="toc-num">12</div> Supervisor</a>
+      <a href="#ventas"><div class="toc-num">13</div> Ventas</a>
+      <a href="#vendedores"><div class="toc-num">14</div> Vendedores</a>
+      <a href="#tickets"><div class="toc-num">15</div> Tickets</a>
+    </div>
+
+    <div class="toc-group-label">Referencia</div>
+    <div class="toc-grid">
+      <a href="#glosario"><div class="toc-num">⬡</div> Glosario de Términos</a>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- INTRODUCCIÓN -->
+  <!-- ============================================================ -->
+  <div class="section" id="intro">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(99,102,241,.15);color:var(--primary-light)">📘</div>
+      <div>
+        <h2>Introducción</h2>
+        <div class="sub">Qué es SAS Imperio y cómo está organizado</div>
+      </div>
+    </div>
+    <p class="section-intro">
+      SAS Imperio (también llamado internamente "Imperio Comercial") es el sistema que administra todo el ciclo de venta financiada del negocio: desde que se carga un cliente y se le vende un artículo en cuotas, hasta que un cobrador visita su casa a cobrar, un supervisor aprueba esa rendición, y la administración liquida la comisión del cobrador y mide el desempeño de toda la operación. Corre en un navegador web (celular, tablet o computadora), sin necesidad de instalar nada.
+    </p>
+    <p class="section-intro">
+      Este manual describe <strong>qué hace cada pantalla</strong>, <strong>quién puede usarla</strong> y <strong>cómo se usa</strong>, módulo por módulo, con ejemplos reales tomados de la base de datos del negocio (clientes, créditos, cobradores y liquidaciones reales) para que cada explicación se entienda con un caso concreto y no solo en abstracto.
+    </p>
+    <div class="how-to">
+      <div class="how-label">Los 4 roles del sistema, en una línea cada uno</div>
+      <ul>
+        <li><span class="role role-admin">ADMIN</span> — control total: usuarios, dinero, herramientas excepcionales y todo lo que ve el supervisor.</li>
+        <li><span class="role role-sup">SUPERVISOR</span> — casi el mismo día a día que un admin (clientes, créditos, rendiciones, reportes), pero solo puede trabajar de 08:00 a 16:00 y no gestiona usuarios ni dinero de forma masiva.</li>
+        <li><span class="role role-cob">COBRADOR</span> — rol de campo: ve únicamente su propia cartera de clientes y su agenda de cobro diaria.</li>
+        <li><span class="role role-vend">VENDEDOR</span> — rol comercial: carga ventas de contado/tarjeta y hace seguimiento de los créditos que él mismo originó.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ROLES Y PERMISOS -->
+  <!-- ============================================================ -->
+  <div class="section" id="roles">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(239,68,68,.15);color:var(--danger)">🔐</div>
+      <div>
+        <h2>Roles y Permisos</h2>
+        <div class="sub">Quién puede hacer qué, en todo el sistema</div>
+      </div>
+    </div>
+    <p class="section-intro">
+      Cada acción del sistema está atada a un <strong>permiso</strong>, y cada permiso está habilitado para uno o más roles. Esta es la matriz completa (definida en <code>config/sesion.php</code>): quien entienda esta tabla entiende de un vistazo qué puede y qué no puede hacer cada persona de tu equipo.
+    </p>
+    <div class="permisos-wrap">
+      <table class="permisos-table">
+        <thead>
+          <tr>
+            <th>Permiso</th>
+            <th>Admin</th>
+            <th>Supervisor</th>
+            <th>Cobrador</th>
+            <th>Vendedor</th>
+            <th>Qué habilita</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>ver_clientes</td><td class="si">✔</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td>Ver el listado y la ficha de clientes</td></tr>
+          <tr><td>editar_clientes</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="no">—</td><td>Editar los datos de un cliente</td></tr>
+          <tr><td>eliminar_clientes</td><td class="si">✔</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td>Eliminar un cliente</td></tr>
+          <tr><td>alta_creditos</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="no">—</td><td>Dar de alta un crédito, y usar todo el módulo Artículos</td></tr>
+          <tr><td>ver_agenda</td><td class="si">✔</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td>Ver la agenda diaria de cobro y el cronograma de un crédito</td></tr>
+          <tr><td>registrar_pagos</td><td class="si">✔</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td>Registrar el cobro de una cuota</td></tr>
+          <tr><td>aprobar_rendiciones</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="no">—</td><td>Aprobar/rechazar/revertir rendiciones, condonar mora</td></tr>
+          <tr><td>gestionar_usuarios</td><td class="si">✔</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td>Usuarios, Metas, Migrar Cobrador, Interés a Cero</td></tr>
+          <tr><td>ver_reportes</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="no">—</td><td>Dashboard, Log, Atrasados, Riesgo, Finalizados, Próximos a Cerrar, Dormidos, Cohortes, Aging, Ranking</td></tr>
+          <tr><td>ver_estadisticas</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="no">—</td><td>Historial de Metas, Estadísticas de Cobranza y por Cobrador</td></tr>
+          <tr><td>registrar_ventas</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="si">✔</td><td>Cargar una venta de contado/tarjeta</td></tr>
+          <tr><td>ver_ventas</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="si">✔</td><td>Ver el listado de ventas</td></tr>
+          <tr><td>ver_clientes_vendedor</td><td class="si">✔</td><td class="si">✔</td><td class="no">—</td><td class="si">✔</td><td>Ver la cartera de créditos que originó un vendedor</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="regla-negocio" style="margin-top:20px">
+      <div class="regla-label">⚠ Excepciones que no pasan por esta tabla</div>
+      <ul>
+        <li><strong>Liquidaciones</strong> (las 4 pantallas) y <strong>Migrar Cobrador</strong> / <strong>Interés a Cero</strong> son exclusivas de <span class="role role-admin">ADMIN</span> — ni siquiera el supervisor entra, aunque tenga casi todos los demás permisos.</li>
+        <li><strong>Tickets</strong> no usa esta tabla en absoluto: cualquier usuario logueado (de cualquier rol) puede crear, ver y responder tickets.</li>
+      </ul>
+    </div>
+
+    <div class="regla-negocio">
+      <div class="regla-label">⏰ Restricción de horario exclusiva del Supervisor</div>
+      <p>El supervisor solo puede usar el sistema entre las <strong>08:00 y las 16:00</strong>. Fuera de ese horario se lo redirige a una pantalla de acceso restringido, salvo que un administrador le haya otorgado una <strong>extensión temporal</strong> (2h, 4h, 8h o un tiempo a medida) desde Administración → Usuarios. Cuando le quedan 30 minutos o menos de acceso, ve un aviso con cuenta regresiva en la parte superior de toda pantalla, invitándolo a pedir una extensión antes de quedar bloqueado. Esta restricción no aplica a admin, cobrador ni vendedor.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- AUTH -->
+  <!-- ============================================================ -->
+  <div class="section" id="auth">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(56,189,248,.15);color:var(--info)">🔑</div>
+      <div>
+        <h2>Acceso al Sistema</h2>
+        <div class="sub"><code>auth/</code> — Login, logout y control de horario</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div>
+          <h3>Iniciar Sesión</h3>
+          <span class="file-path">auth/login.php</span>
+        </div>
+        <div class="roles-inline"><span class="role role-todos">Público</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> es la puerta de entrada al sistema para los 4 roles. Pide usuario y contraseña.</p>
+      <p><strong>Qué hace:</strong> si el login es correcto, redirige automáticamente según el rol — un <span class="role role-cob">COBRADOR</span> cae directo en su agenda del día, un <span class="role role-vend">VENDEDOR</span> en sus clientes, y admin/supervisor en el dashboard. Queda registrado en el log de actividad.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Protección contra fuerza bruta</div>
+        <p>Máximo <strong>5 intentos fallidos por IP en 15 minutos</strong>; al superarlos, el sistema bloquea temporalmente el acceso y muestra cuántos intentos quedan.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div>
+          <h3>Cerrar Sesión</h3>
+          <span class="file-path">auth/logout.php</span>
+        </div>
+        <div class="roles-inline"><span class="role role-todos">Todos</span></div>
+      </div>
+      <p>Cierra la sesión activa y vuelve al login. No pide confirmación.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div>
+          <h3>Acceso Restringido</h3>
+          <span class="file-path">auth/acceso_restringido.php</span>
+        </div>
+        <div class="roles-inline"><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> pantalla que ve un supervisor cuando intenta entrar fuera de su horario habilitado (08:00–16:00).</p>
+      <p><strong>Qué muestra:</strong> el horario permitido, la hora actual, y un listado de administradores activos con botón directo de WhatsApp para pedir una extensión. Consulta automáticamente cada 60 segundos si ya se le otorgó acceso (vía <code>admin/api_acceso_supervisor.php</code>) y lo redirige solo, sin que tenga que refrescar la página.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- CLIENTES -->
+  <!-- ============================================================ -->
+  <div class="section" id="clientes">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(16,185,129,.15);color:var(--success)">👥</div>
+      <div>
+        <h2>1. Clientes</h2>
+        <div class="sub"><code>clientes/</code> — Alta, ficha, mapa y portal de autoconsulta</div>
+      </div>
+    </div>
+    <p class="section-intro">Es la base de toda la operación: acá vive cada persona a la que la empresa le vendió (o podría venderle) un crédito, con sus datos de contacto, su garante, su historial y su puntaje de pago.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Listado de Clientes</h3><span class="file-path">clientes/index.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> pantalla principal para buscar y administrar toda la cartera de clientes.</p>
+      <p><strong>Qué se ve:</strong> buscador en vivo (nombre, apellido, DNI o teléfono), filtros por Estado (Activo/Inactivo/Moroso), Zona y Cobrador; tabla con apellido y nombre, DNI, teléfono (con botón directo de WhatsApp), zona, cobrador asignado, cantidad de créditos activos y estado.</p>
+      <p><strong>Qué se puede hacer:</strong> ver ficha, editar (no cobrador), eliminar (solo admin), abrir la ubicación en Google Maps, importar clientes por CSV y dar de alta uno nuevo.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Regla de negocio</div>
+        <p>Un <span class="role role-cob">COBRADOR</span> solo ve los clientes donde él es el cobrador asignado — es una restricción real de seguridad, no solo un filtro visual.</p>
+      </div>
+    </div>
+
+    <div class="feature-card" id="clientes-ficha">
+      <div class="feature-card-header">
+        <div><h3>Ficha del Cliente</h3><span class="file-path">clientes/ver.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> vista de 360° de un cliente puntual — sus datos, su garante, todos sus créditos (activos e históricos), su portal de autoconsulta y notas internas del equipo.</p>
+      <p><strong>Qué se ve:</strong> datos personales y de contacto, <strong>puntaje de pago</strong> (barra de color Excelente/Bueno/Regular/Malo), el link del portal del cliente (o botón para generarlo si no existe), los datos del garante si tiene, la tabla de todos sus créditos con barra de avance, y las notas internas.</p>
+      <p><strong>Qué se puede hacer:</strong> editar el cliente, descargar el PDF de la ficha, generar el link del portal y enviarlo por WhatsApp, dar de alta un crédito nuevo, agregar/borrar notas (solo admin/supervisor pueden escribir notas).</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Ejemplo real</span>
+        <dl>
+          <dt>Cliente</dt><dd>Karen Elizabeth Conde</dd>
+          <dt>DNI</dt><dd>43.771.565</dd>
+          <dt>Teléfono</dt><dd>381 528-7535</dd>
+          <dt>Dirección</dt><dd>Congreso 1427</dd>
+          <dt>Zona</dt><dd>Este</dd>
+          <dt>Día de cobro</dt><dd>Miércoles</dd>
+          <dt>Cobradora asignada</dt><dd>Sebastián Delgadillo</dd>
+          <dt>Estado</dt><dd>Activo</dd>
+        </dl>
+        <div class="nota">Este mismo cliente y su crédito #541 (Combo Lavado y Seca Drean) se usan como ejemplo en la sección Créditos y en la agenda del cobrador.</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Alta y Edición de Cliente</h3><span class="file-path">clientes/nuevo.php · clientes/editar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Campos:</strong> datos personales (apellidos y nombres obligatorios, DNI, CUIL, teléfono obligatorio, teléfono alternativo, fecha de nacimiento, estado), domicilio (dirección, calles linderas, dirección laboral, coordenadas GPS), asignación (cobrador, zona sugerida automáticamente según el cobrador, día de cobro), y una sección plegable de garante.</p>
+      <div class="how-to">
+        <div class="how-label">Detalles útiles del formulario</div>
+        <ul>
+          <li><strong>Coordenadas GPS:</strong> se puede tocar "Usar mi ubicación" (geolocalización del navegador) o pegar directamente un link de Google Maps — incluso uno acortado (<code>goo.gl/maps/...</code>) — y el sistema lo resuelve solo y completa lat/long.</li>
+          <li><strong>DNI en tiempo real:</strong> al salir del campo DNI, el sistema avisa al instante si ya pertenece a otro cliente, antes de intentar guardar.</li>
+        </ul>
+      </div>
+      <div class="regla-negocio">
+        <div class="regla-label">Reglas de negocio</div>
+        <ul>
+          <li>El <strong>DNI debe ser único</strong> entre todos los clientes (y el DNI/CUIL del garante único entre todos los garantes).</li>
+          <li>Si se cambia el cobrador de un cliente, el sistema <strong>sincroniza automáticamente</strong> ese mismo cobrador en todos sus créditos EN_CURSO/MOROSO, para que la cartera del cobrador y los créditos activos no queden desalineados.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Eliminar Cliente</h3><span class="file-path">clientes/eliminar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p>No se puede eliminar un cliente que ya tiene historial de créditos (se sugiere marcarlo Inactivo en su lugar). Si nunca tuvo un crédito, se borra físicamente.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Importar Clientes (CSV)</h3><span class="file-path">clientes/importar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Carga masiva desde un archivo CSV con columnas mínimas <code>nombres</code>, <code>apellidos</code>, <code>telefono</code> (más columnas opcionales de garante, cobrador y zona), informando cuántas filas se cargaron bien y cuántas dieron error. A diferencia del alta manual, <strong>no valida DNI duplicado</strong> en la importación masiva.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Mapa de Clientes</h3><span class="file-path">clientes/mapa.php · clientes/mapa_full.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> ver geográficamente dónde están los clientes, y comparar zonas de trabajo entre cobradores para detectar superposición de rutas.</p>
+      <p><strong>Qué se puede hacer:</strong> elegir hasta 4 cobradores a la vez (cada uno con su color); al elegir 2 o más, el mapa dibuja el <strong>polígono que envuelve</strong> a los clientes de cada uno, para ver de un vistazo si dos cobradores están "pisando" la misma zona. <code>mapa_full.php</code> es la misma vista en pantalla completa, para proyectar o compartir.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Portal del Cliente (autoconsulta pública)</h3><span class="file-path">clientes/portal.php</span></div>
+        <div class="roles-inline"><span class="role role-todos">Público (con token)</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> el cliente final entra desde el link que le manda la empresa por WhatsApp para consultar el estado de sus propios créditos, sin tener que llamar.</p>
+      <div class="flujo-pasos">
+        <div class="flujo-paso"><strong>1. Verificación</strong><p>El cliente entra al link único y confirma su identidad ingresando su DNI (máximo 5 intentos fallidos cada 15 minutos).</p></div>
+        <div class="flujo-paso"><strong>2. Estado general</strong><p>Ve un saludo personalizado y un chip de estado: "Al día con tus pagos" o "Tenés cuotas atrasadas".</p></div>
+        <div class="flujo-paso"><strong>3. Detalle por crédito</strong><p>Por cada crédito activo: artículo, total, ya pagado, saldo pendiente, barra de progreso, próximo vencimiento con cuenta regresiva ("Vence hoy", "Faltan 3 días"...), cronograma completo y sus últimos 10 pagos.</p></div>
+        <div class="flujo-paso"><strong>4. Contacto</strong><p>Tarjeta del cobrador asignado con botón directo de WhatsApp.</p></div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Ficha PDF y otros soportes</h3><span class="file-path">clientes/ficha_pdf.php · generar_token_portal.php · resolver_maps.php · verificar_dni.php · notas_ajax.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Ficha PDF:</strong> descarga en PDF los datos del cliente, su garante y el historial completo de créditos con su avance.</p>
+      <p>Los otros 4 archivos son procesos de soporte que no son pantallas en sí: generan el token del portal, resuelven un link corto de Maps a coordenadas, verifican en tiempo real si un DNI ya existe, y manejan las notas internas (crear/listar/borrar) de la ficha del cliente.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ARTÍCULOS -->
+  <!-- ============================================================ -->
+  <div class="section" id="articulos">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(168,85,247,.15);color:var(--purple)">📦</div>
+      <div>
+        <h2>2. Artículos</h2>
+        <div class="sub"><code>articulos/</code> — Catálogo de productos, precios y stock</div>
+      </div>
+    </div>
+    <p class="section-intro">Es el catálogo de productos que se venden en crédito o al contado. Solo lo usan admin y supervisor (permiso <code>alta_creditos</code>) — el cobrador no entra a este módulo.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Catálogo de Artículos</h3><span class="file-path">articulos/index.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Qué se ve:</strong> KPIs de Activos, Sin Stock, Stock Bajo (1 a 4 unidades) e Inactivos; filtros por texto, categoría y nivel de stock; tabla con SKU, descripción, categoría, precio de venta, precio contado, stock (verde/amarillo/rojo según cantidad) y cuántos créditos activos usan ese artículo.</p>
+      <p><strong>Qué se puede hacer:</strong> ver clientes con ese artículo, imprimir la etiqueta QR, editar, eliminar (bloqueado si el artículo ya está en algún crédito), exportar PDF de Stock o de Clientes por artículo.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Ejemplo real del catálogo</span>
+        <dl>
+          <dt>Artículo</dt><dd>Heladera Drean HDR280F50B 277L</dd>
+          <dt>SKU</dt><dd>186-26875</dd>
+          <dt>Precio de venta</dt><dd>$ 1.608.000</dd>
+          <dt>Precio contado</dt><dd>$ 923.000</dd>
+          <dt>Stock</dt><dd>1 unidad</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Alta y Edición de Artículo</h3><span class="file-path">articulos/nuevo.php · articulos/editar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Campos:</strong> descripción (obligatoria), SKU único, categoría, stock, y <strong>4 precios independientes</strong>: costo, venta, contado y tarjeta.</p>
+      <div class="how-to">
+        <div class="how-label">Herramientas integradas en el formulario</div>
+        <ul>
+          <li><strong>Calculadora de cuota:</strong> ingresás una cantidad de semanas y el sistema muestra al instante la cuota semanal resultante (solo de referencia, no se guarda), para decidir el plan antes de crear el crédito.</li>
+          <li><strong>Código QR:</strong> vista previa del QR (SKU o "ART-{id}") con botón para imprimir la etiqueta.</li>
+        </ul>
+      </div>
+      <div class="regla-negocio">
+        <div class="regla-label">Historial de precios</div>
+        <p>Cada vez que se edita un artículo y cambia algún precio, el sistema guarda automáticamente quién lo cambió, cuándo, y el valor anterior y nuevo de cada uno de los 4 precios — se ve como tabla debajo del formulario de edición.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Etiqueta QR</h3><span class="file-path">articulos/qr_label.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>PDF de etiqueta física (70×50mm, tamaño autoadhesiva) con código QR, descripción, SKU y los 3 precios de venta — para pegar en el producto exhibido en el local.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Clientes por Artículo</h3><span class="file-path">articulos/clientes_articulo.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Modal que lista todos los clientes que tienen (o tuvieron) un crédito con ese artículo, sea como artículo principal o como parte de un combo.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>PDF de Stock y de Créditos por Artículo</h3><span class="file-path">articulos/stock_pdf.php · articulos/creditos_pdf.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>PDF Stock:</strong> listado agrupado por categoría con el resumen final de unidades totales, sin stock y stock bajo (pensado en blanco y negro para ahorrar tinta).</p>
+      <p><strong>PDF Créditos:</strong> todos los créditos agrupados por artículo con subtotal por artículo y total general; se puede filtrar a un solo artículo o ver todo el catálogo.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- CRÉDITOS -->
+  <!-- ============================================================ -->
+  <div class="section" id="creditos">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(245,158,11,.15);color:var(--warning)">💳</div>
+      <div>
+        <h2>3. Créditos</h2>
+        <div class="sub"><code>creditos/</code> — Contratos, cronograma de cuotas y todo su ciclo de vida</div>
+      </div>
+    </div>
+    <p class="section-intro">Es el módulo con más lógica de negocio de todo el sistema. Antes de recorrer cada pantalla, conviene entender las 5 reglas centrales que se repiten en todas ellas.</p>
+
+    <div class="subsection-title">Reglas de negocio centrales</div>
+
+    <div class="feature-card">
+      <div class="feature-card-header"><div><h3>Frecuencias de pago y cronograma</h3></div></div>
+      <p>Al crear un crédito se generan <strong>todas sus cuotas de una sola vez</strong>, calculando cada fecha a partir del "Primer Vencimiento":</p>
+      <div class="regla-negocio">
+        <ul>
+          <li><strong>Diario:</strong> +1 día por cuota, saltando automáticamente los domingos.</li>
+          <li><strong>Semanal:</strong> +7 días exactos por cuota.</li>
+          <li><strong>Quincenal:</strong> +15 días exactos.</li>
+          <li><strong>Mensual:</strong> +1 mes calendario.</li>
+        </ul>
+        <p style="margin-top:8px">Si la frecuencia es semanal y se eligió un Día de Cobro fijo, el sistema exige que el Primer Vencimiento caiga exactamente ese día de la semana — si no coincide, bloquea el alta, porque el cronograma nunca vuelve a leer el día de cobro una vez generado.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header"><div><h3>Cálculo de mora (escalonado por días hábiles)</h3></div></div>
+      <p>La mora se cobra por días <strong>hábiles</strong> de atraso (de lunes a sábado; el domingo no cuenta) con 3 escalones:</p>
+      <div class="regla-negocio">
+        <ol>
+          <li><strong>Días 0 a 6 de atraso:</strong> período de gracia — mora = $0.</li>
+          <li><strong>Días 7 a 10:</strong> se cobra mora solo sobre los días que exceden la gracia (atraso − 6).</li>
+          <li><strong>Día 11 en adelante:</strong> se cobra mora sobre <em>todos</em> los días de atraso (ya no se descuenta la gracia) — es una penalización más fuerte por mora prolongada.</li>
+        </ol>
+        <p style="margin-top:8px">El % de mora se define por crédito (por defecto 5% semanal) y se prorratea a diario dividiendo por 6. Una vez que una cuota registra mora, ese monto queda <strong>"congelado"</strong> — no sigue recalculándose después de pagada, para no penalizar demoras administrativas de aprobación.</p>
+      </div>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Ejemplo real de una cuota con mora activa</span>
+        <dl>
+          <dt>Crédito</dt><dd>#1176 — Julio César Coronel</dd>
+          <dt>Cuota</dt><dd>#4, venció el 28/07/2026, monto $ 130.000</dd>
+          <dt>Interés moratorio</dt><dd>5% semanal (÷6 días hábiles = 0,833%/día)</dd>
+          <dt>Mora acumulada</dt><dd>$ 2.166,67</dd>
+        </dl>
+        <div class="nota">Corresponde a 2 días hábiles de atraso por encima de los 6 días de gracia (día 8 hábil de atraso): 2 × 0,833% × $130.000 = $2.166,67.</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header"><div><h3>Estados de una cuota y de un crédito</h3></div></div>
+      <p><strong>Cuota:</strong> <code>PENDIENTE</code> → <code>VENCIDA</code> (pasó la fecha sin pago) → <code>PARCIAL</code> (pago incompleto) → <code>CAP_PAGADA</code> (capital cubierto, mora pendiente) → <code>PAGADA</code> (capital + mora cubiertos) → <code>CANCELADA</code> (dada de baja).</p>
+      <p><strong>Crédito:</strong> <code>EN_CURSO</code> → <code>MOROSO</code> (tiene alguna cuota vencida) → <code>FINALIZADO</code> / <code>CANCELADO</code>. El sistema recalcula el estado del crédito automáticamente después de cada pago, reversa o edición.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header"><div><h3>Puntaje de pago y nivel de riesgo</h3></div></div>
+      <p><strong>Puntaje de pago del cliente</strong> (1 Excelente a 4 Malo): se recalcula sobre los créditos finalizados, según cuántas cuotas tuvieron mora, el atraso máximo registrado y cuántas veces se refinanció. Es un dato <em>histórico del cliente</em>, no del crédito puntual.</p>
+      <p><strong>Nivel de riesgo de un crédito activo</strong> (1 Bajo a 4 Crítico): combina cuotas vencidas, promedio de días de atraso, cuotas con mora activa y refinanciaciones — <strong>haber refinanciado ya sube el riesgo</strong>, aunque el crédito esté al día en este momento (el sistema "recuerda" que ya tuvo problemas).</p>
+    </div>
+
+    <div class="subsection-title">Pantallas del módulo</div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Listado de Créditos</h3><span class="file-path">creditos/index.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Qué se ve:</strong> filtros de texto, estado, frecuencia, cobrador, rango de fechas, "Refinanciados" y "Próx. a vencer"; tabla con cliente, artículo, total, cuota, frecuencia, avance, cobrador y estado.</p>
+      <p><strong>Alerta especial:</strong> si hay solicitudes de anulación de pago pendientes de revisar, aparece un banner rojo con acceso directo a cada crédito afectado.</p>
+      <p><strong>Qué se puede hacer:</strong> ver, editar (solo admin), finalizar, exportar a CSV o a PDF de impresión.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Alta de Crédito</h3><span class="file-path">creditos/nuevo.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Dos modalidades:</strong> <strong>artículo simple</strong> (se elige del catálogo o se escribe manual; el sistema calcula Monto Total = Precio × (1+interés%) y Cuota = Total ÷ cantidad de cuotas, en vivo) o <strong>combo de artículos</strong> (tabla dinámica de ítems, el monto de cuota se ingresa manualmente).</p>
+      <p><strong>Otros campos:</strong> cobrador (autocompletado según el cliente), zona, vendedor (opcional), interés moratorio %, frecuencia, día de cobro, cantidad de cuotas, primer vencimiento (con vista previa de las primeras 3 fechas), observaciones.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Ejemplo real</span>
+        <dl>
+          <dt>Crédito</dt><dd>#541 — Karen Elizabeth Conde</dd>
+          <dt>Artículo</dt><dd>Combo Lavado y Seca Drean</dd>
+          <dt>Monto total</dt><dd>$ 924.000</dd>
+          <dt>Plan</dt><dd>22 cuotas semanales de $ 42.000</dd>
+          <dt>Día de cobro</dt><dd>Miércoles</dd>
+          <dt>Primer vencimiento</dt><dd>24/03/2026</dd>
+        </dl>
+        <div class="nota">Al 06/08/2026 lleva 20 cuotas pagadas en término (sin mora) y 2 pendientes — un ejemplo real de cliente cumplidor.</div>
+      </div>
+      <div class="regla-negocio">
+        <div class="regla-label">Al guardar (transacción atómica)</div>
+        <p>Se valida y descuenta el stock (con bloqueo de fila para evitar sobreventa), se generan todas las cuotas, y se sincronizan el cobrador y el día de cobro del cliente.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Ver Crédito — Cronograma y Panel</h3><span class="file-path">creditos/ver.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador (solo lo suyo)</span></div>
+      </div>
+      <p>Es la pantalla más rica del sistema, el "centro de comando" de cada crédito.</p>
+      <p><strong>Qué se ve:</strong> KPIs (cuotas pagadas, deuda capital, mora acumulada, cierre estimado según el ritmo real de pagos), panel "Estado de Deuda Hoy", cronograma completo cuota por cuota, historial de pagos, historial de refinanciaciones y una línea de tiempo unificada con todo lo que pasó con el crédito.</p>
+      <p><strong>Qué se puede hacer (solo admin/supervisor):</strong> registrar pago directo, condonar mora, revertir pago (solo admin) o solicitar su reversa (supervisor), simular "¿cuánto debe hoy?", reasignar vendedor, agregar notas internas.</p>
+      <p><strong>Botones de la barra superior:</strong> PDF Resumen, Libre Deuda (si finalizó), Reconocimiento de Deuda, Editar (solo admin), Refinanciar, Eliminar (solo admin).</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Pago Directo desde Oficina</h3><span class="file-path">creditos/pagar_cuota.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Para cuando un cliente paga directamente en el local, sin pasar por el cobrador. Se ingresa fecha (puede ser retroactiva, nunca futura), efectivo y transferencia.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Cómo distribuye el pago</div>
+        <p>El monto se aplica automáticamente a las cuotas pendientes <strong>más antiguas primero</strong>, cubriendo capital + mora de cada una hasta agotarse — si alcanza para varias, las paga todas en un solo movimiento. La mora se recalcula según la <em>fecha de pago elegida</em>, no la de hoy. Queda registrado con origen "manual", y se bloquea si el crédito tiene pagos del cobrador aún pendientes de aprobación.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Anular / Solicitar Baja de un Pago</h3><span class="file-path">creditos/gestionar_pago.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Revertir (solo admin):</strong> anula un pago ya aprobado, recalcula el saldo real de la cuota y el estado del crédito completo (puede incluso reabrir un crédito que estaba Finalizado).</p>
+      <p><strong>Solicitar baja (supervisor):</strong> el supervisor no puede revertir directamente — deja una solicitud con motivo para que el admin la revise (aparece marcada en el listado y en el cronograma).</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Condonar Mora</h3><span class="file-path">creditos/condonar_mora.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Perdona la mora congelada de una cuota <code>CAP_PAGADA</code> (capital ya cobrado, mora pendiente), que pasa a <code>PAGADA</code>. Si con eso no queda nada pendiente, el crédito se marca Finalizado automáticamente.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Editar Crédito</h3><span class="file-path">creditos/editar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p>Si el crédito <strong>no tiene ninguna cuota pagada</strong>, se borra y regenera todo el cronograma desde cero con los nuevos datos. Si <strong>ya tiene cuotas pagadas</strong>, solo se pueden recalcular las fechas de las cuotas pendientes — el monto ya cobrado nunca se toca. Para reestructurar de verdad la deuda de un crédito con pagos, el sistema recomienda usar <strong>Refinanciar</strong>.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Refinanciar</h3><span class="file-path">creditos/refinanciar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Cuando un cliente no puede seguir con el plan original: se cierra el crédito actual y se abre uno nuevo con el saldo pendiente reestructurado.</p>
+      <div class="flujo-pasos">
+        <div class="flujo-paso"><strong>1. Estado actual</strong><p>El sistema muestra cuotas pagadas, saldo de capital pendiente y mora total acumulada (incluida la congelada en cuotas Capital Pagado).</p></div>
+        <div class="flujo-paso"><strong>2. Nuevo plan</strong><p>Se define cantidad de cuotas nuevas, frecuencia, primer vencimiento sugerido, cobrador, y si se "Capitaliza la mora acumulada" (obligatorio si hay mora en cuotas Capital Pagado, o se bloquea la operación).</p></div>
+        <div class="flujo-paso"><strong>3. Calculadora en vivo</strong><p>Saldo + mora capitalizada + interés adicional opcional = Total a Financiar ÷ nuevas cuotas = valor de la cuota nueva.</p></div>
+        <div class="flujo-paso"><strong>4. Confirmación</strong><p>Modal con cuenta regresiva de 10 segundos (operación irreversible). El crédito viejo pasa a Finalizado por Refinanciación, se crea el nuevo vinculado al original, y queda registrado en el historial de refinanciaciones.</p></div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Finalizar Crédito</h3><span class="file-path">creditos/finalizar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>5 motivos, cada uno con su propio efecto en el sistema:</p>
+      <div class="regla-negocio">
+        <ul>
+          <li><strong>Pago Completo / Pago Completo con Mora:</strong> actualiza el puntaje de pago del cliente; ofrece WhatsApp de felicitación y atajos a nuevo crédito o Libre Deuda.</li>
+          <li><strong>Retiro del Producto:</strong> cancela cuotas pendientes y <strong>restaura el stock</strong> del artículo.</li>
+          <li><strong>Declarado Incobrable:</strong> cancela cuotas pendientes, sin restaurar stock.</li>
+          <li><strong>Acuerdo Extrajudicial:</strong> cierra el crédito sin tocar cuotas ni stock (se asume resuelto por fuera).</li>
+          <li><strong>Finalizado — Mala Reputación:</strong> cancela cuotas y <strong>fuerza el puntaje del cliente a "Malo"</strong>, con aviso explícito antes de confirmar.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Cambiar Vendedor / Eliminar Crédito</h3><span class="file-path">creditos/cambiar_vendedor.php · creditos/eliminar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p><strong>Cambiar vendedor:</strong> reasigna a quién se le acredita la venta, a efectos de reportes comerciales.</p>
+      <p><strong>Eliminar:</strong> bloqueado si el crédito tiene algún pago confirmado o pendiente de aprobar (se sugiere Finalizar en su lugar). Si se puede eliminar, restaura el stock del artículo y borra el crédito (sus cuotas se borran en cascada).</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Documentos PDF y de Impresión</h3><span class="file-path">resumen_pdf · cronograma_pdf · cronograma_print · imprimir_cronograma · creditos_print · libre_deuda_pdf · reconocimiento_*</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Resumen / Cronograma (PDF o impresión):</strong> el contrato completo con cronograma, historial de pagos y resumen financiero, en distintos formatos según si es para archivo interno o para entregarle al cliente (con renglón de firma).</p>
+      <p><strong>Libre Deuda:</strong> certificado de cancelación, solo emitible en créditos Finalizados — el texto legal cambia según el motivo de finalización.</p>
+      <p><strong>Reconocimiento de Deuda:</strong> documento legal donde el cliente (y su garante) reconocen la deuda formalmente, con el monto convertido a letras automáticamente y espacio de firma — útil como respaldo ante un eventual reclamo judicial.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- COBRADOR -->
+  <!-- ============================================================ -->
+  <div class="section" id="cobrador">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(16,185,129,.15);color:var(--success)">🚶</div>
+      <div>
+        <h2>4. Cobrador — Agenda</h2>
+        <div class="sub"><code>cobrador/</code> — La pantalla de trabajo diario del cobrador</div>
+      </div>
+    </div>
+    <p class="section-intro">Es el mundo del rol <span class="role role-cob">COBRADOR</span>: le dice a quién visitar hoy, cuánto cobrarle, y le permite registrar el cobro ahí mismo desde el celular en la calle.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Agenda del Día</h3><span class="file-path">cobrador/agenda.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador</span></div>
+      </div>
+      <p><strong>Cómo se arma:</strong> "Cuotas de Hoy" (vencen hoy, más los "adelantados" cuyo día de cobro fijo es hoy aunque su cuota no venza todavía), "Cuotas Vencidas" (agrupadas por crédito), pestañas de Vista Semanal (Lunes a Sábado), y una sección aparte para Diarios/Quincenales/Mensuales que no siguen el ciclo semanal. Domingo no hay agenda.</p>
+      <p><strong>KPIs:</strong> progreso del día, Ingresos Hoy, A Cobrar Hoy, Vencidas, Por Rendir, más gamificación (Racha de días cumpliendo la meta diaria, Posición en el ranking semanal, Tendencia vs. semana anterior).</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Tarjeta de cliente real en la agenda</span>
+        <dl>
+          <dt>Cliente</dt><dd>Karen Elizabeth Conde</dd>
+          <dt>Crédito</dt><dd>#541 — Combo Lavado y Seca Drean</dd>
+          <dt>Cuota #21</dt><dd>$ 42.000 — vence 12/08/2026</dd>
+          <dt>Zona</dt><dd>Este</dd>
+          <dt>Accesos rápidos</dt><dd>Google Maps · WhatsApp con recordatorio</dd>
+        </dl>
+      </div>
+
+      <div class="regla-negocio">
+        <div class="regla-label">Meta Semanal automática vs. Meta Fija Semanal</div>
+        <p><strong>Meta Semanal:</strong> si el admin no fijó un número manual, se calcula sola sumando (a) las cuotas semanales que vencen esta semana + su mora, y (b) toda la cartera diaria/quincenal/mensual ya vencida a hoy. Si hay una meta manual cargada en Administración → Metas, esa prevalece.</p>
+        <p><strong>Meta Fija Semanal:</strong> indicador "puro" adicional, solo la suma de cuotas semanales (sin mora, sin diario/quincenal/mensual) — sirve para comparar lo puramente semanal sin que la mora o la cartera atrasada distorsione el número.</p>
+      </div>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Ejemplo real — cobrador Sebastián Delgadillo, semana del 03/08/2026</span>
+        <dl>
+          <dt>Meta Semanal</dt><dd>$ 2.542.200 cobrado de $ 3.187.817 (80%)</dd>
+          <dt>Meta Fija Semanal</dt><dd>$ 1.904.200 cobrado de $ 1.497.401 — meta superada (100%+, ¡Meta alcanzada!)</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Registrar un Pago</h3><span class="file-path">cobrador/registrar_pago.php (modal en la agenda)</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador</span></div>
+      </div>
+      <div class="flujo-pasos">
+        <div class="flujo-paso"><strong>1. Tocar "Cobrar"</strong><p>Desde la tarjeta del cliente, o seleccionando varias cuotas atrasadas juntas desde "Estado de Cuenta".</p></div>
+        <div class="flujo-paso"><strong>2. Cargar el monto</strong><p>Monto sugerido, con campos separados de Efectivo y Transferencia (el sistema suma ambos), y observaciones opcionales.</p></div>
+        <div class="flujo-paso"><strong>3. "Cuota pura" (opcional)</strong><p>Si la cuota tiene mora, se puede tildar para cobrar solo el capital, dejando la mora congelada pendiente para la próxima visita (la cuota queda Capital Pagado).</p></div>
+        <div class="flujo-paso"><strong>4. Confirmar</strong><p>El pago queda en estado <strong>PENDIENTE</strong> hasta que un supervisor/admin lo apruebe en Rendiciones. El dinero se aplica automáticamente a la(s) cuota(s) más antigua(s) primero; si no alcanza a cubrir toda la cuota, queda en estado Parcial con el saldo visible en la próxima visita.</p></div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Anular Pago / Registrar Intento de Cobro</h3><span class="file-path">cobrador/anular_pago.php · cobrador/registrar_intento.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador</span></div>
+      </div>
+      <p><strong>Anular pago:</strong> corrige un error de carga mientras el pago siga Pendiente (sin aprobar todavía). El cobrador solo puede anular sus propios pagos pendientes; admin/supervisor pueden anular cualquiera. Una vez aprobado, ya no se puede anular desde acá.</p>
+      <p><strong>Registrar intento ("No cobré"):</strong> deja constancia de que se visitó al cliente pero no se pudo cobrar, con motivo (No estaba / No quiso pagar / Promesa de pago con fecha / Otro) — es una bitácora de gestión, no afecta saldos.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Estado de Cuenta</h3><span class="file-path">cobrador/estado_cuenta.php (modal)</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-cob">Cobrador</span></div>
+      </div>
+      <p>Al tocar el nombre del cliente se abre el cronograma completo del crédito (todas las cuotas, historial de pagos) con una sección interactiva para elegir varias cuotas atrasadas y cobrarlas juntas de una sola vez.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>PDFs de Ruta</h3><span class="file-path">cobrador/agenda_pdf.php · clientes_zona_pdf.php · faltantes_pdf.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Ficha PDF (agenda_pdf):</strong> planilla semanal de ruta por cobrador, agrupada por día y zona, con una sección aparte de clientes con 5+ cuotas atrasadas y un resumen general — para llevar en papel.</p>
+      <p><strong>Clientes por Zona:</strong> directorio de todos los clientes activos de un cobrador agrupados por día de cobro fijo, con avance de pagos y próximo vencimiento.</p>
+      <p><strong>Faltantes:</strong> clientes que, en la semana en curso, tenían una cuota para cobrar y no se les registró ningún pago — agrupado por frecuencia y zona, con la fecha del último pago.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ADMIN: PANEL Y USUARIOS -->
+  <!-- ============================================================ -->
+  <div class="section" id="admin-panel">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(99,102,241,.15);color:var(--primary-light)">🏠</div>
+      <div>
+        <h2>5. Administración — Panel y Usuarios</h2>
+        <div class="sub"><code>admin/</code></div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Dashboard Principal</h3><span class="file-path">admin/dashboard.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> pantalla de arranque con el pulso general del negocio del día.</p>
+      <p><strong>Qué se ve:</strong> alertas de anulaciones pendientes y rendiciones sin aprobar; KPIs de clientes activos, créditos activos vs. morosos, cobrado hoy, cuotas al día vs. vencidas, próximos a cerrar, finalizados este mes (vs. mes anterior) y clientes dormidos; gráfico de cobros de la semana por cobrador y torta del estado de cartera; ranking de cobradores de la semana y últimos pagos aprobados.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Foto real de la cartera</span>
+        <dl>
+          <dt>Clientes totales</dt><dd>975</dd>
+          <dt>Créditos en curso</dt><dd>295</dd>
+          <dt>Créditos morosos</dt><dd>427</dd>
+          <dt>Créditos finalizados</dt><dd>527</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Gestión de Usuarios</h3><span class="file-path">admin/usuarios.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p><strong>Qué se ve:</strong> tabla con nombre, usuario, rol, teléfono, zona, estado, y para supervisores el estado de su "acceso extendido" fuera de horario.</p>
+      <p><strong>Qué se puede hacer:</strong> crear usuario (si el rol es vendedor, se crea automáticamente su ficha vinculada en Vendedores), editar (la contraseña se puede dejar en blanco para no cambiarla), activar/desactivar, y para supervisores fuera de horario, otorgar acceso extendido (2h/4h/8h o personalizado) o revocarlo.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Cómo funciona el "acceso extendido"</div>
+        <p>Se guarda una fecha/hora límite (<code>acceso_extendido_hasta</code>) en el usuario del supervisor. Mientras esa fecha esté en el futuro, un endpoint interno (<code>admin/api_acceso_supervisor.php</code>) que la pantalla de acceso restringido consulta cada 60 segundos le confirma el acceso y lo deja pasar sin que tenga que hacer nada más.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ADMIN: COBRANZA Y RENDICIONES -->
+  <!-- ============================================================ -->
+  <div class="section" id="admin-cobranza">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(16,185,129,.15);color:var(--success)">💵</div>
+      <div>
+        <h2>6. Administración — Cobranza y Rendiciones</h2>
+        <div class="sub"><code>admin/</code> — El control de caja del día a día</div>
+      </div>
+    </div>
+    <p class="section-intro">Esta es la tarea diaria más importante de admin y supervisor: todo pago que un cobrador registra en la calle queda "pendiente" hasta que alguien de oficina lo revisa y confirma que el dinero fue efectivamente entregado.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Aprobación de Rendiciones</h3><span class="file-path">admin/rendiciones.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <div class="flujo-pasos">
+        <div class="flujo-paso"><strong>1. Elegir cobrador</strong><p>Se listan los cobradores con pagos pendientes, cantidad, monto total y las jornadas (fechas) involucradas.</p></div>
+        <div class="flujo-paso"><strong>2. Revisar el detalle</strong><p>Agrupado por jornada y separado en <strong>"Cobranza Normal"</strong> y <strong>"Morosos Críticos"</strong> (clientes con 5+ cuotas atrasadas), para priorizar la revisión de los casos de riesgo.</p></div>
+        <div class="flujo-paso"><strong>3. Aprobar</strong><p>Por jornada puntual, o "Aprobar Todas" si el cobrador tiene pendientes de varios días (por ejemplo, un fin de semana). Se puede editar la distribución efectivo/transferencia antes de aprobar.</p></div>
+        <div class="flujo-paso"><strong>4. Rechazar o solicitar baja</strong><p><strong>Rechazar</strong> es exclusivo de admin. El <strong>supervisor</strong>, si detecta algo sospechoso, solo puede "Solicitar baja" con un motivo, para que el admin lo revise después.</p></div>
+      </div>
+      <div class="regla-negocio">
+        <div class="regla-label">Qué pasa al aprobar un pago</div>
+        <p>Pasa de la tabla temporal a "confirmado", se recalcula el saldo de la cuota (Pagada/Parcial/Capital Pagado) y el <strong>estado del crédito se recalcula solo</strong>: puede pasar a Finalizado, a Moroso, o quedar En Curso. Si corresponde, se dispara una notificación de WhatsApp al cliente.</p>
+      </div>
+      <p>También incluye un resumen de actividad por cobrador en el rango de fechas elegido, y un panel de "mora pendiente de condonar". Exporta a PDF por jornada, todas las jornadas de un cobrador (<code>rendiciones_rango_pdf.php</code>), o imprime un comprobante en papel (<code>rendicion_print.php</code>) con espacio de firma para cobrador y caja.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Historial de Rendiciones</h3><span class="file-path">admin/historial_rendiciones.php · historial_rendiciones_ver.php · historial_rendiciones_pdf.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> auditoría histórica de todo lo ya aprobado — el respaldo contable de la plata que efectivamente ingresó.</p>
+      <p><strong>Qué se ve:</strong> rendiciones aprobadas agrupadas por fecha/cobrador/origen (cobrador o carga manual), con acceso al detalle comprobante por comprobante.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Revertir una rendición completa (solo admin)</div>
+        <p>Deshace todos los movimientos de una rendición ya aprobada: los pagos vuelven a Pendiente, se recalculan cuotas y el estado del crédito. Exige un motivo de al menos 10 caracteres y una confirmación explícita — es una operación seria, queda registrada en el log.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Actividad del Sistema (Log)</h3><span class="file-path">admin/log.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Auditoría de "quién hizo qué": fecha, usuario, tipo de acción (con color), entidad afectada y detalle — con el cliente relacionado resuelto automáticamente cuando aplica. Filtra por usuario, tipo de acción y rango de fechas.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Entradas reales del log</span>
+        <dl>
+          <dt>LOGIN</dt><dd>Login exitoso — 06/08/2026 18:26</dd>
+          <dt>CLIENTE_EDITADO</dt><dd>Rojas, Jose Luis — 06/08/2026 16:36</dd>
+          <dt>CREDITO_CAMBIO_VENDEDOR</dt><dd>Nuevo vendedor ID: 53 — 06/08/2026 16:12</dd>
+          <dt>RECONOCIMIENTO_EMITIDO</dt><dd>PDF Reconocimiento de Deuda emitido — 06/08/2026 15:32</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Cuotas Pendientes de Condonar</h3><span class="file-path">admin/pendientes_condonar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Para un cobrador puntual, lista las cuotas en estado Capital Pagado (mora pendiente) o Parcial, para que el admin decida si perdona la mora. Se accede normalmente desde el botón "Revisar" del panel de mora pendiente en Rendiciones.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ADMIN: METAS -->
+  <!-- ============================================================ -->
+  <div class="section" id="admin-metas">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(245,158,11,.15);color:var(--warning)">🎯</div>
+      <div>
+        <h2>7. Administración — Metas</h2>
+        <div class="sub"><code>admin/</code> — Cuánto se espera cobrar y cuánto se cumplió</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Metas Semanales</h3><span class="file-path">admin/metas.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p><strong>Qué se ve:</strong> tabla por cobrador con la Meta Automática (calculada sola, ver la explicación en la sección Cobrador), un campo para fijar una meta manual opcional, lo cobrado en la semana, barra de progreso y estado (Cumplida / En camino / Regular / Bajo).</p>
+      <p><strong>Qué se puede hacer:</strong> guardar metas manuales (vacío = vuelve al cálculo automático), y disparar manualmente el "snapshot" de la semana pasada — un respaldo por si el proceso automático nocturno no llegó a correr.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Historial de Metas</h3><span class="file-path">admin/historial_metas.php · historial_metas_pdf.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> ver la evolución semana a semana del cumplimiento de metas, por cobrador o de todo el equipo sumado, para armar un balance mensual.</p>
+      <p><strong>Qué se ve:</strong> una fila por semana con Meta Automática vs. Cobrado Real (con mora) y Meta Fija Semanal vs. Cobrado sin mora, el % de cumplimiento de cada una, y una fila de totales del período. Se puede filtrar por cobrador o ver la suma de todo el equipo, y exportar a PDF.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">De dónde salen estos números</div>
+        <p>Cada semana (lunes de madrugada, automático por proceso programado, o manual desde el botón de Metas), el sistema guarda una "foto" de las 4 métricas de esa semana ya cerrada en la tabla <code>ic_historial_metas</code> — por eso el historial no cambia con el tiempo, aunque los créditos sigan moviéndose después.</p>
+      </div>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Snapshot real — semana del 27/07 al 01/08/2026</span>
+        <dl>
+          <dt>Enzo Teceira</dt><dd>Meta Auto $6.576.816 · Cobrado $3.376.444 (51%)</dd>
+          <dt>Maxi Sánchez</dt><dd>Meta Auto $6.562.138 · Cobrado $2.999.500 (46%)</dd>
+          <dt>Sebastián Delgadillo</dt><dd>Meta Auto $4.182.342 · Cobrado $551.002 (13%)</dd>
+          <dt>Gonzalo Carrazán</dt><dd>Meta Auto $8.815.233 · Cobrado $2.707.500 (31%)</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ADMIN: REPORTES DE CARTERA -->
+  <!-- ============================================================ -->
+  <div class="section" id="admin-reportes">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(239,68,68,.15);color:var(--danger)">📊</div>
+      <div>
+        <h2>8. Administración — Reportes de Cartera</h2>
+        <div class="sub"><code>admin/</code> — Todos con permiso <code>ver_reportes</code> (admin y supervisor)</div>
+      </div>
+    </div>
+    <p class="section-intro">Ocho reportes analíticos para priorizar la gestión de cobranza y detectar oportunidades comerciales. Ninguno tiene acciones de edición — son de solo consulta y exportación.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Estadísticas de Cobranza</h3><span class="file-path">admin/estadisticas_cobranza.php · estadisticas_pdf.php</span></div>
+      </div>
+      <p>Selector de semana con navegación anterior/siguiente; KPIs globales (estimado, cobrado, clientes que faltan, críticos); gráfico Estimado vs. Cobrado por cobrador; tarjeta por cobrador con desglose Semanal/Quincenal/Mensual y efectivo/transferencia/mora. Exporta a CSV o a PDF (una página por cobrador).</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Cuotas / Clientes Atrasados</h3><span class="file-path">admin/atrasados.php · atrasados_pdf.php · atrasados_clientes_pdf.php</span></div>
+      </div>
+      <p>El reporte operativo diario de cobranza morosa: quién debe, cuánto y hace cuánto. Dos vistas (por cuota o agrupado por cliente), resumen por cobrador y por zona, y un botón de WhatsApp con recordatorio de deuda en cada fila.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Niveles de atraso (días hábiles)</div>
+        <ul>
+          <li>🟡 <strong>Reciente:</strong> 1 a 14 días</li>
+          <li>🟠 <strong>Alerta:</strong> 15 a 30 días</li>
+          <li>🔴 <strong>Crítico:</strong> más de 30 días</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Riesgo de Cartera</h3><span class="file-path">admin/riesgo_cartera.php · riesgo_cartera_pdf.php</span></div>
+      </div>
+      <p>Clasifica cada crédito activo en un nivel de riesgo de incobrabilidad, para focalizar la gestión y decisiones (por ejemplo, evitar refinanciar de nuevo a un cliente ya Crítico).</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Cómo se calcula el nivel (1 Bajo a 4 Crítico)</div>
+        <ul>
+          <li><strong>4 — Crítico:</strong> refinanciado 2+ veces, o 4+ cuotas vencidas con &gt;14 días promedio, o atraso promedio &gt;30 días.</li>
+          <li><strong>3 — Alto:</strong> refinanciado 1 vez, o 2+ cuotas vencidas con &gt;7 días promedio, o atraso promedio &gt;14 días, o 3+ cuotas con mora activa.</li>
+          <li><strong>2 — Moderado:</strong> al menos 1 cuota vencida o con mora.</li>
+          <li><strong>1 — Bajo:</strong> al día, sin antecedentes.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Antigüedad de Deuda (Aging)</h3><span class="file-path">admin/aging_report.php</span></div>
+      </div>
+      <p>Clasifica toda la deuda vencida (foto de hoy, no depende de un rango de fechas) en 5 franjas de antigüedad, con detalle desplegable por cobrador y por zona dentro de cada uno. Exporta a CSV.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Distribución real de la cartera vencida</span>
+        <dl>
+          <dt>1–14 días</dt><dd>426 cuotas</dd>
+          <dt>15–30 días</dt><dd>223 cuotas</dd>
+          <dt>31–60 días</dt><dd>220 cuotas</dd>
+          <dt>60+ días</dt><dd>626 cuotas</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Análisis de Cohortes</h3><span class="file-path">admin/cohortes.php</span></div>
+      </div>
+      <p>Agrupa a los clientes por el mes de su <strong>primer crédito</strong> (últimos 24 meses) para ver si la calidad de los clientes nuevos mejora o empeora con el tiempo: cantidad, % de éxito, % de mora, puntaje promedio, con gráfico de morosidad por cohorte.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Etiqueta de calidad de una cohorte</div>
+        <ul>
+          <li><strong>Excelente:</strong> ≥60% finalizados con éxito y ≤10% de mora.</li>
+          <li><strong>Buena:</strong> ≥40% de éxito y ≤25% de mora.</li>
+          <li><strong>Riesgo:</strong> ≥40% de mora.</li>
+          <li><strong>Regular:</strong> el resto de los casos.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Clientes Dormidos</h3><span class="file-path">admin/clientes_dormidos.php</span></div>
+      </div>
+      <p>Clientes que ya terminaron de pagar bien y hace más de 90 días no tienen ningún crédito activo — oportunidades de reenganche comercial, con botón de WhatsApp de oferta pre-armado.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Dato real</span>
+        <dl><dt>Clientes dormidos hoy</dt><dd>105 (más de 90 días sin crédito activo)</dd></dl>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Próximos a Cerrar</h3><span class="file-path">admin/proximos_cerrar.php · proximos_cerrar_pdf.php</span></div>
+      </div>
+      <p>Créditos En Curso a los que les quedan pocas cuotas (1 a 5, configurable), para anticipar el cierre y ofrecer una renovación antes de que el cliente "se enfríe". Incluye distribución por puntaje de pago histórico y botón de WhatsApp de renovación.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Créditos Finalizados</h3><span class="file-path">admin/finalizados.php · finalizados_pdf.php</span></div>
+      </div>
+      <p>Créditos ya cerrados (por cualquier motivo), para medir calidad de cartera cerrada y tasa de renovación. Un cliente "renovó" si sacó otro crédito con fecha de alta posterior a la finalización de este.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ADMIN: RENDIMIENTO DE COBRADORES -->
+  <!-- ============================================================ -->
+  <div class="section" id="admin-rendimiento">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(56,189,248,.15);color:var(--info)">🏆</div>
+      <div>
+        <h2>9. Administración — Rendimiento de Cobradores</h2>
+        <div class="sub"><code>admin/</code></div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Ranking de Cobradores</h3><span class="file-path">admin/ranking_cobradores.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Tabla de posiciones de todo el equipo según lo cobrado en un período (mes actual/anterior/trimestre/rango libre), con podio visual Top 3, % de recuperación, % de mora y cantidad de créditos "sin visitar" hace 30 días. Incluye un bloque de "Calidad de Cartera Actual" independiente del período elegido.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Ficha de un Cobrador</h3><span class="file-path">admin/cobrador_detalle.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Vista 360° de un cobrador puntual: producción, gráfico de cobros diarios vs. el promedio del equipo, torta de motivos de finalización de sus créditos, y su listado de créditos morosos actuales con el último cobro registrado.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">"Sin visitar (30 días)"</div>
+        <p>Créditos morosos donde no hay ningún cobro (ni pendiente ni aprobado) en los últimos 30 días — indicador de abandono de gestión.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Cobrador vs. Promedio del Equipo</h3><span class="file-path">admin/estadisticas_cobrador.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p>Compara a un cobrador elegido contra el promedio del resto del equipo, métrica por métrica (12 en total: total cobrado, ticket promedio, % morosidad, días de atraso, etc.), marcando en verde o rojo según si "más" o "menos" es mejor para esa métrica puntual.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ADMIN: LIQUIDACIONES -->
+  <!-- ============================================================ -->
+  <div class="section" id="admin-liquidaciones">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(16,185,129,.15);color:var(--success)">🧾</div>
+      <div>
+        <h2>10. Administración — Liquidaciones</h2>
+        <div class="sub"><code>admin/</code> — El sueldo variable semanal de cada cobrador</div>
+      </div>
+    </div>
+    <p class="section-intro">Calcula la comisión semanal de cada cobrador sobre lo que recaudó, permitiendo sumar extras (ventas, bonos) y restar descuentos (gastos, adelantos). <strong>Exclusivo del rol admin</strong> — ni siquiera el supervisor entra a estas 4 pantallas.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Listado de Liquidaciones</h3><span class="file-path">admin/liquidaciones.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p>Filtros por cobrador y estado; tabla con cobrador, semana, total cobrado, comisión, extras, descuentos, neto a pagar y estado.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Flujo de estados</div>
+        <p><code>BORRADOR</code> → <code>APROBADA</code> → <code>PAGADA</code>. Solo se puede editar o eliminar una liquidación mientras está en Borrador.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Nueva Liquidación / Editar</h3><span class="file-path">admin/liquidacion_nueva.php · liquidacion_editar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p>Se elige cobrador y semana (solo semanas con cobros confirmados que todavía no fueron liquidadas), trayendo el desglose día por día. El % de comisión (por defecto 5%) calcula el monto automáticamente. Se pueden agregar ítems libres (Venta/Bonus/Otro suman, Gasto/Descuento restan) con recálculo del neto en vivo.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Detalle de Liquidación</h3><span class="file-path">admin/liquidacion_ver.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p>Cabecera, cobros día por día, ítems adicionales y resumen final. Acciones: Aprobar, Revertir a Borrador, Marcar Pagada, Eliminar (si es Borrador), Imprimir.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Liquidación real</span>
+        <dl>
+          <dt>Cobrador</dt><dd>Santi Zalazar</dd>
+          <dt>Semana</dt><dd>06/04 al 12/04/2026</dd>
+          <dt>Total cobrado</dt><dd>$ 4.557.300</dd>
+          <dt>Comisión</dt><dd>6% = $ 273.438</dd>
+          <dt>Extras</dt><dd>$ 84.800</dd>
+          <dt>Descuentos</dt><dd>$ 10.000</dd>
+          <dt>Neto a pagar</dt><dd>$ 348.238</dd>
+          <dt>Estado</dt><dd>Aprobada</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ADMIN: HERRAMIENTAS EXCEPCIONALES -->
+  <!-- ============================================================ -->
+  <div class="section" id="admin-herramientas">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(239,68,68,.15);color:var(--danger)">⚠️</div>
+      <div>
+        <h2>11. Administración — Herramientas Excepcionales</h2>
+        <div class="sub"><code>admin/</code> — Operaciones masivas, exclusivas de admin</div>
+      </div>
+    </div>
+    <p class="section-intro">Dos herramientas que se usan poco pero cuando se necesitan son grandes: mueven o modifican datos en bloque. Ambas están protegidas con un modal de confirmación con cuenta regresiva, porque son <strong>irreversibles desde la interfaz</strong>.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Migrar Cobrador</h3><span class="file-path">admin/migrar_cobrador.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="tag tag-irrev">Irreversible</span></div>
+      </div>
+      <p>Reasigna en bloque todos los clientes y créditos (de cualquier estado) de un cobrador a otro — típico cuando un cobrador deja la empresa o cambia de zona.</p>
+      <div class="flujo-pasos">
+        <div class="flujo-paso"><strong>1. Elegir origen y destino</strong><p>Y pedir "Ver vista previa".</p></div>
+        <div class="flujo-paso"><strong>2. Revisar la vista previa</strong><p>Lista los clientes que se moverían y el total de créditos afectados, antes de tocar nada.</p></div>
+        <div class="flujo-paso"><strong>3. Confirmar</strong><p>Modal con cuenta regresiva de 5 segundos. Corre en una transacción: si algo falla, no queda ninguna migración parcial.</p></div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Interés a Cero</h3><span class="file-path">admin/interes_cero.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="tag tag-irrev">Irreversible</span></div>
+      </div>
+      <p>Condona de una sola vez <strong>toda la mora acumulada</strong> de la cartera activa y baja a 0% la tasa de interés moratorio futura de todos los créditos en curso — para una decisión comercial de "borrón y cuenta nueva" con los intereses punitorios.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Antes de ejecutar</div>
+        <p>Muestra una vista previa: cantidad de créditos afectados, tasa promedio actual y monto total de mora que se condonaría, desglosado por cobrador. Al confirmar (cuenta regresiva de 10 segundos), guarda un backup completo de los valores anteriores en el log de actividad — pero revertir la operación requiere intervención manual directa en la base de datos, no hay un botón de "deshacer".</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SUPERVISOR -->
+  <!-- ============================================================ -->
+  <div class="section" id="supervisor">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(245,158,11,.15);color:var(--warning)">🕵️</div>
+      <div>
+        <h2>12. Supervisor</h2>
+        <div class="sub"><code>supervisor/</code> — El tablero de mando exclusivo del supervisor</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Panel Supervisor</h3><span class="file-path">supervisor/index.php</span></div>
+        <div class="roles-inline"><span class="role role-sup">Supervisor</span><span class="role role-admin">Admin</span></div>
+      </div>
+      <p><strong>Para qué se usa:</strong> vigilar la operación de cobranza del día sin tener que entrar a cada pantalla por separado.</p>
+      <p><strong>Qué se ve:</strong> KPIs de pagos pendientes, créditos en riesgo (2+ cuotas vencidas), cobrado hoy y cobradores sin actividad; panel de "Pendientes de Aprobación" con acceso directo a Rendiciones, panel de "Sin Actividad Reciente" (cobradores sin ningún pago en 24hs, resaltado en rojo si es $0 en los últimos 7 días), y un listado de hasta 15 créditos en riesgo alto.</p>
+      <div class="how-to">
+        <div class="how-label">Sobre Rendiciones y el Supervisor</div>
+        <ul>
+          <li>La pantalla de <strong>Aprobación de Rendiciones</strong> vive físicamente en <code>admin/rendiciones.php</code>, pero es tarea diaria del supervisor: el permiso <code>aprobar_rendiciones</code> lo tienen tanto admin como supervisor, y el Panel Supervisor linkea directo ahí.</li>
+          <li>El supervisor puede aprobar, editar y solicitar la baja de un pago — pero <strong>no puede rechazar</strong> un pago directamente ni <strong>revertir</strong> una rendición ya aprobada; esas dos acciones son exclusivas de admin.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- VENTAS -->
+  <!-- ============================================================ -->
+  <div class="section" id="ventas">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(168,85,247,.15);color:var(--purple)">🛒</div>
+      <div>
+        <h2>13. Ventas</h2>
+        <div class="sub"><code>ventas/</code> — Venta de mostrador al contado o tarjeta</div>
+      </div>
+    </div>
+    <p class="section-intro">Es la venta directa de artículos (contado/tarjeta), separada de los créditos financiados. La usan los vendedores de local.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Listado de Ventas ("Mis Ventas")</h3><span class="file-path">ventas/index.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-vend">Vendedor</span></div>
+      </div>
+      <p>Si el usuario es vendedor, la lista se filtra sola a sus propias ventas (funciona como "Mis Ventas"); admin/supervisor ven todas y pueden filtrar por vendedor. KPIs de Total, Total Efectivo y Total Tarjeta del período.</p>
+      <p><strong>Qué se puede hacer:</strong> nueva venta, imprimir recibo, eliminar (solo admin — restaura el stock automáticamente).</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Venta real</span>
+        <dl>
+          <dt>Vendedora</dt><dd>Noelia Ablanedo</dd>
+          <dt>Artículo</dt><dd>Panel TV Mesina 160 Hickory/Blanco</dd>
+          <dt>Monto</dt><dd>$ 118.000 — efectivo</dd>
+          <dt>Fecha</dt><dd>23/07/2026</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Nueva Venta</h3><span class="file-path">ventas/nueva.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-vend">Vendedor</span></div>
+      </div>
+      <p>Se busca el artículo (por nombre o SKU), el precio se autocompleta según el precio de "contado" o "tarjeta" elegido (editable), y si sos vendedor la venta se autoasigna a vos. Al confirmar se descuenta stock (con bloqueo anti sobreventa) y se ofrece imprimir el recibo.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Recibo PDF</h3><span class="file-path">ventas/recibo_pdf.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-vend">Vendedor</span></div>
+      </div>
+      <p>Comprobante A4 con datos fiscales de la empresa, "Consumidor Final", artículo, cantidad, precio, forma de pago y vendedor. Un vendedor solo puede reimprimir recibos de sus propias ventas.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Mis Clientes (cartera del vendedor)</h3><span class="file-path">ventas/mis_clientes.php · ver_credito.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span><span class="role role-vend">Vendedor</span></div>
+      </div>
+      <p>A diferencia del listado de ventas de contado, acá se ven los <strong>créditos financiados</strong> que ese vendedor originó, para hacerles seguimiento aunque el cobro después lo haga un cobrador distinto. KPIs de clientes, créditos activos, en mora y "por cerrar" (1 a 3 cuotas restantes).</p>
+      <p><code>ver_credito.php</code> es una vista de <strong>solo lectura</strong> del estado de cuenta del crédito (el vendedor no cobra ni edita nada, eso es tarea del cobrador) — con botón directo de WhatsApp al cliente.</p>
+      <p style="font-size:.82rem;color:var(--muted)"><em>Nota: "Estadísticas de Ventas" del menú lateral en realidad vive en el módulo Vendedores (sección 14), no acá.</em></p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- VENDEDORES -->
+  <!-- ============================================================ -->
+  <div class="section" id="vendedores">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(56,189,248,.15);color:var(--info)">🧑‍💼</div>
+      <div>
+        <h2>14. Vendedores</h2>
+        <div class="sub"><code>vendedores/</code> — Padrón de vendedores y su desempeño comercial</div>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Listado y Gestión de Accesos</h3><span class="file-path">vendedores/index.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor (solo consulta)</span></div>
+      </div>
+      <p>Tabla con nombre, teléfono, si tiene o no acceso al sistema, y estado. Solo admin puede: dar de acceso (crea un usuario de login vinculado), cambiar contraseña, quitar acceso (desactiva el usuario, no lo borra) y dar de alta/baja al vendedor.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Vendedor de catálogo vs. usuario de login</div>
+        <p>Son dos entidades separadas y vinculadas 1 a 1: un vendedor puede existir sin acceso al sistema (solo para asignarle créditos). Dar de baja a un vendedor es siempre un <strong>borrado lógico</strong> — su historial de créditos sigue intacto y visible en los reportes.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Alta / Edición / Baja</h3><span class="file-path">vendedores/nuevo.php · editar.php · eliminar.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span></div>
+      </div>
+      <p>Alta simple (nombre, apellido, teléfono). Edición permite además vincular o desvincular el usuario del sistema asociado (si eligen uno ya vinculado a otro vendedor, el sistema libera ese vínculo anterior automáticamente para que nunca dos vendedores compartan un mismo login).</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Estadísticas de Vendedores</h3><span class="file-path">vendedores/estadisticas.php · estadisticas_pdf.php</span></div>
+        <div class="roles-inline"><span class="role role-admin">Admin</span><span class="role role-sup">Supervisor</span></div>
+      </div>
+      <p><strong>Ranking general:</strong> tabla comparativa de todos los vendedores (créditos, clientes, monto vendido, monto cobrado, % de cumplimiento), con una fila especial "Sin vendedor asignado" para créditos históricos sin ese dato.</p>
+      <p><strong>Detalle de un vendedor:</strong> 8 KPIs (vendido, al día, atrasados, ticket promedio, % cobrado, tasa de retiro, clientes recurrentes), gráfico de aging de su cartera, Top 10 clientes, y el listado completo de sus créditos con condición de pago. El propio vendedor <strong>no puede ver esta pantalla</strong> — es exclusiva de admin/supervisor.</p>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Dato real</span>
+        <dl><dt>Vendedores registrados</dt><dd>25</dd><dt>Ventas de contado registradas</dt><dd>133</dd></dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TICKETS -->
+  <!-- ============================================================ -->
+  <div class="section" id="tickets">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(168,85,247,.15);color:var(--purple)">🎫</div>
+      <div>
+        <h2>15. Tickets</h2>
+        <div class="sub"><code>tickets/</code> — Mesa de ayuda / bitácora interna</div>
+      </div>
+    </div>
+    <p class="section-intro">Un mini sistema de seguimiento interno: se usa para dejar constancia de incidencias o pendientes de gestión (por ejemplo "este cliente prometió pagar tal día"), no exclusivamente soporte técnico. <strong>Sin restricción de rol</strong>: cualquier usuario logueado (de cualquier rol) puede crear, ver y responder cualquier ticket del sistema.</p>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Bandeja de Tickets</h3><span class="file-path">tickets/index.php</span></div>
+        <div class="roles-inline"><span class="role role-todos">Todos los roles</span></div>
+      </div>
+      <p>Filtros por texto, estado y pertenencia (Todos / Creados por mí / Delegados a mí); contadores de abiertos/en progreso/resueltos; tabla con asunto, autor, estado, prioridad y responsable asignado.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div><h3>Crear Ticket / Ver Conversación</h3><span class="file-path">tickets/nuevo.php · tickets/ver.php</span></div>
+        <div class="roles-inline"><span class="role role-todos">Todos los roles</span></div>
+      </div>
+      <p>Al crear: asunto, descripción, prioridad (Baja/Media/Alta) y a quién va dirigido — sin asignar, a un rol, o a un usuario puntual. El detalle es un hilo tipo chat con respuestas de todos los que intervienen.</p>
+      <div class="regla-negocio">
+        <div class="regla-label">Estados y quién puede cerrar</div>
+        <p>3 estados: <code>abierto</code> → <code>en_progreso</code> → <code>resuelto</code> (y de vuelta a abierto si se reabre). Si alguien distinto del creador responde un ticket abierto, pasa solo a "en progreso". Pero solo el <strong>creador del ticket o un admin</strong> pueden marcarlo Resuelto o reabrirlo — cualquier otro puede leer y responder, no cerrar.</p>
+      </div>
+      <div class="dato-real">
+        <span class="dato-real-label">✓ Ticket real</span>
+        <dl>
+          <dt>Asunto</dt><dd>"Cambias días de pago"</dd>
+          <dt>Creado por</dt><dd>Enzo Teceira</dd>
+          <dt>Delegado a</dt><dd>rol Admin</dd>
+          <dt>Prioridad</dt><dd>Media</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- GLOSARIO -->
+  <!-- ============================================================ -->
+  <div class="section" id="glosario">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(99,102,241,.15);color:var(--primary-light)">📖</div>
+      <div>
+        <h2>Glosario de Términos de Negocio</h2>
+        <div class="sub">El vocabulario que se repite en todo el manual</div>
+      </div>
+    </div>
+
+    <div class="db-table">
+      <table>
+        <thead><tr><th>Término</th><th>Qué significa</th></tr></thead>
+        <tbody>
+          <tr><td>Mora</td><td>El recargo que se cobra sobre una cuota vencida y no pagada, calculado por días hábiles de atraso con 6 días de gracia y escalones crecientes (ver sección Créditos).</td></tr>
+          <tr><td>Capital</td><td>El monto original de la cuota, sin contar la mora. "Capital pendiente" es lo que falta cobrar de eso.</td></tr>
+          <tr><td>Cuota pura</td><td>Un pago que cubre solo el capital de la cuota, dejando la mora sin cobrar (congelada) para una próxima visita.</td></tr>
+          <tr><td>Capital Pagado</td><td>Estado de una cuota donde ya se cobró el capital completo, pero todavía queda mora pendiente de cobro o de condonar.</td></tr>
+          <tr><td>Condonar</td><td>Perdonar (dar de baja) una mora pendiente, sin cobrarla.</td></tr>
+          <tr><td>Rendición</td><td>El proceso de revisar y aprobar los pagos que un cobrador registró en la calle, antes de que queden confirmados en el sistema.</td></tr>
+          <tr><td>Jornada</td><td>El día de cobro al que pertenece un pago (normalmente hoy, salvo pagos tardíos de fin de semana que se cargan el lunes siguiente antes de las 10 AM).</td></tr>
+          <tr><td>Puntaje de pago</td><td>Calificación histórica del cliente (1 Excelente a 4 Malo) según su comportamiento de pago en créditos ya finalizados.</td></tr>
+          <tr><td>Nivel de riesgo</td><td>Clasificación (1 Bajo a 4 Crítico) de qué tan probable es que un crédito activo termine en pérdida, según su mora, atraso y refinanciaciones.</td></tr>
+          <tr><td>Cohorte</td><td>Grupo de clientes que sacaron su primer crédito en el mismo mes — se usa para comparar la calidad de distintas "generaciones" de clientes.</td></tr>
+          <tr><td>Aging</td><td>Antigüedad de la deuda vencida, agrupada en franjas de días (1-14, 15-30, 31-60, 60+).</td></tr>
+          <tr><td>Refinanciar</td><td>Cerrar un crédito y abrir uno nuevo con el saldo pendiente (y opcionalmente la mora) reestructurado en un nuevo plan de cuotas.</td></tr>
+          <tr><td>Liquidación</td><td>El cálculo semanal de la comisión (sueldo variable) que se le paga a un cobrador sobre lo que recaudó.</td></tr>
+          <tr><td>Cliente dormido</td><td>Cliente que ya finalizó bien un crédito y hace más de 90 días no tiene ningún crédito activo nuevo.</td></tr>
+          <tr><td>Libre Deuda</td><td>Certificado que confirma que un crédito quedó totalmente cancelado, solo emitible una vez que el crédito está Finalizado.</td></tr>
+          <tr><td>Reconocimiento de Deuda</td><td>Documento legal donde el cliente (y su garante) reconocen formalmente la deuda vigente, como respaldo ante un eventual reclamo judicial.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div style="margin-bottom:6px">SAS Imperio — Sistema de Gestión de Créditos</div>
+  <div>Manual de usuario generado el 8 de agosto de 2026</div>
+</footer>
+
+</body>
+</html>
