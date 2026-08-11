@@ -22,8 +22,11 @@ $cob_stmt->execute([$cobrador_id]);
 $cobrador = $cob_stmt->fetch();
 if (!$cobrador) die('Cobrador no encontrado.');
 
-// Resumen semanal (Lun-Mié): solo para los 3 cobradores con ese esquema de visita
-$es_cobrador_semanal = in_array($cobrador['usuario'], ['enzoteceira', 'jpbicego', 'sebadelga'], true);
+// Resumen semanal (Lun-Sáb): antes solo corría para 3 usuarios puntuales que se
+// creía tenían un esquema de visita distinto (Lun-Mié); como dia_cobro ya fija
+// el día de cada cliente semanal, una ventana uniforme Lun-Sáb da el mismo
+// resultado para ellos y además funciona para el resto de los cobradores.
+$es_cobrador_semanal = true;
 
 $clientes_semanal_cobrados  = 0;
 $clientes_semanal_faltan    = 0;
@@ -101,11 +104,11 @@ if ($es_cobrador_semanal) {
     // ic_cuotas.saldo_pagado todavía no lo refleje (recién se actualiza al aprobar).
     $cuotas_con_pago_pendiente = array_flip(array_column($pagos_raw, 'cuota_id'));
 
-    // Ventana Lunes-Miércoles de la semana en curso
-    $hoy_dt    = new DateTime();
-    $dow_hoy   = (int) $hoy_dt->format('N'); // 1=Lunes ... 7=Domingo
-    $lunes_sem = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->format('Y-m-d');
-    $mier_sem  = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->modify('+2 days')->format('Y-m-d');
+    // Ventana Lunes-Sábado de la semana en curso
+    $hoy_dt     = new DateTime();
+    $dow_hoy    = (int) $hoy_dt->format('N'); // 1=Lunes ... 7=Domingo
+    $lunes_sem  = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->format('Y-m-d');
+    $sabado_sem = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->modify('+5 days')->format('Y-m-d');
 
     // Semanal: clientes con cuota venciendo esta semana, cobrados vs faltan
     $stmt_sem = $pdo->prepare("
@@ -127,7 +130,7 @@ if ($es_cobrador_semanal) {
           AND cu.fecha_vencimiento BETWEEN ? AND ?
           AND cu.estado != 'CANCELADA'
     ");
-    $stmt_sem->execute([$cobrador_id, $lunes_sem, $mier_sem]);
+    $stmt_sem->execute([$cobrador_id, $lunes_sem, $sabado_sem]);
 
     $clientes_cobrados_set = [];
     $clientes_faltan_set   = [];
@@ -551,7 +554,7 @@ if ($es_cobrador_semanal) {
     $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->SetFillColor(230, 230, 230);
     $pdf->SetX($bx_s);
-    $pdf->Cell($bw_s, 6, lat('Resumen Semanal (Lun-Mie)'), 1, 1, 'L', true);
+    $pdf->Cell($bw_s, 6, lat('Resumen Semanal (Lun-Sab)'), 1, 1, 'L', true);
     $pdf->SetFillColor(255, 255, 255);
 
     // Filas de 2 KPIs (label + valor, label + valor)
