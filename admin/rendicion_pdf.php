@@ -43,7 +43,6 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
-               cr.dia_cobro,
                cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
                cu.saldo_pagado, cu.estado AS cuota_estado,
@@ -70,7 +69,6 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
-               cr.dia_cobro,
                cl.nombres, cl.apellidos, cl.id AS cliente_id,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
                cu.saldo_pagado, cu.estado AS cuota_estado,
@@ -217,6 +215,12 @@ foreach ($pagos_raw as $p) {
         $agrupado[$key]['monto_total']           = (float)$agrupado[$key]['monto_total'] + (float)$p['monto_total'];
         $agrupado[$key]['monto_mora_cobrada']    = (float)$agrupado[$key]['monto_mora_cobrada'] + (float)$p['monto_mora_cobrada'];
         $agrupado[$key]['monto_sobrante_sum']   += (float)($p['monto_sobrante'] ?? 0);
+        // El código de transferencia se guarda en una sola cuota del lote (la
+        // última insertada, ver cobrador/registrar_pago.php) — puede no ser la
+        // primera fila que llega acá, así que se toma de cualquier fila del grupo.
+        if (!empty($p['codigo_transferencia'])) {
+            $agrupado[$key]['codigo_transferencia'] = $p['codigo_transferencia'];
+        }
         if ((int)($p['es_cuota_pura'] ?? 0))  $agrupado[$key]['es_cuota_pura']  = 1;
         if ((int)($p['solicitud_baja'] ?? 0)) $agrupado[$key]['solicitud_baja'] = 1;
         if ($p['cuota_estado'] === 'PARCIAL' && (float)($p['saldo_pagado'] ?? 0) > 0) {
@@ -261,7 +265,7 @@ require_once __DIR__ . '/../lib/PDFBase.php';
 // Anchos columnas: suma = 190mm (portrait A4)
 // #(7) + Cliente(38) + Articulo(30) + Cuota(s)(13) + Vlr.Cuota(20) + Efectivo(22) + Transfer.(22) + Dia(20) + Total(18)
 $COLS   = [7, 38, 30, 13, 20, 22, 22, 20, 18];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Dia', 'Total'];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Cod. Op.', 'Total'];
 $ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'C', 'R'];
 $ANCHO_TOTAL = array_sum($COLS); // 190
 
@@ -401,9 +405,9 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
 
             $mora_val = (float) $p['monto_mora_cobrada'];
 
-            // Día de cobro asignado
-            $dia_num = (int)($p['dia_cobro'] ?? 0);
-            $dia_str = $dia_num > 0 ? nombre_dia($dia_num) : '-';
+            // Código de operación de la transferencia (últimos 5 caracteres), si tiene
+            $codigo_op = $p['codigo_transferencia'] ?? '';
+            $codigo_op_str = $codigo_op !== '' ? $codigo_op : '-';
 
             $ef = (float) $p['monto_efectivo'];
             $tr = (float) $p['monto_transferencia'];
@@ -422,7 +426,7 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
             $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($vlr_cuota), $COLS[4] - 1), 1, 0, 'R', false);
             $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($ef), $COLS[5] - 1),     1, 0, 'R', false);
             $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($tr), $COLS[6] - 1),     1, 0, 'R', false);
-            $pdf->Cell($COLS[7], 6, $pdf->fitText($dia_str, $COLS[7] - 1),     1, 0, 'C', false);
+            $pdf->Cell($COLS[7], 6, $pdf->fitText($codigo_op_str, $COLS[7] - 1), 1, 0, 'C', false);
             $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1),     1, 0, 'R', false);
             $pdf->Ln();
 

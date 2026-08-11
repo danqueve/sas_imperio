@@ -780,6 +780,7 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
 }
 .toast-msg {
   background: var(--dark-card);
+  color: var(--text-body);
   border: 1px solid var(--dark-border);
   border-radius: var(--radius-sm);
   padding: 13px 18px;
@@ -792,6 +793,29 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
 .toast-msg.success { border-left-color: var(--success); }
 .toast-msg.error   { border-left-color: var(--danger);  }
 @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+/* Los toasts de error son avisos que el usuario no puede dejar pasar (ej.
+   código de operación duplicado) — se destacan centrados arriba de todo en
+   vez de apilarse como un toast más en la esquina, donde pasan inadvertidos. */
+.toast-msg.error {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  width: min(90vw, 440px);
+  max-width: none;
+  padding: 16px 22px;
+  font-size: .95rem;
+  font-weight: 600;
+  background: #3a1219;
+  border-left-width: 5px;
+  box-shadow: 0 10px 34px rgba(211,64,83,.55);
+  z-index: 10000;
+  animation: slideDownCenter .3s ease;
+}
+@keyframes slideDownCenter {
+  from { opacity: 0; transform: translate(-50%, -16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
 
 /* ── Login Page ───────────────────────────────────────────── */
 .login-page {

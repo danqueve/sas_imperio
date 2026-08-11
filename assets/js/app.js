@@ -3,7 +3,7 @@
 // ============================================================
 
 // ── Toast Notifications ───────────────────────────────────
-window.showToast = function (msg, type = 'info', duration = 3500) {
+window.showToast = function (msg, type = 'info', duration = null) {
   const container = document.getElementById('toast-container');
   if (!container) return;
   const toast = document.createElement('div');
@@ -13,12 +13,17 @@ window.showToast = function (msg, type = 'info', duration = 3500) {
   const icons = { success: '✓', error: '✗', warning: '!', info: 'i' };
   toast.innerHTML = `<span>${icons[type] || ''} ${msg}</span>`;
   container.appendChild(toast);
+  // Los toasts de error se muestran centrados arriba (ver .toast-msg.error en
+  // style.css) para que no pasen inadvertidos como un toast normal de esquina;
+  // por eso necesitan su propia animación de salida y quedan más tiempo.
+  const isError = type === 'error';
+  const hideTransform = isError ? 'translate(-50%, -16px)' : 'translateY(20px)';
   setTimeout(() => {
     toast.style.transition = 'opacity .3s, transform .3s';
     toast.style.opacity = '0';
-    toast.style.transform = 'translateY(20px)';
+    toast.style.transform = hideTransform;
     setTimeout(() => toast.remove(), 300);
-  }, duration);
+  }, duration ?? (isError ? 6000 : 3500));
 };
 
 // ── Sidebar Toggle (mobile overlay / desktop collapse) ────

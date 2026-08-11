@@ -413,6 +413,13 @@ require_once __DIR__ . '/../views/layout.php';
     <div class="alert-ic alert-<?= e($_SESSION['flash']['type']) ?>">
         <?= e($_SESSION['flash']['msg']) ?>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const tipo = <?= json_encode($_SESSION['flash']['type']) ?>;
+        const toastType = tipo === 'danger' ? 'error' : tipo;
+        showToast(<?= json_encode($_SESSION['flash']['msg']) ?>, toastType);
+    });
+    </script>
     <?php unset($_SESSION['flash']); ?>
 <?php endif; ?>
 
@@ -1232,7 +1239,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             </div>
         </div>
 
-        <form method="POST" action="registrar_pago" class="form-ic" id="form-pago">
+        <form method="POST" action="registrar_pago" class="form-ic" id="form-pago" onsubmit="return validarPagoSubmit(event)">
             <?php csrf_input(); ?>
             <input type="hidden" name="cuota_id" id="input_cuota_id">
 
@@ -1260,20 +1267,49 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <input type="hidden" name="fecha_jornada_sel" value="<?= $jornadas_disp[0] ?>">
             <?php endif; ?>
 
-            <div class="form-grid">
-                <div class="form-group">
+            <div class="form-group" id="wrap_forma_pago" style="margin-bottom:14px">
+                <label style="color:#0d6efd">Forma de Pago</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="btn-ic btn-ghost btn-forma-pago" data-forma="efectivo"
+                        onclick="seleccionarFormaPago('efectivo')">
+                        <i class="fa fa-money-bill-wave"></i> Efectivo
+                    </button>
+                    <button type="button" class="btn-ic btn-ghost btn-forma-pago" data-forma="transferencia"
+                        onclick="seleccionarFormaPago('transferencia')">
+                        <i class="fa fa-exchange-alt"></i> Transferencia
+                    </button>
+                    <button type="button" class="btn-ic btn-ghost btn-forma-pago" data-forma="mixto"
+                        onclick="seleccionarFormaPago('mixto')">
+                        <i class="fa fa-layer-group"></i> Mixto
+                    </button>
+                </div>
+            </div>
+            <div class="form-grid" id="wrap_montos" style="display:none">
+                <div class="form-group" id="wrap_efectivo">
                     <label style="color:#0d6efd">Monto Efectivo $</label>
                     <input type="number" name="monto_efectivo" id="inp_efectivo" step="0.01" min="0" value="0"
                         oninput="actualizarTotal()"
                         style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="wrap_transferencia">
                     <label style="color:#0d6efd">Monto Transferencia $</label>
                     <input type="number" name="monto_transferencia" id="inp_transfer" step="0.01" min="0" value="0"
                         oninput="actualizarTotal()"
                         style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
             </div>
+            <?php if (es_cobrador()): ?>
+            <div class="form-group" id="wrap_codigo_transferencia" style="display:none;margin-bottom:12px">
+                <label style="color:#0d6efd">Código de Operación (últimos 5) *</label>
+                <input type="text" name="codigo_transferencia" id="inp_codigo_transferencia"
+                    maxlength="5" autocomplete="off"
+                    oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"
+                    style="color:#000;background:#fff;border-color:#ccc;text-transform:uppercase;letter-spacing:2px;font-weight:700">
+                <div id="codigo_transferencia_error" style="display:none;color:var(--danger);font-size:.78rem;margin-top:4px">
+                    Ingresá los 5 caracteres (letras y/o números) del comprobante de transferencia.
+                </div>
+            </div>
+            <?php endif; ?>
             <div
                 style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <span style="color:#1e293b;font-weight:600">Total Registrado:</span>
@@ -1431,6 +1467,8 @@ $page_scripts = <<<'JS'
 <script>
 let cuota_mora    = 0;
 let cuota_capital = 0;
+let modalMontoSugerido = 0;
+let formaPagoSel  = null;
 
 // ── Estado de Cuenta — vars de módulo ────────────────────────
 let escCuotasPagables = [];
@@ -1505,14 +1543,65 @@ function onModalCuotaPuraChange() {
   const esPura = cb && cb.checked ? 1 : 0;
   document.getElementById('inp_cuota_pura').value   = esPura;
   document.getElementById('inp_mora_cobrada').value = esPura ? '0' : cuota_mora.toFixed(2);
-  document.getElementById('inp_efectivo').value     = esPura
-    ? cuota_capital.toFixed(2)
-    : (cuota_capital + cuota_mora).toFixed(2);
-  document.getElementById('inp_transfer').value = '0';
+
+  modalMontoSugerido = esPura ? cuota_capital : (cuota_capital + cuota_mora);
+
+  // Si ya se eligió una forma de pago, actualiza el campo correspondiente
+  // (Transferencia si eligió transferencia; Efectivo en cualquier otro caso,
+  // incluido "todavía no eligió" para no romper el flujo si vuelve a tocar
+  // el checkbox antes de elegir forma de pago).
+  if (formaPagoSel) {
+    const destino = formaPagoSel === 'transferencia' ? 'inp_transfer' : 'inp_efectivo';
+    const otro    = destino === 'inp_transfer' ? 'inp_efectivo' : 'inp_transfer';
+    document.getElementById(destino).value = modalMontoSugerido.toFixed(2);
+    if (formaPagoSel !== 'mixto') document.getElementById(otro).value = '0';
+  }
+
   // Mostrar/ocultar la aclaración
   const info = document.getElementById('modal_pura_info');
   if (info) info.style.display = esPura ? 'block' : 'none';
   actualizarTotal();
+}
+
+// Forma de pago: elegir Efectivo / Transferencia / Mixto recién despliega
+// el/los campo(s) correspondiente(s) — evita que carguen un monto en el
+// campo equivocado antes de saber cómo cobraron.
+function seleccionarFormaPago(tipo) {
+  formaPagoSel = tipo;
+  document.querySelectorAll('.btn-forma-pago').forEach(b => {
+    const activo = b.dataset.forma === tipo;
+    b.classList.toggle('btn-primary', activo);
+    b.classList.toggle('btn-ghost', !activo);
+  });
+
+  document.getElementById('wrap_montos').style.display = '';
+  document.getElementById('wrap_efectivo').style.display      = (tipo === 'transferencia') ? 'none' : '';
+  document.getElementById('wrap_transferencia').style.display = (tipo === 'efectivo') ? 'none' : '';
+
+  if (tipo === 'transferencia') {
+    document.getElementById('inp_transfer').value = modalMontoSugerido.toFixed(2);
+    document.getElementById('inp_efectivo').value = '0';
+  } else if (tipo === 'efectivo') {
+    document.getElementById('inp_efectivo').value = modalMontoSugerido.toFixed(2);
+    document.getElementById('inp_transfer').value = '0';
+  } else {
+    // Mixto: sugiere el total en efectivo y deja transferencia en 0 para
+    // que el cobrador reparta manualmente entre ambos campos.
+    document.getElementById('inp_efectivo').value = modalMontoSugerido.toFixed(2);
+    document.getElementById('inp_transfer').value = '0';
+  }
+  actualizarTotal();
+}
+
+function resetFormaPago() {
+  formaPagoSel = null;
+  document.querySelectorAll('.btn-forma-pago').forEach(b => {
+    b.classList.remove('btn-primary');
+    b.classList.add('btn-ghost');
+  });
+  document.getElementById('wrap_montos').style.display = 'none';
+  document.getElementById('wrap_efectivo').style.display = '';
+  document.getElementById('wrap_transferencia').style.display = '';
 }
 
 function toggleCollapse(colId, iconId) {
@@ -1584,8 +1673,10 @@ function _rellenarModal(c, montoInicial, cardCbChecked = false) {
     '<br><strong>Total sugerido: ' + formatPesos(montoInicial) + '</strong>';
 
   document.getElementById('modal-info').innerHTML = infoHtml;
-  document.getElementById('inp_efectivo').value   = montoInicial.toFixed(2);
-  document.getElementById('inp_transfer').value   = '0';
+  modalMontoSugerido = montoInicial;
+  document.getElementById('inp_efectivo').value = '0';
+  document.getElementById('inp_transfer').value = '0';
+  resetFormaPago();
   actualizarTotal();
   openModal('modal-pago');
 }
@@ -1594,6 +1685,39 @@ function actualizarTotal() {
   const ef = parseFloat(document.getElementById('inp_efectivo').value) || 0;
   const tr = parseFloat(document.getElementById('inp_transfer').value) || 0;
   document.getElementById('total_display').textContent = formatPesos(ef + tr);
+
+  // Código de operación: solo existe en el DOM para el rol cobrador (ver PHP).
+  const wrapCod = document.getElementById('wrap_codigo_transferencia');
+  if (wrapCod) {
+    wrapCod.style.display = tr > 0 ? 'block' : 'none';
+    if (tr <= 0) {
+      document.getElementById('inp_codigo_transferencia').value = '';
+      document.getElementById('codigo_transferencia_error').style.display = 'none';
+    }
+  }
+}
+
+function validarPagoSubmit(event) {
+  if (!formaPagoSel) {
+    showToast('Elegí la forma de pago (Efectivo, Transferencia o Mixto) antes de confirmar.', 'error');
+    if (event) event.stopImmediatePropagation();
+    return false;
+  }
+  const wrapCod = document.getElementById('wrap_codigo_transferencia');
+  if (!wrapCod || wrapCod.style.display === 'none') return true; // no aplica
+  const val = document.getElementById('inp_codigo_transferencia').value.trim();
+  const err = document.getElementById('codigo_transferencia_error');
+  if (!/^[A-Z0-9]{5}$/.test(val)) {
+    if (err) err.style.display = 'block';
+    document.getElementById('inp_codigo_transferencia').focus();
+    showToast('Ingresá los 5 caracteres del número de operación para poder cobrar por transferencia.', 'error');
+    // Evita que el listener de app.js (deshabilita el botón y muestra
+    // "Procesando…") también se dispare cuando el envío queda bloqueado acá.
+    if (event) event.stopImmediatePropagation();
+    return false;
+  }
+  if (err) err.style.display = 'none';
+  return true;
 }
 
 function toggleArticulo(id) {
