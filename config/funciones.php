@@ -893,6 +893,13 @@ function whatsapp_url(string $telefono, string $mensaje = ''): string
         $tel = substr($tel, 1);
     }
 
+    // Un número argentino válido (área + abonado, sin 0 ni 15) tiene siempre
+    // 10 dígitos. Si no cuadra, el dato está incompleto/mal cargado y wa.me
+    // lo rechaza como "número inválido" al abrir el link — mejor no generarlo.
+    if (strlen($tel) !== 10) {
+        return '#';
+    }
+
     // Reconstruir: 54 (Argentina) + 9 (móvil) + característica + número
     $tel = '549' . $tel;
 

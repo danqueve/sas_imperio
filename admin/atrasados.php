@@ -24,6 +24,20 @@ function build_atrasados_where(int $cobrador_id, string $zona): array
     return ['sql' => implode(' AND ', $w), 'params' => $p];
 }
 
+// Mensaje formal de aviso de deuda para WhatsApp. $detalle_deuda es la
+// cláusula que varía entre la vista por cuota (cuota puntual) y la vista
+// por cliente (total agregado) — el resto del texto es fijo en ambas.
+function mensaje_atrasado_wa(string $apellidos, string $nombres, string $detalle_deuda, float $monto_adeudado): string
+{
+    return "Hola {$apellidos}, {$nombres}.\n\n" .
+        "Nos comunicamos del departamento de Cobranzas de Imperio Comercial.\n\n" .
+        "Por medio del presente, nos comunicamos a fin de informarle que registra una deuda correspondiente a {$detalle_deuda}, por un monto adeudado de " . formato_pesos($monto_adeudado) . ".\n\n" .
+        "Solicitamos que se comunique a la mayor brevedad con nuestro Departamento de Cobranzas para regularizar la situación y acordar el medio de pago correspondiente.\n\n" .
+        "La presente comunicación tiene carácter formal de aviso de deuda, a fin de que pueda proceder a su regularización.\n\n" .
+        "Imperio Comercial SAS\n" .
+        "Departamento de Cobranzas";
+}
+
 // ── Export CSV ─────────────────────────────────────────────
 if (($_GET['export'] ?? '') === 'csv') {
     $cobrador_id_csv = (int) ($_GET['cobrador_id'] ?? 0);
@@ -248,6 +262,14 @@ if ($vista === 'cuotas') {
              FROM ic_pagos_confirmados pc
              JOIN ic_cuotas cu2 ON pc.cuota_id = cu2.id
              WHERE cu2.credito_id = cr.id)                     AS ultimo_pago,
+            (SELECT SUM(cu3.monto_cuota - cu3.saldo_pagado)
+             FROM ic_cuotas cu3
+             JOIN ic_creditos cr3 ON cu3.credito_id = cr3.id
+             WHERE cr3.cliente_id = cl.id
+               AND cu3.estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+               AND cr3.estado IN ('EN_CURSO','MOROSO')
+               AND cu3.fecha_vencimiento < CURDATE()
+               AND (cu3.monto_cuota - cu3.saldo_pagado) > 0)    AS total_adeudado_cliente,
             u.nombre AS cob_nombre, u.apellido AS cob_apellido,
             cr.id AS credito_id
         FROM ic_cuotas cu
@@ -553,10 +575,11 @@ function url_vista(string $v, array $get): string {
                     elseif ($dias > 12) { $badge_bg = '#f97316';       $badge_c = '#fff'; $nivel = 'alerta'; }
                     else                { $badge_bg = '#eab308';       $badge_c = '#000'; $nivel = 'reciente'; }
 
-                    $wa_msg = 'Hola ' . $r['nombres'] . ', le informamos que su cuota #' . $r['numero_cuota'] .
-                        ' del artículo ' . $r['articulo'] . ' venció hace ' . $dias . ' días. ' .
-                        'Monto adeudado: ' . formato_pesos((float)$r['monto_adeudado']) . '. ' .
-                        'Por favor comuníquese con su cobrador. - Imperio Comercial';
+                    $detalle_deuda = $r['articulo'] !== '—'
+                        ? 'la cuota #' . $r['numero_cuota'] . ' del artículo ' . $r['articulo'] . ', con ' . $dias . ' días de atraso'
+                        : 'la cuota #' . $r['numero_cuota'] . ', con ' . $dias . ' días de atraso';
+                    $wa_msg = mensaje_atrasado_wa($r['apellidos'], $r['nombres'], $detalle_deuda, (float) $r['total_adeudado_cliente']);
+                    $wa_href = whatsapp_url($r['telefono'] ?? '', $wa_msg);
                     ?>
                     <tr data-dias="<?= $dias ?>" data-nivel="<?= $nivel ?>">
                         <td class="text-center text-muted" style="font-size:.82rem"><?= $offset + $i + 1 ?></td>
@@ -592,8 +615,8 @@ function url_vista(string $v, array $get): string {
                             <?php endif; ?>
                         </td>
                         <td class="text-center">
-                            <?php if (!empty($r['telefono'])): ?>
-                                <a href="<?= whatsapp_url($r['telefono'], $wa_msg) ?>" target="_blank"
+                            <?php if ($wa_href !== '#'): ?>
+                                <a href="<?= $wa_href ?>" target="_blank"
                                    class="btn-ic btn-ghost btn-sm btn-icon"
                                    title="Enviar WhatsApp"
                                    style="color:#22c55e;border-color:#22c55e">
@@ -647,9 +670,9 @@ function url_vista(string $v, array $get): string {
                     elseif ($dias > 12) { $badge_bg = '#f97316';       $badge_c = '#fff'; }
                     else                { $badge_bg = '#eab308';       $badge_c = '#000'; }
 
-                    $wa_msg = 'Hola ' . $r['nombres'] . ', le informamos que tiene ' . $r['cant_cuotas_vencidas'] .
-                        ' cuota(s) vencida(s) por un total de ' . formato_pesos((float)$r['total_adeudado']) . '. ' .
-                        'Por favor comuníquese con su cobrador. - Imperio Comercial';
+                    $detalle_deuda = $r['cant_cuotas_vencidas'] . ' cuota(s) vencida(s), con un máximo de ' . $dias . ' días de atraso';
+                    $wa_msg = mensaje_atrasado_wa($r['apellidos'], $r['nombres'], $detalle_deuda, (float) $r['total_adeudado']);
+                    $wa_href = whatsapp_url($r['telefono'] ?? '', $wa_msg);
                     ?>
                     <tr>
                         <td class="text-center text-muted" style="font-size:.82rem"><?= $offset + $i + 1 ?></td>
@@ -686,8 +709,8 @@ function url_vista(string $v, array $get): string {
                             <?php endif; ?>
                         </td>
                         <td class="text-center">
-                            <?php if (!empty($r['telefono'])): ?>
-                                <a href="<?= whatsapp_url($r['telefono'], $wa_msg) ?>" target="_blank"
+                            <?php if ($wa_href !== '#'): ?>
+                                <a href="<?= $wa_href ?>" target="_blank"
                                    class="btn-ic btn-ghost btn-sm btn-icon"
                                    title="Enviar WhatsApp"
                                    style="color:#22c55e;border-color:#22c55e">
