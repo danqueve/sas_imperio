@@ -405,12 +405,14 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
 
             $mora_val = (float) $p['monto_mora_cobrada'];
 
-            // Código de operación de la transferencia (últimos 5 caracteres), si tiene
-            $codigo_op = $p['codigo_transferencia'] ?? '';
-            $codigo_op_str = $codigo_op !== '' ? $codigo_op : '-';
-
             $ef = (float) $p['monto_efectivo'];
             $tr = (float) $p['monto_transferencia'];
+
+            // Código de operación de la transferencia (últimos 5 caracteres);
+            // "S/C" (sin código) solo tiene sentido si hubo transferencia —
+            // un pago 100% efectivo nunca tuvo código que mostrar.
+            $codigo_op = $p['codigo_transferencia'] ?? '';
+            $codigo_op_str = $codigo_op !== '' ? $codigo_op : ($tr > 0 ? 'S/C' : '-');
             $tt = (float) $p['monto_total'] + (float)($p['monto_sobrante_sum'] ?? 0);
 
             $sec_efectivo += $ef;
