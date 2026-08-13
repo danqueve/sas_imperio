@@ -643,6 +643,10 @@ require_once __DIR__ . '/../views/layout.php';
                                         <div style="font-size:.68rem;color:var(--text-muted);font-family:monospace;letter-spacing:1px">
                                             Cód: <?= e($p['codigo_transferencia']) ?>
                                         </div>
+                                    <?php elseif ((float)$p['monto_transferencia'] > 0 && ($p['origen'] ?? 'cobrador') === 'cobrador'): ?>
+                                        <div style="font-size:.68rem;color:var(--warning);font-weight:600">
+                                            <i class="fa fa-triangle-exclamation"></i> Sin código
+                                        </div>
                                     <?php endif; ?>
                                 </td>
                                 <td class="nowrap <?= $p['monto_mora_cobrada'] > 0 ? 'text-warning' : '' ?>">

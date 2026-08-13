@@ -42,12 +42,15 @@ if (!$cuota_id || $total <= 0) {
 try {
     // Cobradores que cargan transferencia deben ingresar el código de operación
     // (últimos 5 caracteres alfanuméricos del comprobante). Admin/supervisor no
-    // tienen esta exigencia, tampoco los pagos solo en efectivo.
+    // tienen esta exigencia, tampoco los pagos solo en efectivo. Excepción
+    // explícita: si el cobrador marca "no tengo el número" (sin_codigo_operacion),
+    // se acepta sin código — queda NULL, igual que ya ocurre para admin/supervisor.
     $codigo_transferencia = null;
-    if (($_SESSION['rol'] ?? '') === 'cobrador' && $tr > 0) {
+    $sin_codigo = ($_POST['sin_codigo_operacion'] ?? '') === '1';
+    if (($_SESSION['rol'] ?? '') === 'cobrador' && $tr > 0 && !$sin_codigo) {
         $codigo_transferencia = strtoupper(trim($_POST['codigo_transferencia'] ?? ''));
         if (!preg_match('/^[A-Z0-9]{5}$/', $codigo_transferencia)) {
-            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Para pagos con transferencia debés ingresar los últimos 5 caracteres del número de operación.'];
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Para pagos con transferencia debés ingresar los últimos 5 caracteres del número de operación, o marcar que no lo tenés.'];
             header('Location: agenda');
             exit;
         }
