@@ -33,67 +33,73 @@ if (!$cuota_id || $total <= 0) {
     exit;
 }
 
-// Cobradores que cargan transferencia deben ingresar el código de operación
-// (últimos 5 caracteres alfanuméricos del comprobante). Admin/supervisor no
-// tienen esta exigencia, tampoco los pagos solo en efectivo.
-$codigo_transferencia = null;
-if (($_SESSION['rol'] ?? '') === 'cobrador' && $tr > 0) {
-    $codigo_transferencia = strtoupper(trim($_POST['codigo_transferencia'] ?? ''));
-    if (!preg_match('/^[A-Z0-9]{5}$/', $codigo_transferencia)) {
-        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Para pagos con transferencia debés ingresar los últimos 5 caracteres del número de operación.'];
-        header('Location: agenda');
-        exit;
-    }
-    $dup_stmt = $pdo->prepare("SELECT id FROM ic_pagos_temporales WHERE codigo_transf_activo = ? LIMIT 1");
-    $dup_stmt->execute([$codigo_transferencia]);
-    if ($dup_stmt->fetch()) {
-        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Ese número de operación ya fue registrado en otro pago.'];
-        header('Location: agenda');
-        exit;
-    }
-}
-
-// Obtener credito_id e interes_moratorio; validar que pertenece al cobrador logueado
-$stmt = $pdo->prepare("
-    SELECT cu.credito_id, cr.interes_moratorio_pct
-    FROM ic_cuotas cu
-    JOIN ic_creditos cr ON cu.credito_id = cr.id
-    WHERE cu.id = ? AND cr.cobrador_id = ?
-      AND cr.estado NOT IN ('FINALIZADO', 'CANCELADO')
-");
-$stmt->execute([$cuota_id, $_SESSION['user_id']]);
-$row = $stmt->fetch();
-
-if (!$row) {
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Cuota no encontrada o no pertenece a tus creditos.'];
-    header('Location: agenda');
-    exit;
-}
-
-$credito_id = (int) $row['credito_id'];
-$pct_mora   = (float) $row['interes_moratorio_pct'];
-
-// Obtener cuotas pendientes/vencidas/parciales del crédito, de más antigua a más nueva
-$cuotas_stmt = $pdo->prepare("
-    SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
-           cu.saldo_pagado, cu.monto_mora, cu.estado,
-           (SELECT COUNT(*) FROM ic_pagos_temporales pt
-            WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen
-    FROM ic_cuotas cu
-    WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')
-    ORDER BY cu.numero_cuota ASC
-");
-$cuotas_stmt->execute([$credito_id]);
-$cuotas_pendientes = $cuotas_stmt->fetchAll();
-
-$remaining    = $total;
-$ef_remaining = $ef;
-$tr_remaining = $tr;
-$cuotas_ok    = 0;
-$last_pt_id   = null;
-
-// Fase 2: transacción con FOR UPDATE para bloqueo atómico
+// A partir de acá cualquier excepción no prevista (columna faltante,
+// conexión caída, lo que sea) cae en el catch de más abajo en vez de
+// terminar en un error fatal no manejado — sin esto, el navegador del
+// cobrador se queda esperando una respuesta que nunca llega (nunca se
+// alcanza el header('Location: ...')), viéndose como si el pago hubiera
+// quedado colgado en "Procesando…".
 try {
+    // Cobradores que cargan transferencia deben ingresar el código de operación
+    // (últimos 5 caracteres alfanuméricos del comprobante). Admin/supervisor no
+    // tienen esta exigencia, tampoco los pagos solo en efectivo.
+    $codigo_transferencia = null;
+    if (($_SESSION['rol'] ?? '') === 'cobrador' && $tr > 0) {
+        $codigo_transferencia = strtoupper(trim($_POST['codigo_transferencia'] ?? ''));
+        if (!preg_match('/^[A-Z0-9]{5}$/', $codigo_transferencia)) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Para pagos con transferencia debés ingresar los últimos 5 caracteres del número de operación.'];
+            header('Location: agenda');
+            exit;
+        }
+        $dup_stmt = $pdo->prepare("SELECT id FROM ic_pagos_temporales WHERE codigo_transf_activo = ? LIMIT 1");
+        $dup_stmt->execute([$codigo_transferencia]);
+        if ($dup_stmt->fetch()) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Ese número de operación ya fue registrado en otro pago.'];
+            header('Location: agenda');
+            exit;
+        }
+    }
+
+    // Obtener credito_id e interes_moratorio; validar que pertenece al cobrador logueado
+    $stmt = $pdo->prepare("
+        SELECT cu.credito_id, cr.interes_moratorio_pct
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        WHERE cu.id = ? AND cr.cobrador_id = ?
+          AND cr.estado NOT IN ('FINALIZADO', 'CANCELADO')
+    ");
+    $stmt->execute([$cuota_id, $_SESSION['user_id']]);
+    $row = $stmt->fetch();
+
+    if (!$row) {
+        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Cuota no encontrada o no pertenece a tus creditos.'];
+        header('Location: agenda');
+        exit;
+    }
+
+    $credito_id = (int) $row['credito_id'];
+    $pct_mora   = (float) $row['interes_moratorio_pct'];
+
+    // Obtener cuotas pendientes/vencidas/parciales del crédito, de más antigua a más nueva
+    $cuotas_stmt = $pdo->prepare("
+        SELECT cu.id, cu.numero_cuota, cu.monto_cuota, cu.fecha_vencimiento,
+               cu.saldo_pagado, cu.monto_mora, cu.estado,
+               (SELECT COUNT(*) FROM ic_pagos_temporales pt
+                WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen
+        FROM ic_cuotas cu
+        WHERE cu.credito_id = ? AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')
+        ORDER BY cu.numero_cuota ASC
+    ");
+    $cuotas_stmt->execute([$credito_id]);
+    $cuotas_pendientes = $cuotas_stmt->fetchAll();
+
+    $remaining    = $total;
+    $ef_remaining = $ef;
+    $tr_remaining = $tr;
+    $cuotas_ok    = 0;
+    $last_pt_id   = null;
+
+    // Fase 2: transacción con FOR UPDATE para bloqueo atómico
     $pdo->beginTransaction();
 
     // Re-leer cuotas con bloqueo dentro de la transacción
