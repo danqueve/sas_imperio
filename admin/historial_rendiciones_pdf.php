@@ -78,6 +78,12 @@ foreach ($pagos_raw as $p) {
         $agrupado[$crid]['monto_transferencia']   = (float)$agrupado[$crid]['monto_transferencia'] + (float)$p['monto_transferencia'];
         $agrupado[$crid]['monto_total']           = (float)$agrupado[$crid]['monto_total'] + (float)$p['monto_total'];
         $agrupado[$crid]['monto_mora_cobrada']    = (float)$agrupado[$crid]['monto_mora_cobrada'] + (float)$p['monto_mora_cobrada'];
+        // El código de transferencia se guarda en una sola cuota del lote (la
+        // última insertada, ver cobrador/registrar_pago.php) — puede no ser la
+        // primera fila que llega acá, así que se toma de cualquier fila del grupo.
+        if (!empty($p['codigo_transferencia'])) {
+            $agrupado[$crid]['codigo_transferencia'] = $p['codigo_transferencia'];
+        }
         if ((int)($p['es_cuota_pura'] ?? 0)) $agrupado[$crid]['es_cuota_pura'] = 1;
     }
 }
@@ -100,12 +106,6 @@ foreach ($pagos as $p) {
     $total_transferencia += (float) $p['monto_transferencia'];
     $total_general       += (float) $p['monto_total'];
 }
-
-// Mapa de número de día a nombre
-$dias_semana = [
-    0 => 'Dom', 1 => 'Lun', 2 => 'Mar', 3 => 'Mie',
-    4 => 'Jue', 5 => 'Vie', 6 => 'Sab'
-];
 
 // ── Exportación CSV ──────────────────────────────────────────────
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
@@ -179,7 +179,7 @@ require_once __DIR__ . '/../lib/PDFBase.php';
 // Anchos columnas: suma = 190mm (A4 portrait 210mm − 10mm izq − 10mm der)
 // #(7) + Cliente(46) + Articulo(36) + Cuota(s)(14) + Vlr.Cuota(19) + Efectivo(19) + Transfer.(19) + Dia(11) + Total(19)
 $COLS   = [7, 46, 36, 14, 19, 19, 19, 11, 19];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Dia', 'Total'];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Cod. Op.', 'Total'];
 $ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'C', 'R'];
 
 class RendicionHistorialPDF extends PDFBase
@@ -296,11 +296,12 @@ foreach ($secciones as $sec) {
         $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
         $vlr_cuota  = (float) $p['monto_cuota_sum'];
 
-        // Día de cobro
-        $dia_num = $p['dia_cobro'] ?? null;
-        $dia_str = ($dia_num !== null && isset($dias_semana[(int)$dia_num]))
-                     ? $dias_semana[(int)$dia_num]
-                     : '-';
+        // Código de operación de la transferencia; "S/C" (sin código) solo
+        // tiene sentido si hubo transferencia — un pago 100% efectivo nunca
+        // tuvo código que mostrar.
+        $tr = (float) $p['monto_transferencia'];
+        $codigo_op = $p['codigo_transferencia'] ?? '';
+        $codigo_op_str = $codigo_op !== '' ? $codigo_op : ($tr > 0 ? 'S/C' : '-');
 
         $sec_efectivo += (float)$p['monto_efectivo'];
         $sec_transfer += (float)$p['monto_transferencia'];
@@ -314,7 +315,7 @@ foreach ($secciones as $sec) {
         $pdf->Cell($COLS[4], 6, fmt($vlr_cuota),                             1, 0, 'R', false);
         $pdf->Cell($COLS[5], 6, fmt((float)$p['monto_efectivo']),            1, 0, 'R', false);
         $pdf->Cell($COLS[6], 6, fmt((float)$p['monto_transferencia']),       1, 0, 'R', false);
-        $pdf->Cell($COLS[7], 6, lat($dia_str),                               1, 0, 'C', false);
+        $pdf->Cell($COLS[7], 6, $pdf->fitText($codigo_op_str, $COLS[7] - 1), 1, 0, 'C', false);
         $pdf->Cell($COLS[8], 6, fmt((float)$p['monto_total']),               1, 0, 'R', false);
         $pdf->Ln();
         $index++;
