@@ -28,7 +28,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta))  $hasta = date('Y-m-d');
 if ($desde > $hasta) $desde = $hasta;
 
 $todos_cobradores = $pdo->query(
-    "SELECT id, nombre, apellido FROM ic_usuarios WHERE rol = 'cobrador' ORDER BY apellido ASC, nombre ASC"
+    "SELECT id, nombre, apellido FROM ic_usuarios WHERE rol = 'cobrador' AND activo = 1 ORDER BY apellido ASC, nombre ASC"
 )->fetchAll();
 
 if ($cobrador_id > 0) {
