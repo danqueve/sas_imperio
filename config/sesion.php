@@ -21,7 +21,7 @@ define('SESSION_IDLE_TIMEOUT', 2 * 60 * 60); // 2 horas de inactividad
 // ── Restricción horaria para supervisores ────────────────────
 // date('G') usa el timezone configurado en php.ini (America/Argentina/Buenos_Aires)
 define('SUPERVISOR_HORA_INICIO', 8);   // 08:00
-define('SUPERVISOR_HORA_FIN',   16);   // 16:00
+define('SUPERVISOR_HORA_FIN',   19);   // 19:00
 
 // ── Timeout por inactividad ──────────────────────────────────
 if (!empty($_SESSION['user_id'])) {
