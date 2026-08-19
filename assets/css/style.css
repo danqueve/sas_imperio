@@ -719,6 +719,12 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
   padding: 28px;
   max-width: 540px;
   width: 100%;
+  /* Sin esto, un modal más alto que la pantalla (típico en mobile con
+     teclado virtual abierto) quedaba cortado arriba y abajo sin ningún
+     modo de llegar al contenido oculto — el overlay fijo no scrollea. */
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow);
   transform: translateY(20px);
   transition: transform var(--transition);
@@ -1103,6 +1109,10 @@ body.theme-cobrador .kpi-value         { color: var(--text-main); }
 .text-right  { text-align: right; }
 .text-center { text-align: center; }
 .w-100 { width: 100%; }
+/* Para un botón "principal" junto a uno secundario dentro de un .d-flex:
+   width:100% en un hijo flex no reparte el espacio, lo desproporciona
+   contra su hermano (a veces lo aplasta, a veces desborda). flex:1 sí. */
+.flex-1 { flex: 1 1 0; min-width: 0; }
 .divider { border: none; border-top: 1px solid var(--dark-border); margin: 16px 0; }
 .nowrap { white-space: nowrap; }
 

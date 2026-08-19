@@ -497,7 +497,7 @@ require_once __DIR__ . '/../views/layout.php';
                 </label>
             </div>
             <div class="d-flex gap-3">
-                <button type="submit" class="btn-ic btn-primary w-100" style="justify-content:center">
+                <button type="submit" class="btn-ic btn-primary flex-1" style="justify-content:center">
                     <i class="fa fa-file-pdf"></i> Generar PDF
                 </button>
                 <button type="button" onclick="closeModal('modal-agenda-pdf')" class="btn-ic btn-ghost">Cancelar</button>
@@ -527,7 +527,7 @@ require_once __DIR__ . '/../views/layout.php';
                 </select>
             </div>
             <div class="d-flex gap-3">
-                <button type="submit" class="btn-ic btn-primary w-100" style="justify-content:center">
+                <button type="submit" class="btn-ic btn-primary flex-1" style="justify-content:center">
                     <i class="fa fa-file-pdf"></i> Generar PDF
                 </button>
                 <button type="button" onclick="closeModal('modal-clientes-zona-pdf')" class="btn-ic btn-ghost">Cancelar</button>
@@ -560,7 +560,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <i class="fa fa-circle-info"></i> Incluye la semana en curso (Lunes a Sábado).
             </p>
             <div class="d-flex gap-3">
-                <button type="submit" class="btn-ic btn-primary w-100" style="justify-content:center">
+                <button type="submit" class="btn-ic btn-primary flex-1" style="justify-content:center">
                     <i class="fa fa-file-pdf"></i> Generar PDF
                 </button>
                 <button type="button" onclick="closeModal('modal-faltantes-pdf')" class="btn-ic btn-ghost">Cancelar</button>
@@ -1336,7 +1336,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     placeholder="Ej: pagó con billete, prometió el resto mañana..."></textarea>
             </div>
             <div class="d-flex gap-3">
-                <button type="submit" class="btn-ic btn-success w-100" style="justify-content:center">
+                <button type="submit" class="btn-ic btn-success flex-1" style="justify-content:center">
                     <i class="fa fa-save"></i> Confirmar Pago
                 </button>
                 <button type="button" onclick="closeModal('modal-pago')" class="btn-ic btn-ghost">Cancelar</button>
@@ -1446,17 +1446,17 @@ $page_scripts = <<<'JS'
 /* Thumb zones (Botones de Cobro) */
 .agenda-cobro-wrap { display: flex; align-items: stretch; gap: 8px; }
 .agenda-cobro-input {
-    min-height: 48px; border-radius: 8px;
+    min-height: 48px; min-width: 64px; border-radius: 8px;
     font-size: 1.15rem; font-weight: 700; text-align: right;
     background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.15);
     color: inherit;
 }
 .agenda-cobro-input:focus { outline: none; border-color: var(--success); }
 .agenda-cobro-btn {
-    min-height: 48px; padding: 0 16px; font-weight: 700; display: flex;
+    min-height: 48px; min-width: 44px; padding: 0 16px; font-weight: 700; display: flex;
     align-items: center; justify-content: center; border-radius: 8px;
     background: var(--success); color: #fff; border: none; cursor: pointer;
-    transition: opacity .15s;
+    transition: opacity .15s; flex-shrink: 0; white-space: nowrap;
 }
 .agenda-cobro-btn:hover { opacity: .85; }
 
