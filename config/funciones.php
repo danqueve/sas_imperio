@@ -228,6 +228,29 @@ function calcular_cobrado_semanal_puro(PDO $pdo, int $cobrador_id, ?DateTimeImmu
 }
 
 /**
+ * Desglose por método de pago (efectivo/transferencia) de lo cobrado en la
+ * semana de $hoy — mismo filtro exacto que calcular_cobrado_semanal_real(),
+ * separado por monto_efectivo/monto_transferencia en vez de sumar monto_total.
+ */
+function calcular_cobrado_semanal_por_metodo(PDO $pdo, int $cobrador_id, ?DateTimeImmutable $hoy = null): array
+{
+    $hoy     = $hoy ?? new DateTimeImmutable('today');
+    $dow     = (int) $hoy->format('N');
+    $lunes   = $hoy->modify('-' . ($dow - 1) . ' days')->format('Y-m-d');
+    $domingo = $hoy->modify('-' . ($dow - 1) . ' days')->modify('+6 days')->format('Y-m-d');
+
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(monto_efectivo), 0), COALESCE(SUM(monto_transferencia), 0)
+        FROM ic_pagos_temporales
+        WHERE cobrador_id = ? AND fecha_jornada BETWEEN ? AND ?
+          AND estado IN ('PENDIENTE','APROBADO') AND origen = 'cobrador'
+    ");
+    $stmt->execute([$cobrador_id, $lunes, $domingo]);
+    [$efectivo, $transferencia] = $stmt->fetch(PDO::FETCH_NUM);
+    return ['efectivo' => (float) $efectivo, 'transferencia' => (float) $transferencia];
+}
+
+/**
  * Calcula las 4 métricas de meta semanal de un cobrador para la semana de
  * $semana_referencia (cualquier fecha de esa semana). El criterio "cartera
  * vencida a hoy" de meta_automatica/meta_fija_semanal se evalúa al domingo
@@ -242,13 +265,16 @@ function calcular_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImmu
     $dow        = (int) $semana_referencia->format('N');
     $lunes      = $semana_referencia->modify('-' . ($dow - 1) . ' days');
     $fin_semana = $lunes->modify('+6 days');
+    $metodo     = calcular_cobrado_semanal_por_metodo($pdo, $cobrador_id, $fin_semana);
 
     return [
-        'semana_lunes'         => $lunes->format('Y-m-d'),
-        'meta_automatica'      => calcular_meta_semanal_auto($pdo, $cobrador_id, $fin_semana),
-        'cobrado_real'         => calcular_cobrado_semanal_real($pdo, $cobrador_id, $fin_semana),
-        'meta_fija_semanal'    => calcular_meta_semanal_pura($pdo, $cobrador_id, $fin_semana),
-        'cobrado_semanal_puro' => calcular_cobrado_semanal_puro($pdo, $cobrador_id, $fin_semana),
+        'semana_lunes'          => $lunes->format('Y-m-d'),
+        'meta_automatica'       => calcular_meta_semanal_auto($pdo, $cobrador_id, $fin_semana),
+        'cobrado_real'          => calcular_cobrado_semanal_real($pdo, $cobrador_id, $fin_semana),
+        'meta_fija_semanal'     => calcular_meta_semanal_pura($pdo, $cobrador_id, $fin_semana),
+        'cobrado_semanal_puro'  => calcular_cobrado_semanal_puro($pdo, $cobrador_id, $fin_semana),
+        'cobrado_efectivo'      => $metodo['efectivo'],
+        'cobrado_transferencia' => $metodo['transferencia'],
     ];
 }
 
@@ -265,13 +291,15 @@ function registrar_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImm
 
     $stmt = $pdo->prepare("
         INSERT INTO ic_historial_metas
-            (cobrador_id, semana_lunes, meta_automatica, cobrado_real, meta_fija_semanal, cobrado_semanal_puro)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (cobrador_id, semana_lunes, meta_automatica, cobrado_real, meta_fija_semanal, cobrado_semanal_puro, cobrado_efectivo, cobrado_transferencia)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             meta_automatica = VALUES(meta_automatica),
             cobrado_real = VALUES(cobrado_real),
             meta_fija_semanal = VALUES(meta_fija_semanal),
-            cobrado_semanal_puro = VALUES(cobrado_semanal_puro)
+            cobrado_semanal_puro = VALUES(cobrado_semanal_puro),
+            cobrado_efectivo = VALUES(cobrado_efectivo),
+            cobrado_transferencia = VALUES(cobrado_transferencia)
     ");
     $stmt->execute([
         $cobrador_id,
@@ -280,6 +308,8 @@ function registrar_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImm
         $s['cobrado_real'],
         $s['meta_fija_semanal'],
         $s['cobrado_semanal_puro'],
+        $s['cobrado_efectivo'],
+        $s['cobrado_transferencia'],
     ]);
 }
 

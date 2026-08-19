@@ -33,7 +33,7 @@ $todos_cobradores = $pdo->query(
 
 if ($cobrador_id > 0) {
     $stmt = $pdo->prepare("
-        SELECT semana_lunes, meta_automatica, cobrado_real, meta_fija_semanal, cobrado_semanal_puro
+        SELECT semana_lunes, meta_automatica, cobrado_real, meta_fija_semanal, cobrado_efectivo, cobrado_transferencia
         FROM ic_historial_metas
         WHERE cobrador_id = ? AND semana_lunes BETWEEN ? AND ?
         ORDER BY semana_lunes ASC
@@ -42,10 +42,11 @@ if ($cobrador_id > 0) {
 } else {
     $stmt = $pdo->prepare("
         SELECT semana_lunes,
-               SUM(meta_automatica)      AS meta_automatica,
-               SUM(cobrado_real)         AS cobrado_real,
-               SUM(meta_fija_semanal)    AS meta_fija_semanal,
-               SUM(cobrado_semanal_puro) AS cobrado_semanal_puro
+               SUM(meta_automatica)       AS meta_automatica,
+               SUM(cobrado_real)          AS cobrado_real,
+               SUM(meta_fija_semanal)     AS meta_fija_semanal,
+               SUM(cobrado_efectivo)      AS cobrado_efectivo,
+               SUM(cobrado_transferencia) AS cobrado_transferencia
         FROM ic_historial_metas
         WHERE semana_lunes BETWEEN ? AND ?
         GROUP BY semana_lunes
@@ -67,15 +68,16 @@ foreach ($todos_cobradores as $tc) {
 $tot_meta_auto    = 0.0;
 $tot_cobrado_real = 0.0;
 $tot_meta_fija    = 0.0;
-$tot_cobrado_puro = 0.0;
+$tot_efectivo     = 0.0;
+$tot_transferencia = 0.0;
 foreach ($filas as $f) {
-    $tot_meta_auto    += (float) $f['meta_automatica'];
-    $tot_cobrado_real += (float) $f['cobrado_real'];
-    $tot_meta_fija    += (float) $f['meta_fija_semanal'];
-    $tot_cobrado_puro += (float) $f['cobrado_semanal_puro'];
+    $tot_meta_auto     += (float) $f['meta_automatica'];
+    $tot_cobrado_real  += (float) $f['cobrado_real'];
+    $tot_meta_fija     += (float) $f['meta_fija_semanal'];
+    $tot_efectivo      += (float) $f['cobrado_efectivo'];
+    $tot_transferencia += (float) $f['cobrado_transferencia'];
 }
 $tot_pct_real = $tot_meta_auto > 0 ? min(100, round($tot_cobrado_real / $tot_meta_auto * 100)) : 0;
-$tot_pct_puro = $tot_meta_fija > 0 ? min(100, round($tot_cobrado_puro / $tot_meta_fija * 100)) : 0;
 
 $qs_pdf = http_build_query(['cobrador_id' => $cobrador_id, 'desde' => $desde, 'hasta' => $hasta]);
 
@@ -130,21 +132,20 @@ require_once __DIR__ . '/../views/layout.php';
                     <th class="text-right">Cobrado Real</th>
                     <th style="min-width:110px">%</th>
                     <th class="text-right">Meta Fija Semanal</th>
-                    <th class="text-right">Cobrado (sin mora)</th>
-                    <th style="min-width:110px">%</th>
+                    <th class="text-right">Efectivo</th>
+                    <th class="text-right">Transferencia</th>
                 </tr>
             </thead>
             <tbody>
             <?php foreach ($filas as $f):
-                $meta_auto  = (float) $f['meta_automatica'];
-                $cob_real   = (float) $f['cobrado_real'];
-                $meta_fija  = (float) $f['meta_fija_semanal'];
-                $cob_puro   = (float) $f['cobrado_semanal_puro'];
-                $pct_real   = $meta_auto > 0 ? min(100, round($cob_real / $meta_auto * 100)) : 0;
-                $pct_puro   = $meta_fija > 0 ? min(100, round($cob_puro / $meta_fija * 100)) : 0;
-                $color_real = color_pct_meta($pct_real);
-                $color_puro = color_pct_meta($pct_puro);
-                $lunes_dt   = strtotime($f['semana_lunes']);
+                $meta_auto     = (float) $f['meta_automatica'];
+                $cob_real      = (float) $f['cobrado_real'];
+                $meta_fija     = (float) $f['meta_fija_semanal'];
+                $efectivo      = (float) $f['cobrado_efectivo'];
+                $transferencia = (float) $f['cobrado_transferencia'];
+                $pct_real      = $meta_auto > 0 ? min(100, round($cob_real / $meta_auto * 100)) : 0;
+                $color_real    = color_pct_meta($pct_real);
+                $lunes_dt      = strtotime($f['semana_lunes']);
             ?>
                 <tr>
                     <td>
@@ -161,15 +162,8 @@ require_once __DIR__ . '/../views/layout.php';
                         </div>
                     </td>
                     <td class="text-right"><?= formato_pesos($meta_fija) ?></td>
-                    <td class="text-right" style="font-weight:700;color:var(--success)"><?= formato_pesos($cob_puro) ?></td>
-                    <td>
-                        <div style="display:flex;align-items:center;gap:6px">
-                            <div style="flex:1;background:rgba(255,255,255,.1);border-radius:99px;height:7px;overflow:hidden">
-                                <div style="width:<?= $pct_puro ?>%;height:100%;background:<?= $color_puro ?>;border-radius:99px"></div>
-                            </div>
-                            <span style="font-size:.78rem;font-weight:700;color:<?= $color_puro ?>;min-width:36px;text-align:right"><?= $pct_puro ?>%</span>
-                        </div>
-                    </td>
+                    <td class="text-right"><?= formato_pesos($efectivo) ?></td>
+                    <td class="text-right"><?= formato_pesos($transferencia) ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
@@ -180,8 +174,8 @@ require_once __DIR__ . '/../views/layout.php';
                     <td class="text-right" style="color:var(--success)"><?= formato_pesos($tot_cobrado_real) ?></td>
                     <td style="color:<?= color_pct_meta($tot_pct_real) ?>"><?= $tot_pct_real ?>%</td>
                     <td class="text-right"><?= formato_pesos($tot_meta_fija) ?></td>
-                    <td class="text-right" style="color:var(--success)"><?= formato_pesos($tot_cobrado_puro) ?></td>
-                    <td style="color:<?= color_pct_meta($tot_pct_puro) ?>"><?= $tot_pct_puro ?>%</td>
+                    <td class="text-right"><?= formato_pesos($tot_efectivo) ?></td>
+                    <td class="text-right"><?= formato_pesos($tot_transferencia) ?></td>
                 </tr>
             </tfoot>
         </table>
