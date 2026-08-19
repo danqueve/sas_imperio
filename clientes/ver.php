@@ -29,6 +29,20 @@ $stmt->execute($params_ver);
 $c = $stmt->fetch();
 if (!$c) { header('Location: index'); exit; }
 
+// Quién dio de alta al cliente y a qué hora — ic_clientes no tiene created_by,
+// se reconstruye del log de actividades (CLIENTE_CREADO), que cubre el 100%
+// de los clientes actuales.
+$alta_stmt = $pdo->prepare("
+    SELECT la.fecha, u.nombre, u.apellido, u.usuario
+    FROM ic_log_actividades la
+    LEFT JOIN ic_usuarios u ON la.usuario_id = u.id
+    WHERE la.entidad = 'cliente' AND la.accion = 'CLIENTE_CREADO' AND la.entidad_id = ?
+    ORDER BY la.fecha ASC
+    LIMIT 1
+");
+$alta_stmt->execute([$id]);
+$alta_info = $alta_stmt->fetch();
+
 $garante = $pdo->prepare("SELECT * FROM ic_garantes WHERE cliente_id=? LIMIT 1");
 $garante->execute([$id]);
 $g = $garante->fetch();
@@ -117,6 +131,10 @@ require_once __DIR__ . '/../views/layout.php';
                 ['Día cobro',   $c['dia_cobro'] ? nombre_dia($c['dia_cobro']) : '—'],
                 ['Alta',        date('d/m/Y', strtotime($c['created_at']))],
             ];
+            if ($alta_info) {
+                $creador = trim(($alta_info['nombre'] ?? '') . ' ' . ($alta_info['apellido'] ?? '')) ?: ($alta_info['usuario'] ?? '—');
+                $rows[] = ['Alta por', e($creador) . ' · ' . date('H:i', strtotime($alta_info['fecha'])) . ' hs'];
+            }
             foreach ($rows as [$lbl, $val]):
             ?>
             <span class="text-muted" style="white-space:nowrap;padding:2px 0"><?= $lbl ?></span>
