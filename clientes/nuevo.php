@@ -18,6 +18,7 @@ $zona_por_usuario = [
     'enzoteceira'  => 'Sur',
     'sebadelga'    => 'Este',
     'masanchez'    => 'Zona 4-6',
+    '39360197'     => 'Sgo', // Gonzalo Carrazan
 ];
 $cob_zona_map = [];
 foreach ($cobradores as $c) {
