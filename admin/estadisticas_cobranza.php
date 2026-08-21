@@ -79,6 +79,7 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
                    EXISTS(
                        SELECT 1 FROM ic_pagos_temporales pt2
                        WHERE pt2.cuota_id = cu.id AND pt2.estado IN ('PENDIENTE','APROBADO')
+                         AND pt2.origen = 'cobrador'
                    ) AS tiene_pago
             FROM ic_cuotas cu
             JOIN ic_creditos cr ON cu.credito_id = cr.id
@@ -177,6 +178,7 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
             WHERE cobrador_id IN ($ph)
               AND fecha_jornada BETWEEN ? AND ?
               AND estado IN ('PENDIENTE','APROBADO')
+              AND origen = 'cobrador'
             GROUP BY cobrador_id
         ");
         $stmt2->execute([...$ids_todos, $lunes_str, $sabado_sel]);
@@ -295,6 +297,10 @@ $page_current   = 'estadisticas';
 $topbar_actions = '';
 require_once __DIR__ . '/../views/layout.php';
 ?>
+
+<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">
+    <i class="fa fa-circle-info"></i> Solo pagos cargados por el cobrador en su agenda (no incluye pagos directos de admin/supervisor).
+</div>
 
 <!-- ── SELECTOR DE SEMANA ─────────────────────────────────────── -->
 <div class="card-ic mb-4">

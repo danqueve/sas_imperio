@@ -62,6 +62,7 @@ $stmt_cobros = $pdo->prepare("
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     WHERE pt.fecha_jornada BETWEEN ? AND ?
       AND pt.estado IN ('PENDIENTE', 'APROBADO')
+      AND pt.origen = 'cobrador'
     GROUP BY pt.cobrador_id, pt.fecha_jornada, cr.frecuencia
 ");
 $stmt_cobros->execute([$inicio_str, $fin_str]);
@@ -180,6 +181,11 @@ class EstadisticasPDF extends PDFBase
         $this->SetFont('Helvetica', '', 9);
         $this->SetX(10);
         $this->Cell(190, 5, lat('Estadisticas de Cobranza - Semana: ' . $this->semana_lbl), 0, 1, 'C');
+        $this->SetFont('Helvetica', 'I', 7);
+        $this->SetTextColor(120, 120, 120);
+        $this->SetX(10);
+        $this->Cell(190, 4, lat('Solo pagos cargados por el cobrador en su agenda (no incluye pagos directos de admin/supervisor)'), 0, 1, 'C');
+        $this->SetTextColor(0, 0, 0);
 
         // Cobrador
         $this->SetFont('Helvetica', 'B', 10);
