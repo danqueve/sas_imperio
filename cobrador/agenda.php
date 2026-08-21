@@ -427,11 +427,11 @@ require_once __DIR__ . '/../views/layout.php';
 <div class="card-ic mb-4">
     <form method="GET" class="filter-bar">
         <input type="text" id="buscador-agenda" name="q" value="<?= e($q_busca) ?>"
-               placeholder="🔍 Buscar cliente..." autocomplete="off"
+               placeholder="🔍 Buscar cliente..." aria-label="Buscar cliente" autocomplete="off"
                oninput="filtrarAgenda(this.value)"
                onkeydown="if(event.key==='Enter'){event.preventDefault();}">
         <?php if (!$is_cobrador): ?>
-            <select name="cobrador_id">
+            <select name="cobrador_id" aria-label="Filtrar por cobrador">
                 <?php foreach ($cobradores as $cob): ?>
                     <option value="<?= $cob['id'] ?>" <?= $cobrador_filtro == $cob['id'] ? 'selected' : '' ?>>
                         <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
@@ -464,8 +464,8 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
         <form id="form-agenda-pdf" target="_blank" action="agenda_pdf.php" method="GET">
             <div class="form-group mb-3">
-                <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
-                <select name="cobrador_id" style="width:100%">
+                <label for="pdf-agenda-cobrador" style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
+                <select name="cobrador_id" id="pdf-agenda-cobrador" style="width:100%">
                     <?php foreach ($cobradores as $cob): ?>
                         <option value="<?= $cob['id'] ?>" <?= $cobrador_filtro == $cob['id'] ? 'selected' : '' ?>>
                             <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
@@ -517,8 +517,8 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
         <form target="_blank" action="clientes_zona_pdf.php" method="GET">
             <div class="form-group mb-4">
-                <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
-                <select name="cobrador_id" style="width:100%">
+                <label for="pdf-zona-cobrador" style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
+                <select name="cobrador_id" id="pdf-zona-cobrador" style="width:100%">
                     <?php foreach ($cobradores as $cob): ?>
                         <option value="<?= $cob['id'] ?>" <?= $cobrador_filtro == $cob['id'] ? 'selected' : '' ?>>
                             <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
@@ -547,8 +547,8 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
         <form target="_blank" action="faltantes_pdf.php" method="GET">
             <div class="form-group mb-4">
-                <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
-                <select name="cobrador_id" style="width:100%">
+                <label for="pdf-faltantes-cobrador" style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:6px">Cobrador</label>
+                <select name="cobrador_id" id="pdf-faltantes-cobrador" style="width:100%">
                     <?php foreach ($cobradores as $cob): ?>
                         <option value="<?= $cob['id'] ?>" <?= $cobrador_filtro == $cob['id'] ? 'selected' : '' ?>>
                             <?= e($cob['nombre'] . ' ' . $cob['apellido']) ?>
@@ -767,7 +767,11 @@ function label_fecha(string $fecha_str): string {
 }
 
 // Función helper para renderizar lista de cuotas
-function render_tabla_cuotas(array $cuotas, string $titulo, string $color): string
+// $prefix distingue los IDs de una misma cuota cuando aparece repetida en
+// más de una sección de la página (Hoy, Vencidas, Vista Semanal por día,
+// Diario/Quincenal/Mensual) — todas conviven en el mismo DOM aunque las
+// pestañas solo oculten con CSS, así que sin prefijo se duplicaban ids.
+function render_tabla_cuotas(array $cuotas, string $titulo, string $color, string $prefix): string
 {
     if (empty($cuotas))
         return "<p class='text-muted text-center' style='padding:20px'>Sin cuotas en esta sección.</p>";
@@ -785,7 +789,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         elseif (!empty($c['cuotas_atrasadas']) && $c['cuotas_atrasadas'] > 0) $cardClass = 'agenda-card--con-vencidas';
         elseif ($mora_pos)                              $cardClass = 'agenda-card--vencida';
     ?>
-    <div class="list-group-item agenda-card <?= $cardClass ?>" id="row-<?= $c['id'] ?>" data-nombre="<?= strtolower(e($c['apellidos'] . ' ' . $c['nombres'])) ?>">
+    <div class="list-group-item agenda-card <?= $cardClass ?>" id="row-<?= $prefix . $c['id'] ?>" data-nombre="<?= strtolower(e($c['apellidos'] . ' ' . $c['nombres'])) ?>">
         
         <div class="agenda-card-header">
             <div class="agenda-card-client">
@@ -811,7 +815,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                         <i class="fa fa-sync-alt"></i> Ref. ×<?= (int)$c['veces_refinanciado'] ?>
                     </span>
                 <?php endif; ?>
-                <div class="agenda-articulo" id="art-<?= $c['id'] ?>" style="display:none">
+                <div class="agenda-articulo" style="display:none">
                     <i class="fa fa-box-open"></i> <?= e($c['articulo']) ?>
                 </div>
             </div>
@@ -850,16 +854,16 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 <?php if ($c['pago_pen'] == 0): ?>
                     <?php if ($mora_pos && $c['estado'] !== 'CAP_PAGADA'): ?>
                     <label class="agenda-cuota-pura-toggle" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:.82rem;color:var(--text-muted)">
-                        <input type="checkbox" id="pura-<?= $c['id'] ?>"
+                        <input type="checkbox" id="pura-<?= $prefix . $c['id'] ?>"
                             style="width:16px;height:16px;cursor:pointer;accent-color:var(--warning)"
                             onchange="toggleCuotaPura(this, <?= number_format($c['monto_cuota'], 2, '.', '') ?>, <?= number_format($c['mora_calc'], 2, '.', '') ?>)">
                         Cuota pura — solo capital (<?= formato_pesos($c['monto_cuota']) ?>)
                     </label>
                     <?php endif; ?>
                     <div class="agenda-cobro-wrap" style="display: flex; gap: 8px; width: 100%;">
-                        <input type="number" class="agenda-cobro-input" style="flex: 1;" id="inp-<?= $c['id'] ?>"
+                        <input type="number" class="agenda-cobro-input" style="flex: 1;" id="inp-<?= $prefix . $c['id'] ?>"
                             value="<?= number_format($c['total_a_cobrar'], 2, '.', '') ?>"
-                            step="0.01" min="0" placeholder="0.00">
+                            step="0.01" min="0" placeholder="0.00" aria-label="Monto a cobrar">
                         <button class="agenda-cobro-btn" onclick="abrirPagoDesdeRow(<?= $data ?>, this)"
                             title="Registrar pago">
                             <i class="fa fa-check"></i> <span style="margin-left:4px;">Cobrar</span>
@@ -908,7 +912,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                    class="btn-ic btn-ghost btn-icon" title="WhatsApp" style="width: 44px; height: 44px; border-radius: 8px; font-size: 1.2rem; color: #25D366; background: rgba(37,211,102,.1); display: flex; align-items: center; justify-content: center;">
                     <i class="fa-brands fa-whatsapp"></i>
                 </a>
-                <button type="button" onclick="toggleArticulo(<?= $c['id'] ?>)"
+                <button type="button" onclick="toggleArticulo(this)"
                         class="btn-ic btn-ghost btn-icon" title="Ver artículo" style="width:44px;height:44px;border-radius:8px;font-size:1rem;display:flex;align-items:center;justify-content:center;">
                     <i class="fa fa-box-open"></i>
                 </button>
@@ -943,7 +947,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
     </div>
 
     <div id="col-hoy" style="display: block;">
-        <?= render_tabla_cuotas($del_dia, 'Hoy', 'success') ?>
+        <?= render_tabla_cuotas($del_dia, 'Hoy', 'success', 'hoy-') ?>
     </div>
 </div>
 
@@ -961,7 +965,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         </div>
 
         <div id="col-vencidas" style="display: block;">
-            <?= render_tabla_cuotas($vencidas, 'Vencidas', 'danger') ?>
+            <?= render_tabla_cuotas($vencidas, 'Vencidas', 'danger', 'venc-') ?>
         </div>
     </div>
 <?php endif; ?>
@@ -980,7 +984,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
         </div>
 
         <div id="col-cobrados" style="display: none;">
-            <?= render_tabla_cuotas($cobrados_hoy, 'Cobrados Hoy', 'primary') ?>
+            <?= render_tabla_cuotas($cobrados_hoy, 'Cobrados Hoy', 'primary', 'cobh-') ?>
         </div>
     </div>
 <?php endif; ?>
@@ -1032,7 +1036,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                 </p>
             <?php else: ?>
 
-                <?= render_tabla_cuotas($por_dia[$n], '', '') ?>
+                <?= render_tabla_cuotas($por_dia[$n], '', '', 'sem' . $n . '-') ?>
                 
                 <!-- Totales pie de panel -->
                 <div style="padding:16px; text-align:right; border-top:1px solid rgba(255,255,255,.1)">
@@ -1108,7 +1112,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <?php if (empty($tab_diario)): ?>
                 <p class="text-muted text-center" style="padding:24px">Sin cuotas diarias pendientes.</p>
             <?php else: ?>
-                <?= render_tabla_cuotas($tab_diario, '', '') ?>
+                <?= render_tabla_cuotas($tab_diario, '', '', 'diario-') ?>
                 <div style="padding:16px;text-align:right;border-top:1px solid rgba(255,255,255,.1)">
                     <span class="text-muted" style="margin-right:16px;font-size:.85rem">Total diario:</span>
                     <span style="font-size:1.1rem;font-weight:700;color:var(--success)">
@@ -1122,7 +1126,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <?php if (empty($tab_quincenal)): ?>
                 <p class="text-muted text-center" style="padding:24px">Sin cuotas quincenales pendientes.</p>
             <?php else: ?>
-                <?= render_tabla_cuotas($tab_quincenal, '', '') ?>
+                <?= render_tabla_cuotas($tab_quincenal, '', '', 'quinc-') ?>
                 <div style="padding:16px;text-align:right;border-top:1px solid rgba(255,255,255,.1)">
                     <span class="text-muted" style="margin-right:16px;font-size:.85rem">Total quincenal:</span>
                     <span style="font-size:1.1rem;font-weight:700;color:var(--success)">
@@ -1136,7 +1140,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <?php if (empty($tab_mensual)): ?>
                 <p class="text-muted text-center" style="padding:24px">Sin cuotas mensuales pendientes.</p>
             <?php else: ?>
-                <?= render_tabla_cuotas($tab_mensual, '', '') ?>
+                <?= render_tabla_cuotas($tab_mensual, '', '', 'mensual-') ?>
                 <div style="padding:16px;text-align:right;border-top:1px solid rgba(255,255,255,.1)">
                     <span class="text-muted" style="margin-right:16px;font-size:.85rem">Total mensual:</span>
                     <span style="font-size:1.1rem;font-weight:700;color:var(--success)">
@@ -1286,13 +1290,13 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             </div>
             <div class="form-grid" id="wrap_montos" style="display:none">
                 <div class="form-group" id="wrap_efectivo">
-                    <label style="color:#0d6efd">Monto Efectivo $</label>
+                    <label for="inp_efectivo" style="color:#0d6efd">Monto Efectivo $</label>
                     <input type="number" name="monto_efectivo" id="inp_efectivo" step="0.01" min="0" value="0"
                         oninput="actualizarTotal()"
                         style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
                 <div class="form-group" id="wrap_transferencia">
-                    <label style="color:#0d6efd">Monto Transferencia $</label>
+                    <label for="inp_transfer" style="color:#0d6efd">Monto Transferencia $</label>
                     <input type="number" name="monto_transferencia" id="inp_transfer" step="0.01" min="0" value="0"
                         oninput="actualizarTotal()"
                         style="color:#000;background:#fff;border-color:#ccc;">
@@ -1300,7 +1304,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             </div>
             <?php if (es_cobrador()): ?>
             <div class="form-group" id="wrap_codigo_transferencia" style="display:none;margin-bottom:12px">
-                <label id="label_codigo_transferencia" style="color:#0d6efd">Código de Operación (últimos 5) *</label>
+                <label id="label_codigo_transferencia" for="inp_codigo_transferencia" style="color:#0d6efd">Código de Operación (últimos 5) *</label>
                 <input type="text" name="codigo_transferencia" id="inp_codigo_transferencia"
                     maxlength="5" autocomplete="off"
                     oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"
@@ -1328,7 +1332,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
             <input type="hidden" name="monto_mora_cobrada" id="inp_mora_cobrada" value="0">
             <input type="hidden" name="es_cuota_pura" id="inp_cuota_pura" value="0">
             <div class="form-group" style="margin-bottom:12px">
-                <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:4px">
+                <label for="inp_observaciones" style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:4px">
                     <i class="fa fa-comment-alt"></i> Observaciones (opcional)
                 </label>
                 <textarea name="observaciones" id="inp_observaciones" rows="2"
@@ -1779,8 +1783,9 @@ function validarPagoSubmit(event) {
   return true;
 }
 
-function toggleArticulo(id) {
-  const el = document.getElementById('art-' + id);
+function toggleArticulo(btn) {
+  const card = btn.closest('.agenda-card');
+  const el = card ? card.querySelector('.agenda-articulo') : null;
   if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
@@ -2108,7 +2113,7 @@ JS;
         <form id="form-intento">
             <input type="hidden" id="intento-cuota-id" name="cuota_id">
             <div class="form-group mb-3">
-                <label style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Motivo</label>
+                <label for="intento-motivo" style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Motivo</label>
                 <select name="motivo" id="intento-motivo" style="width:100%;background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;color:var(--text-main);padding:9px 12px;font-family:inherit;font-size:.875rem">
                     <option value="no_estaba">No estaba en casa</option>
                     <option value="no_quiso">No quiso pagar</option>
@@ -2117,13 +2122,13 @@ JS;
                 </select>
             </div>
             <div id="wrap-fecha-promesa" style="display:none" class="form-group mb-3">
-                <label style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Fecha prometida</label>
+                <label for="intento-fecha" style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Fecha prometida</label>
                 <input type="date" name="fecha_promesa" id="intento-fecha"
                        style="width:100%;background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;color:var(--text-main);padding:9px 12px;font-family:inherit;font-size:.875rem">
             </div>
             <div class="form-group mb-3">
-                <label style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Observación (opcional)</label>
-                <textarea name="observacion" rows="2"
+                <label for="intento-observacion" style="font-size:.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block">Observación (opcional)</label>
+                <textarea name="observacion" id="intento-observacion" rows="2"
                     style="width:100%;background:var(--dark-input);border:1px solid var(--dark-border);border-radius:6px;color:var(--text-main);padding:9px 12px;font-family:inherit;font-size:.875rem;resize:vertical"></textarea>
             </div>
             <div style="display:flex;gap:10px">
