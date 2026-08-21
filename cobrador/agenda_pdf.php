@@ -73,10 +73,16 @@ foreach ($rows as $r) {
     $visto[$clave] = true;
     $por_dia[$r['dia_cobro']][] = $r;
 }
-// Ordenar cada día alfabéticamente por zona + apellidos
+// Ordenar cada día alfabéticamente por zona + apellidos. Normalizado a
+// mayúsculas antes de comparar: la query SQL ya agrupa "Norte"/"norte"
+// como la misma zona (collation case-insensitive), pero strcmp() es
+// case-sensitive a nivel de byte y deshacía ese agrupamiento.
 foreach ($dias_sel as $d) {
     usort($por_dia[$d], fn($a, $b) =>
-        strcmp(($a['zona'] ?? '') . $a['apellidos'], ($b['zona'] ?? '') . $b['apellidos'])
+        strcmp(
+            mb_strtoupper(($a['zona'] ?? '') . $a['apellidos']),
+            mb_strtoupper(($b['zona'] ?? '') . $b['apellidos'])
+        )
     );
 }
 
@@ -201,8 +207,14 @@ class AgendaPDF extends PDFBase
             $es_cap = ($r['cuota_estado'] ?? '') === 'CAP_PAGADA';
             if ($es_cap) {
                 $detalle = 'Mora: ' . fmt($total_cobrar);
+            } elseif ($dias_atraso > 0) {
+                $detalle = $dias_atraso . ' d. | ' . fmt($total_cobrar);
+            } elseif ((float) ($r['saldo_pagado'] ?? 0) > 0) {
+                // Antes salía como número pelado, indistinguible de un ajuste
+                // por mora — confundía al cobrador sobre qué representaba.
+                $detalle = 'Saldo: ' . fmt($total_cobrar);
             } else {
-                $detalle = ($dias_atraso > 0 ? $dias_atraso . ' d. | ' : '') . fmt($total_cobrar);
+                $detalle = fmt($total_cobrar);
             }
             $this->SetFont('Helvetica', 'I', 6);
             $this->SetTextColor(80, 80, 80);
@@ -298,7 +310,7 @@ foreach ($dias_sel as $dia) {
         }
 
         // Encabezado de zona: resetear num solo cuando la zona realmente cambia
-        $zona_fila = $r['zona'] ?? '';
+        $zona_fila = mb_strtoupper(trim($r['zona'] ?? ''));
         if ($zona_fila !== $zona_actual) {
             $zona_actual  = $zona_fila;
             $num          = 0;
@@ -397,9 +409,13 @@ if (!empty($rows_qm)) {
     ];
 
     // Ordenar alfabéticamente por zona + apellidos dentro de cada grupo
+    // (normalizado a mayúsculas — ver comentario del mismo fix más arriba)
     foreach ($qm_grupos as $frec => &$lista) {
         usort($lista, fn($a, $b) =>
-            strcmp(($a['zona'] ?? '') . $a['apellidos'], ($b['zona'] ?? '') . $b['apellidos'])
+            strcmp(
+                mb_strtoupper(($a['zona'] ?? '') . $a['apellidos']),
+                mb_strtoupper(($b['zona'] ?? '') . $b['apellidos'])
+            )
         );
     }
     unset($lista);
@@ -433,7 +449,7 @@ if (!empty($rows_qm)) {
             }
 
             // Encabezado de zona: resetear num solo cuando la zona realmente cambia
-            $zona_fila = $r['zona'] ?? '';
+            $zona_fila = mb_strtoupper(trim($r['zona'] ?? ''));
             if ($zona_fila !== $zona_actual) {
                 $zona_actual  = $zona_fila;
                 $num          = 0;
@@ -502,10 +518,11 @@ $stmt_atr->execute([$cobrador_id]);
 $rows_atr = $stmt_atr->fetchAll();
 
 if (!empty($rows_atr)) {
-    // Agrupar por zona
+    // Agrupar por zona (normalizado: "Norte"/"norte" deben ser el mismo grupo)
     $atr_por_zona = [];
     foreach ($rows_atr as $r) {
-        $atr_por_zona[$r['zona']][] = $r;
+        $zona_key = mb_strtoupper(trim($r['zona'] ?? ''));
+        $atr_por_zona[$zona_key][] = $r;
     }
 
     $pdf->AddPage();

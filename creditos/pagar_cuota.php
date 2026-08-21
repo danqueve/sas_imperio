@@ -141,22 +141,23 @@ try {
               (cuota_id, cobrador_id, monto_efectivo, monto_transferencia,
                monto_total, monto_mora_cobrada, mora_congelada, estado, fecha_jornada, origen)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'APROBADO', ?, 'manual')
-        ")->execute([$cuota['id'], $cobrador_id, $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $mora_frozen, fecha_jornada()]);
+        ")->execute([$cuota['id'], $cobrador_id, $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $mora_frozen, $fecha_hoy]);
         $pago_temp_id = (int) $pdo->lastInsertId();
 
         // 2. Insertar pago confirmado con snapshot
+        $semana_lunes = calcular_semana_lunes($fecha_hoy);
         $pdo->prepare("
             INSERT INTO ic_pagos_confirmados
               (pago_temp_id, cuota_id, cobrador_id, aprobador_id, fecha_pago,
                monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada,
-               es_cuota_pura, fecha_jornada, origen,
+               es_cuota_pura, fecha_jornada, semana_lunes, origen,
                monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ")->execute([
             $pago_temp_id, $cuota['id'], $cobrador_id, $aprobador_id, $fecha_hoy,
             $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta,
             // Snapshot
-            0, $fecha_hoy, 'manual',
+            0, $fecha_hoy, $semana_lunes, 'manual',
             $cuota['monto_cuota'], $cuota['numero_cuota'], $cuota['fecha_vencimiento'],
             $cr['articulo_snap'],
         ]);

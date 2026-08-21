@@ -156,6 +156,22 @@ if (es_admin() || es_supervisor()) {
     } catch (\PDOException $e) {}
 }
 
+// ── Cambios de vencimiento para Timeline (visible a todos los roles: el
+// cobrador necesita saber por qué se corrió la fecha de una cuota) ──────
+$venc_tl = [];
+try {
+    $venc_stmt = $pdo->prepare("
+        SELECT h.numero_cuota, h.fecha_anterior, h.fecha_nueva, h.motivo, h.cuotas_desplazadas, h.created_at,
+               CONCAT(u.nombre,' ',u.apellido) AS autor
+        FROM ic_cuota_vencimiento_historial h
+        JOIN ic_usuarios u ON h.usuario_id = u.id
+        WHERE h.credito_id = ?
+        ORDER BY h.created_at ASC
+    ");
+    $venc_stmt->execute([$id]);
+    $venc_tl = $venc_stmt->fetchAll();
+} catch (\PDOException $e) {}
+
 // Calcular mora actualizada para cada cuota
 $hoy = new DateTime('today');
 foreach ($lista_cuotas as &$cuota) {
@@ -297,6 +313,14 @@ foreach ($notas_tl as $nt) {
     $timeline[] = ['fecha' => $nt['created_at'], 'tipo' => 'nota', 'icon' => 'fa-sticky-note',
         'color' => 'var(--text-muted)', 'texto' => 'Nota interna',
         'sub'   => $preview . ' — ' . e($nt['autor'])];
+}
+foreach ($venc_tl as $vt) {
+    $motivo_preview = e(mb_substr($vt['motivo'], 0, 80)) . (mb_strlen($vt['motivo']) > 80 ? '…' : '');
+    $extra = $vt['cuotas_desplazadas'] > 1 ? ' (+' . ($vt['cuotas_desplazadas'] - 1) . ' cuota(s) siguientes)' : '';
+    $timeline[] = ['fecha' => $vt['created_at'], 'tipo' => 'vencimiento', 'icon' => 'fa-calendar-day',
+        'color' => '#a855f7', 'texto' => 'Vencimiento editado — Cuota #' . $vt['numero_cuota'],
+        'sub'   => date('d/m/Y', strtotime($vt['fecha_anterior'])) . ' → ' . date('d/m/Y', strtotime($vt['fecha_nueva']))
+                 . $extra . ' — ' . $motivo_preview . ' — ' . e($vt['autor'])];
 }
 usort($timeline, fn($a, $b) => strcmp($b['fecha'], $a['fecha']));
 
@@ -785,7 +809,17 @@ require_once __DIR__ . '/../views/layout.php';
                                         <i class="fa fa-times-circle"></i>
                                     </button>
                                 <?php endif; ?>
-                                
+                                <?php if (in_array($q['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL'])
+                                        && in_array($cr['estado'], ['EN_CURSO', 'MOROSO'])
+                                        && $cr['frecuencia'] !== 'diario'): ?>
+                                    <button
+                                        onclick="abrirEditarVencimiento(<?= $q['id'] ?>, <?= $q['numero_cuota'] ?>, '<?= $q['fecha_vencimiento'] ?>', <?= $cr['frecuencia'] === 'semanal' ? 'true' : 'false' ?>)"
+                                        class="btn-ic btn-ghost btn-sm"
+                                        title="Editar vencimiento (corre también las cuotas siguientes)">
+                                        <i class="fa fa-calendar-day"></i>
+                                    </button>
+                                <?php endif; ?>
+
                                 <?php if (in_array($q['estado'], ['PAGADA', 'PARCIAL']) && $pc_id): ?>
                                     <?php if (es_admin()): ?>
                                         <button
@@ -1042,6 +1076,46 @@ require_once __DIR__ . '/../views/layout.php';
     </div>
 </div>
 
+<!-- MODAL EDITAR VENCIMIENTO -->
+<div class="modal-overlay" id="modal-editar-vencimiento">
+    <div class="modal-box" style="max-width:480px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-calendar-day"></i> Editar Vencimiento</div>
+            <button class="modal-close" onclick="closeModal('modal-editar-vencimiento')">✕</button>
+        </div>
+        <div id="info-editar-venc"
+            style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.875rem"></div>
+        <form method="POST" action="editar_vencimiento_cuota" class="form-ic">
+            <?php csrf_input(); ?>
+            <input type="hidden" name="cuota_id" id="venc_cuota_id">
+            <input type="hidden" name="credito_id" value="<?= $id ?>">
+            <div class="form-group mb-3">
+                <label>Nueva Fecha de Vencimiento</label>
+                <input type="date" name="nueva_fecha" id="venc_nueva_fecha" required>
+            </div>
+            <div class="form-group mb-3">
+                <label>Motivo (obligatorio)</label>
+                <textarea name="motivo" id="venc_motivo" rows="2" required
+                    placeholder="Ej: artículo en reparación, no corresponde cobrar esta cuota en fecha."
+                    style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.88rem;resize:none"></textarea>
+            </div>
+            <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:14px">
+                <i class="fa fa-circle-info"></i> Las cuotas siguientes de este crédito se van a correr la misma cantidad de días.
+                <span id="venc-aviso-semanal" style="display:none;color:var(--warning)"><br>
+                    <i class="fa fa-triangle-exclamation"></i> Este crédito es semanal: la Agenda Semanal del cobrador
+                    sigue mostrando el día de cobro original — avisale del cambio si corresponde.
+                </span>
+            </div>
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-primary flex-1" style="justify-content:center">
+                    <i class="fa fa-check"></i> Confirmar Cambio
+                </button>
+                <button type="button" onclick="closeModal('modal-editar-vencimiento')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- MODAL PAGO DIRECTO -->
 <div class="modal-overlay" id="modal-pago-directo">
     <div class="modal-box">
@@ -1202,6 +1276,18 @@ function abrirCondonarMora(cuota_id, num_cuota, mora) {
         'Mora a eliminar: <span style="color:var(--warning);font-weight:700">' + formatPesos(mora) + '</span><br>' +
         '<span style="font-size:.82rem;color:var(--text-muted)">La cuota pasará a estado PAGADA sin cobrar la mora. Esta acción no se puede deshacer.</span>';
     openModal('modal-condonar-mora');
+}
+
+// Admin/supervisor: editar vencimiento de una cuota puntual (corre las siguientes)
+function abrirEditarVencimiento(cuota_id, num_cuota, fecha_actual, esSemanal) {
+    document.getElementById('venc_cuota_id').value = cuota_id;
+    document.getElementById('venc_nueva_fecha').value = fecha_actual;
+    document.getElementById('venc_motivo').value = '';
+    document.getElementById('info-editar-venc').innerHTML =
+        'Vas a reprogramar la <strong>Cuota #' + num_cuota + '</strong>.<br>' +
+        'Vencimiento actual: <strong>' + fecha_actual.split('-').reverse().join('/') + '</strong>';
+    document.getElementById('venc-aviso-semanal').style.display = esSemanal ? 'inline' : 'none';
+    openModal('modal-editar-vencimiento');
 }
 
 // Supervisor: solicitar reversa de pago confirmado

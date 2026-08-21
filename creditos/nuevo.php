@@ -22,6 +22,26 @@ function validar_dia_cobro_vs_fecha(string $frecuencia, $dia_cobro, string $prim
          . "Elegí una fecha que caiga en {$dias[$dia_cobro]} para que las cuotas no queden desalineadas.";
 }
 
+// No dejar crear un crédito nuevo mientras el cliente tenga otro en MOROSO.
+// ic_creditos.estado se mantiene actualizado en aprobar_rendicion(),
+// revertir_rendicion(), creditos/pagar_cuota.php y el cron diario
+// actualizar_estados.php — es la misma fuente que ya usa todo el sistema
+// para mostrar morosidad, no hace falta recalcularla desde ic_cuotas acá.
+function validar_cliente_sin_moroso(PDO $pdo, int $cliente_id): ?string
+{
+    $stmt = $pdo->prepare("
+        SELECT id FROM ic_creditos WHERE cliente_id = ? AND estado = 'MOROSO'
+        ORDER BY id DESC LIMIT 1
+    ");
+    $stmt->execute([$cliente_id]);
+    $credito_moroso_id = $stmt->fetchColumn();
+    if ($credito_moroso_id) {
+        return "No es posible crear un nuevo crédito: el cliente tiene el Crédito #{$credito_moroso_id} "
+             . "en estado MOROSO. Regularice ese crédito (o refinancíelo) antes de dar de alta uno nuevo.";
+    }
+    return null;
+}
+
 $pdo = obtener_conexion();
 $cliente_id = (int) ($_GET['cliente_id'] ?? 0);
 
@@ -29,7 +49,10 @@ $clientes = $pdo->query("
     SELECT c.id, c.nombres, c.apellidos, c.cobrador_id, c.zona, c.puntaje_pago, c.dia_cobro,
            CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre,
            (SELECT COUNT(*) FROM ic_creditos cr
-            WHERE cr.cliente_id = c.id AND cr.estado IN ('EN_CURSO','MOROSO')) AS creditos_activos
+            WHERE cr.cliente_id = c.id AND cr.estado IN ('EN_CURSO','MOROSO')) AS creditos_activos,
+           (SELECT cr.id FROM ic_creditos cr
+            WHERE cr.cliente_id = c.id AND cr.estado = 'MOROSO'
+            ORDER BY cr.id DESC LIMIT 1) AS credito_moroso_id
     FROM ic_clientes c
     LEFT JOIN ic_usuarios u ON c.cobrador_id = u.id AND u.activo = 1
     WHERE c.estado='ACTIVO'
@@ -65,6 +88,7 @@ foreach ($clientes as $cl) {
         'puntaje'         => $cl['puntaje_pago'] ? (int)$cl['puntaje_pago'] : null,
         'creditos_activos'=> (int)($cl['creditos_activos'] ?? 0),
         'dia_cobro'       => $cl['dia_cobro'] ? (int)$cl['dia_cobro'] : null,
+        'credito_moroso_id' => $cl['credito_moroso_id'] ? (int)$cl['credito_moroso_id'] : null,
     ];
 }
 
@@ -108,6 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             empty($v['cant_cuotas']) || empty($v['primer_vencimiento'])
         ) {
             $error = 'Completá todos los campos obligatorios.';
+        } elseif ($msg = validar_cliente_sin_moroso($pdo, (int) $v['cliente_id'])) {
+            $error = $msg;
         } elseif (empty($raw_art_ids)) {
             $error = 'Agregá al menos un artículo al combo.';
         } elseif ($msg = validar_dia_cobro_vs_fecha($v['frecuencia'], $v['dia_cobro'] ?? null, $v['primer_vencimiento'])) {
@@ -265,6 +291,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ($articulo_id === 0 && $articulo_desc_input === '')
         ) {
             $error = 'Completá todos los campos obligatorios (incluido el artículo).';
+        } elseif ($msg = validar_cliente_sin_moroso($pdo, (int) $v['cliente_id'])) {
+            $error = $msg;
         } elseif ($msg = validar_dia_cobro_vs_fecha($v['frecuencia'], $v['dia_cobro'] ?? null, $v['primer_vencimiento'])) {
             $error = $msg;
         } else {
@@ -748,6 +776,9 @@ function actualizarCobrador(sugerirDia) {
         if (info.puntaje && puntajeMap[info.puntaje]) {
             const p = puntajeMap[info.puntaje];
             html += '<span style="display:inline-flex;align-items:center;gap:4px;font-size:.78rem;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.07);border:1px solid ' + p.color + ';color:' + p.color + '">' + p.label + '</span> ';
+        }
+        if (info.credito_moroso_id) {
+            html += '<span style="display:block;font-size:.78rem;color:var(--danger);margin-bottom:4px"><i class="fa fa-ban"></i> Este cliente tiene el <strong>Crédito #' + info.credito_moroso_id + '</strong> en estado MOROSO. No se va a poder guardar hasta que lo regularice o refinancie.</span>';
         }
         if (info.creditos_activos > 0) {
             const s = info.creditos_activos > 1 ? 's' : '';

@@ -55,6 +55,8 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
             'efectivo'      => 0.0,
             'transferencia' => 0.0,
             'mora_cobrada'  => 0.0,
+            'aprobado'      => 0.0,
+            'pendiente'     => 0.0,
         ];
     }
 
@@ -168,7 +170,9 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
             SELECT cobrador_id,
                    SUM(monto_efectivo)      AS efectivo,
                    SUM(monto_transferencia) AS transferencia,
-                   SUM(monto_mora_cobrada)  AS mora_cobrada
+                   SUM(monto_mora_cobrada)  AS mora_cobrada,
+                   SUM(CASE WHEN estado = 'APROBADO'  THEN monto_total ELSE 0 END) AS aprobado,
+                   SUM(CASE WHEN estado = 'PENDIENTE' THEN monto_total ELSE 0 END) AS pendiente
             FROM ic_pagos_temporales
             WHERE cobrador_id IN ($ph)
               AND fecha_jornada BETWEEN ? AND ?
@@ -182,6 +186,8 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
             $data[$cid]['efectivo']      = (float) $row['efectivo'];
             $data[$cid]['transferencia'] = (float) $row['transferencia'];
             $data[$cid]['mora_cobrada']  = (float) $row['mora_cobrada'];
+            $data[$cid]['aprobado']      = (float) $row['aprobado'];
+            $data[$cid]['pendiente']     = (float) $row['pendiente'];
         }
     }
 
@@ -540,6 +546,11 @@ foreach ($grupos as $grupo):
         <div><span style="color:var(--text-muted)">Transferencia:</span> <strong><?= formato_pesos($c['transferencia']) ?></strong></div>
         <?php if ($c['mora_cobrada'] > 0): ?>
         <div><span style="color:var(--text-muted)">Mora Cobrada:</span> <strong style="color:var(--warning)"><?= formato_pesos($c['mora_cobrada']) ?></strong></div>
+        <?php endif; ?>
+        <?php if ($c['pendiente'] > 0): ?>
+        <div title="Cobrado por el cobrador pero todavia no aprobado por admin/supervisor en Rendiciones">
+            <span style="color:var(--text-muted)">Pendiente de aprobar:</span> <strong style="color:var(--warning)"><?= formato_pesos($c['pendiente']) ?></strong>
+        </div>
         <?php endif; ?>
     </div>
 </div>

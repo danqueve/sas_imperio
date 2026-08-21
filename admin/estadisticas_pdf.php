@@ -54,7 +54,9 @@ $stmt_cobros = $pdo->prepare("
            SUM(pt.monto_total)          AS monto_cobrado,
            SUM(pt.monto_efectivo)       AS efectivo,
            SUM(pt.monto_transferencia)  AS transferencia,
-           SUM(pt.monto_mora_cobrada)   AS mora_cobrada
+           SUM(pt.monto_mora_cobrada)   AS mora_cobrada,
+           SUM(CASE WHEN pt.estado = 'APROBADO'  THEN pt.monto_total ELSE 0 END) AS monto_aprobado,
+           SUM(CASE WHEN pt.estado = 'PENDIENTE' THEN pt.monto_total ELSE 0 END) AS monto_pendiente
     FROM ic_pagos_temporales pt
     JOIN ic_cuotas   cu ON pt.cuota_id   = cu.id
     JOIN ic_creditos cr ON cu.credito_id = cr.id
@@ -83,7 +85,8 @@ function _dia_vacio(array $freqs): array
 {
     $pt = array_fill_keys($freqs, ['agendados' => 0, 'cobrados' => 0, 'monto_estimado' => 0.0, 'monto_cobrado' => 0.0]);
     return ['agendados' => 0, 'cobrados' => 0, 'monto_estimado' => 0.0, 'monto_cobrado' => 0.0,
-            'efectivo' => 0.0, 'transferencia' => 0.0, 'mora' => 0.0, 'por_tipo' => $pt];
+            'efectivo' => 0.0, 'transferencia' => 0.0, 'mora' => 0.0,
+            'aprobado' => 0.0, 'pendiente' => 0.0, 'por_tipo' => $pt];
 }
 
 $data = [];
@@ -123,11 +126,15 @@ foreach ($cobros_raw as $row) {
     $ef  = (float) $row['efectivo'];
     $tr  = (float) $row['transferencia'];
     $mor = (float) $row['mora_cobrada'];
+    $ap  = (float) $row['monto_aprobado'];
+    $pe  = (float) $row['monto_pendiente'];
     $data[$cid]['dias'][$fecha]['cobrados']                           += $co;
     $data[$cid]['dias'][$fecha]['monto_cobrado']                      += $mc;
     $data[$cid]['dias'][$fecha]['efectivo']                           += $ef;
     $data[$cid]['dias'][$fecha]['transferencia']                      += $tr;
     $data[$cid]['dias'][$fecha]['mora']                               += $mor;
+    $data[$cid]['dias'][$fecha]['aprobado']                           += $ap;
+    $data[$cid]['dias'][$fecha]['pendiente']                          += $pe;
     $data[$cid]['dias'][$fecha]['por_tipo'][$freq]['cobrados']        += $co;
     $data[$cid]['dias'][$fecha]['por_tipo'][$freq]['monto_cobrado']   += $mc;
     $data[$cid]['totales']['cobrados']                                += $co;
@@ -135,6 +142,8 @@ foreach ($cobros_raw as $row) {
     $data[$cid]['totales']['efectivo']                                += $ef;
     $data[$cid]['totales']['transferencia']                           += $tr;
     $data[$cid]['totales']['mora']                                    += $mor;
+    $data[$cid]['totales']['aprobado']                                += $ap;
+    $data[$cid]['totales']['pendiente']                               += $pe;
     $data[$cid]['totales']['por_tipo'][$freq]['cobrados']             += $co;
     $data[$cid]['totales']['por_tipo'][$freq]['monto_cobrado']        += $mc;
 }
@@ -394,23 +403,28 @@ foreach ($cobradores_con_datos as $cob_id => $cob) {
     $pdf->Cell($bw1 + $bw2, 6, lat('Resumen de la Semana'), 1, 1, 'C', false);
 
     $resumen = [
-        ['Cuotas agendadas',  $tot['agendados']],
-        ['Cuotas cobradas',   $tot['cobrados']],
-        ['Efectividad',       ($pct_tot . '%')],
-        ['Total Estimado',    fmt($tot['monto_estimado'])],
-        ['Total Cobrado',     fmt($tot['monto_cobrado'])],
-        ['  Efectivo',        fmt($tot['efectivo'])],
-        ['  Transferencia',   fmt($tot['transferencia'])],
-        ['  Mora cobrada',    fmt($tot['mora'])],
+        ['Cuotas agendadas',        $tot['agendados']],
+        ['Cuotas cobradas',         $tot['cobrados']],
+        ['Efectividad',             ($pct_tot . '%')],
+        ['Total Estimado',          fmt($tot['monto_estimado'])],
+        ['Total Cobrado',           fmt($tot['monto_cobrado'])],
+        ['  Aprobado',              fmt($tot['aprobado'])],
+        ['  Pendiente de aprobar',  fmt($tot['pendiente'])],
+        ['  Efectivo',              fmt($tot['efectivo'])],
+        ['  Transferencia',         fmt($tot['transferencia'])],
+        ['  Mora cobrada',          fmt($tot['mora'])],
     ];
 
     foreach ($resumen as $i => [$label, $valor]) {
-        $is_total = ($label === 'Total Cobrado');
+        $is_total     = ($label === 'Total Cobrado');
+        $is_pendiente = ($label === '  Pendiente de aprobar');
         $pdf->SetFont('Helvetica', $is_total ? 'B' : '', 8);
         $pdf->SetX($bx);
         $pdf->Cell($bw1, 6, lat($label), 1, 0, 'L', false);
         if ($is_total) {
             $pdf->SetTextColor(40, 100, 40);
+        } elseif ($is_pendiente) {
+            $pdf->SetTextColor(204, 140, 0);
         }
         $pdf->SetFont('Helvetica', 'B', 8);
         $pdf->Cell($bw2, 6, lat((string) $valor), 1, 1, 'R', false);
