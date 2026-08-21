@@ -55,8 +55,12 @@ $stmt = $pdo->prepare("
                       AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
                       AND cu.fecha_vencimiento BETWEEN ? AND ?
     WHERE NOT EXISTS (
-        SELECT 1 FROM ic_pagos_temporales pt
-        WHERE pt.cuota_id = cu.id AND pt.fecha_jornada BETWEEN ? AND ?
+        SELECT 1
+        FROM ic_pagos_temporales pt
+        JOIN ic_cuotas   cu2 ON cu2.id = pt.cuota_id
+        JOIN ic_creditos cr2 ON cr2.id = cu2.credito_id
+        WHERE cr2.cliente_id = cl.id
+          AND pt.fecha_jornada BETWEEN ? AND ?
           AND pt.estado IN ('PENDIENTE','APROBADO')
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
@@ -92,8 +96,12 @@ $stmt2 = $pdo->prepare("
                       AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
                       AND cu.fecha_vencimiento BETWEEN ? AND ?
     WHERE NOT EXISTS (
-        SELECT 1 FROM ic_pagos_temporales pt
-        WHERE pt.cuota_id = cu.id AND pt.fecha_jornada BETWEEN ? AND ?
+        SELECT 1
+        FROM ic_pagos_temporales pt
+        JOIN ic_cuotas   cu2 ON cu2.id = pt.cuota_id
+        JOIN ic_creditos cr2 ON cr2.id = cu2.credito_id
+        WHERE cr2.cliente_id = cl.id
+          AND pt.fecha_jornada BETWEEN ? AND ?
           AND pt.estado IN ('PENDIENTE','APROBADO')
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
