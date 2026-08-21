@@ -1302,28 +1302,6 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
                         style="color:#000;background:#fff;border-color:#ccc;">
                 </div>
             </div>
-            <?php if (es_cobrador()): ?>
-            <div class="form-group" id="wrap_codigo_transferencia" style="display:none;margin-bottom:12px">
-                <label id="label_codigo_transferencia" for="inp_codigo_transferencia" style="color:#0d6efd">Código de Operación (últimos 5) *</label>
-                <input type="text" name="codigo_transferencia" id="inp_codigo_transferencia"
-                    maxlength="5" autocomplete="off"
-                    oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"
-                    style="color:#000;background:#fff;border-color:#ccc;text-transform:uppercase;letter-spacing:2px;font-weight:700">
-                <div id="codigo_transferencia_error" style="display:none;color:var(--danger);font-size:.78rem;margin-top:4px">
-                    Ingresá los 5 caracteres (letras y/o números) del comprobante de transferencia.
-                </div>
-                <div style="margin-top:6px">
-                    <a href="#" id="link_sin_codigo" onclick="toggleSinCodigo(event)" style="font-size:.78rem;color:var(--text-muted);text-decoration:underline">
-                        No tengo el número de operación
-                    </a>
-                </div>
-                <div id="wrap_sin_codigo_confirm" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(255,167,11,.1);border:1px solid rgba(255,167,11,.3);border-radius:6px;font-size:.8rem;color:var(--warning)">
-                    <i class="fa fa-triangle-exclamation"></i> Vas a registrar este pago <strong>sin número de operación</strong>.
-                    <a href="#" onclick="toggleSinCodigo(event)" style="margin-left:6px;color:#0d6efd;text-decoration:underline">Sí lo tengo</a>
-                </div>
-                <input type="hidden" name="sin_codigo_operacion" id="inp_sin_codigo_operacion" value="0">
-            </div>
-            <?php endif; ?>
             <div
                 style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <span style="color:#1e293b;font-weight:600">Total Registrado:</span>
@@ -1331,14 +1309,6 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
             </div>
             <input type="hidden" name="monto_mora_cobrada" id="inp_mora_cobrada" value="0">
             <input type="hidden" name="es_cuota_pura" id="inp_cuota_pura" value="0">
-            <div class="form-group" style="margin-bottom:12px">
-                <label for="inp_observaciones" style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:4px">
-                    <i class="fa fa-comment-alt"></i> Observaciones (opcional)
-                </label>
-                <textarea name="observaciones" id="inp_observaciones" rows="2"
-                    style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.88rem;resize:none"
-                    placeholder="Ej: pagó con billete, prometió el resto mañana..."></textarea>
-            </div>
             <div class="d-flex gap-3 modal-actions-sticky">
                 <button type="submit" class="btn-ic btn-success flex-1" style="justify-content:center">
                     <i class="fa fa-save"></i> Confirmar Pago
@@ -1699,64 +1669,6 @@ function actualizarTotal() {
   const ef = parseFloat(document.getElementById('inp_efectivo').value) || 0;
   const tr = parseFloat(document.getElementById('inp_transfer').value) || 0;
   document.getElementById('total_display').textContent = formatPesos(ef + tr);
-
-  // Código de operación: solo existe en el DOM para el rol cobrador (ver PHP).
-  const wrapCod = document.getElementById('wrap_codigo_transferencia');
-  if (wrapCod) {
-    wrapCod.style.display = tr > 0 ? 'block' : 'none';
-    if (tr <= 0) {
-      document.getElementById('inp_codigo_transferencia').value = '';
-      document.getElementById('codigo_transferencia_error').style.display = 'none';
-      resetSinCodigo();
-    }
-  }
-}
-
-// "No tengo el número de operación": excepción explícita al código
-// obligatorio — reemplaza la exigencia del input por un marcador claro en
-// vez de simplemente dejar el campo vacío en silencio (indistinguible de
-// un olvido). El servidor vuelve a validar esto igual (ver registrar_pago.php).
-function toggleSinCodigo(event) {
-  if (event) event.preventDefault();
-  const activo = document.getElementById('inp_sin_codigo_operacion').value === '1';
-  const nuevo  = activo ? '0' : '1';
-  document.getElementById('inp_sin_codigo_operacion').value = nuevo;
-
-  const inp        = document.getElementById('inp_codigo_transferencia');
-  const label      = document.getElementById('label_codigo_transferencia');
-  const link       = document.getElementById('link_sin_codigo');
-  const confirmBox = document.getElementById('wrap_sin_codigo_confirm');
-  const err        = document.getElementById('codigo_transferencia_error');
-
-  if (nuevo === '1') {
-    inp.value = '';
-    inp.disabled = true;
-    inp.style.display = 'none';
-    label.style.display = 'none';
-    link.style.display = 'none';
-    confirmBox.style.display = 'block';
-    if (err) err.style.display = 'none';
-  } else {
-    inp.disabled = false;
-    inp.style.display = '';
-    label.style.display = '';
-    link.style.display = '';
-    confirmBox.style.display = 'none';
-  }
-}
-
-function resetSinCodigo() {
-  const hidden = document.getElementById('inp_sin_codigo_operacion');
-  if (!hidden) return;
-  hidden.value = '0';
-  const inp        = document.getElementById('inp_codigo_transferencia');
-  const label      = document.getElementById('label_codigo_transferencia');
-  const link       = document.getElementById('link_sin_codigo');
-  const confirmBox = document.getElementById('wrap_sin_codigo_confirm');
-  if (inp)   { inp.disabled = false; inp.style.display = ''; }
-  if (label) label.style.display = '';
-  if (link)  link.style.display = '';
-  if (confirmBox) confirmBox.style.display = 'none';
 }
 
 function validarPagoSubmit(event) {
@@ -1765,21 +1677,6 @@ function validarPagoSubmit(event) {
     if (event) event.stopImmediatePropagation();
     return false;
   }
-  const wrapCod = document.getElementById('wrap_codigo_transferencia');
-  if (!wrapCod || wrapCod.style.display === 'none') return true; // no aplica
-  if (document.getElementById('inp_sin_codigo_operacion').value === '1') return true; // excepción marcada
-  const val = document.getElementById('inp_codigo_transferencia').value.trim();
-  const err = document.getElementById('codigo_transferencia_error');
-  if (!/^[A-Z0-9]{5}$/.test(val)) {
-    if (err) err.style.display = 'block';
-    document.getElementById('inp_codigo_transferencia').focus();
-    showToast('Ingresá los 5 caracteres del número de operación, o marcá que no lo tenés.', 'error');
-    // Evita que el listener de app.js (deshabilita el botón y muestra
-    // "Procesando…") también se dispare cuando el envío queda bloqueado acá.
-    if (event) event.stopImmediatePropagation();
-    return false;
-  }
-  if (err) err.style.display = 'none';
   return true;
 }
 

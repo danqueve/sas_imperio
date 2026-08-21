@@ -40,29 +40,6 @@ if (!$cuota_id || $total <= 0) {
 // alcanza el header('Location: ...')), viéndose como si el pago hubiera
 // quedado colgado en "Procesando…".
 try {
-    // Cobradores que cargan transferencia deben ingresar el código de operación
-    // (últimos 5 caracteres alfanuméricos del comprobante). Admin/supervisor no
-    // tienen esta exigencia, tampoco los pagos solo en efectivo. Excepción
-    // explícita: si el cobrador marca "no tengo el número" (sin_codigo_operacion),
-    // se acepta sin código — queda NULL, igual que ya ocurre para admin/supervisor.
-    $codigo_transferencia = null;
-    $sin_codigo = ($_POST['sin_codigo_operacion'] ?? '') === '1';
-    if (($_SESSION['rol'] ?? '') === 'cobrador' && $tr > 0 && !$sin_codigo) {
-        $codigo_transferencia = strtoupper(trim($_POST['codigo_transferencia'] ?? ''));
-        if (!preg_match('/^[A-Z0-9]{5}$/', $codigo_transferencia)) {
-            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Para pagos con transferencia debés ingresar los últimos 5 caracteres del número de operación, o marcar que no lo tenés.'];
-            header('Location: agenda');
-            exit;
-        }
-        $dup_stmt = $pdo->prepare("SELECT id FROM ic_pagos_temporales WHERE codigo_transf_activo = ? LIMIT 1");
-        $dup_stmt->execute([$codigo_transferencia]);
-        if ($dup_stmt->fetch()) {
-            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Ese número de operación ya fue registrado en otro pago.'];
-            header('Location: agenda');
-            exit;
-        }
-    }
-
     // Obtener credito_id e interes_moratorio; validar que pertenece al cobrador logueado
     $stmt = $pdo->prepare("
         SELECT cu.credito_id, cr.interes_moratorio_pct
@@ -190,23 +167,11 @@ try {
             ->execute([$remaining, $last_pt_id]);
     }
 
-    // El código de transferencia se guarda una sola vez, en la última cuota del
-    // lote: un mismo pago puede repartirse entre varias cuotas del crédito, y el
-    // código representa UNA sola transferencia real (no una por cuota).
-    if ($codigo_transferencia && $last_pt_id) {
-        $pdo->prepare("UPDATE ic_pagos_temporales SET codigo_transferencia = ? WHERE id = ?")
-            ->execute([$codigo_transferencia, $last_pt_id]);
-    }
-
     $pdo->commit();
 
 } catch (\Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    if ($e instanceof \PDOException && $e->getCode() === '23000') {
-        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Ese número de operación ya fue registrado en otro pago.'];
-    } else {
-        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al registrar el pago. Por favor intentá de nuevo.'];
-    }
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al registrar el pago. Por favor intentá de nuevo.'];
     header('Location: agenda');
     exit;
 }

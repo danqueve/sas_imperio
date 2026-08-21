@@ -489,11 +489,11 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
             $ins = $pdo->prepare("
                 INSERT INTO ic_pagos_confirmados
                     (pago_temp_id, cuota_id, cobrador_id, aprobador_id, fecha_pago,
-                     monto_efectivo, monto_transferencia, codigo_transferencia, monto_total, monto_mora_cobrada,
+                     monto_efectivo, monto_transferencia, monto_total, monto_mora_cobrada,
                      es_cuota_pura, observaciones, fecha_jornada, semana_lunes, origen,
                      monto_cuota_orig, numero_cuota, fecha_vcto_orig, articulo_snap,
                      cliente_nombres_snap, cliente_apellidos_snap)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AS nuevo
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AS nuevo
                 ON DUPLICATE KEY UPDATE
                     cuota_id               = nuevo.cuota_id,
                     cobrador_id            = nuevo.cobrador_id,
@@ -501,7 +501,6 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                     fecha_pago             = nuevo.fecha_pago,
                     monto_efectivo         = nuevo.monto_efectivo,
                     monto_transferencia    = nuevo.monto_transferencia,
-                    codigo_transferencia   = nuevo.codigo_transferencia,
                     monto_total            = nuevo.monto_total,
                     monto_mora_cobrada     = nuevo.monto_mora_cobrada,
                     es_cuota_pura          = nuevo.es_cuota_pura,
@@ -531,7 +530,6 @@ function aprobar_rendicion(int $cobrador_id, string $fecha, int $aprobador_id, P
                 $pago['fecha_registro'] ?: ($pago['fecha_jornada'] . ' 00:00:00'),
                 $pago['monto_efectivo'],
                 $pago['monto_transferencia'],
-                $pago['codigo_transferencia'] ?? null,
                 $pago['monto_total'],
                 $pago['monto_mora_cobrada'],
                 // Snapshot
