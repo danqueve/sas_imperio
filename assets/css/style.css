@@ -721,7 +721,13 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
   width: 100%;
   /* Sin esto, un modal más alto que la pantalla (típico en mobile con
      teclado virtual abierto) quedaba cortado arriba y abajo sin ningún
-     modo de llegar al contenido oculto — el overlay fijo no scrollea. */
+     modo de llegar al contenido oculto — el overlay fijo no scrollea.
+     La línea con vh es el fallback: en un navegador/WebView que no
+     entienda "dvh" (Android viejo), esa unidad hace inválida toda la
+     declaración y el navegador la ignora por completo — sin la línea de
+     arriba como red de contención, el modal quedaría sin límite de
+     altura y sin scroll posible en esos dispositivos. */
+  max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -730,6 +736,21 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
   transition: transform var(--transition);
 }
 .modal-overlay.open .modal-box { transform: translateY(0); }
+/* Fila de acciones fija al pie del área scrolleable del modal: cuando el
+   formulario es más alto que la pantalla, el botón principal (ej.
+   "Confirmar Pago") queda siempre a la vista sin depender de que el
+   usuario descubra que el modal se puede scrollear internamente. */
+.modal-actions-sticky {
+  position: sticky;
+  bottom: -28px;
+  margin: 16px -28px -28px;
+  padding: 14px 28px;
+  background: var(--dark-card);
+  border-top: 1px solid var(--dark-border);
+}
+body.theme-cobrador .modal-actions-sticky {
+  background: var(--dark-bg);
+}
 .modal-header {
   display: flex;
   justify-content: space-between;

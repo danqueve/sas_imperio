@@ -1335,7 +1335,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color): stri
                     style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.88rem;resize:none"
                     placeholder="Ej: pagó con billete, prometió el resto mañana..."></textarea>
             </div>
-            <div class="d-flex gap-3">
+            <div class="d-flex gap-3 modal-actions-sticky">
                 <button type="submit" class="btn-ic btn-success flex-1" style="justify-content:center">
                     <i class="fa fa-save"></i> Confirmar Pago
                 </button>
