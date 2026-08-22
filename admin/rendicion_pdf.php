@@ -215,12 +215,6 @@ foreach ($pagos_raw as $p) {
         $agrupado[$key]['monto_total']           = (float)$agrupado[$key]['monto_total'] + (float)$p['monto_total'];
         $agrupado[$key]['monto_mora_cobrada']    = (float)$agrupado[$key]['monto_mora_cobrada'] + (float)$p['monto_mora_cobrada'];
         $agrupado[$key]['monto_sobrante_sum']   += (float)($p['monto_sobrante'] ?? 0);
-        // El código de transferencia se guarda en una sola cuota del lote (la
-        // última insertada, ver cobrador/registrar_pago.php) — puede no ser la
-        // primera fila que llega acá, así que se toma de cualquier fila del grupo.
-        if (!empty($p['codigo_transferencia'])) {
-            $agrupado[$key]['codigo_transferencia'] = $p['codigo_transferencia'];
-        }
         if ((int)($p['es_cuota_pura'] ?? 0))  $agrupado[$key]['es_cuota_pura']  = 1;
         if ((int)($p['solicitud_baja'] ?? 0)) $agrupado[$key]['solicitud_baja'] = 1;
         if ($p['cuota_estado'] === 'PARCIAL' && (float)($p['saldo_pagado'] ?? 0) > 0) {
@@ -263,10 +257,10 @@ foreach ($pagos as $p) {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas: suma = 190mm (portrait A4)
-// #(7) + Cliente(38) + Articulo(30) + Cuota(s)(13) + Vlr.Cuota(20) + Efectivo(22) + Transfer.(22) + Dia(20) + Total(18)
-$COLS   = [7, 38, 30, 13, 20, 22, 22, 20, 18];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Cod. Op.', 'Total'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'R', 'R', 'C', 'R'];
+// Cliente(50) + Articulo(40) + Cuota(s)(16) + Vlr.Cuota(22) + Efectivo(22) + Transfer.(22) + Total(18)
+$COLS   = [50, 40, 16, 22, 22, 22, 18];
+$LABELS = ['Cliente', 'Articulo', 'Cuota(s)', 'Vlr. Cuota', 'Efectivo', 'Transfer.', 'Total'];
+$ALIGNS = ['L', 'L', 'C', 'R', 'R', 'R', 'R'];
 $ANCHO_TOTAL = array_sum($COLS); // 190
 
 class RendicionPDF extends PDFBase
@@ -375,8 +369,6 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
     $j_mora     = 0.0;
     $j_total    = 0.0;
 
-    $index = 1;
-    
     foreach ($secciones as $sec) {
         if (empty($sec['datos'])) continue;
         
@@ -407,12 +399,6 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
 
             $ef = (float) $p['monto_efectivo'];
             $tr = (float) $p['monto_transferencia'];
-
-            // Código de operación de la transferencia (últimos 5 caracteres);
-            // "S/C" (sin código) solo tiene sentido si hubo transferencia —
-            // un pago 100% efectivo nunca tuvo código que mostrar.
-            $codigo_op = $p['codigo_transferencia'] ?? '';
-            $codigo_op_str = $codigo_op !== '' ? $codigo_op : ($tr > 0 ? 'S/C' : '-');
             $tt = (float) $p['monto_total'] + (float)($p['monto_sobrante_sum'] ?? 0);
 
             $sec_efectivo += $ef;
@@ -421,15 +407,13 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
             $sec_total    += $tt;
 
             $pdf->SetFont('Helvetica', '', 8);
-            $pdf->Cell($COLS[0], 6, $index,                                    1, 0, 'C', false);
-            $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1), 1, 0, 'L', false);
-            $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),1, 0, 'L', false);
-            $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1), 1, 0, 'C', false);
-            $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($vlr_cuota), $COLS[4] - 1), 1, 0, 'R', false);
-            $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($ef), $COLS[5] - 1),     1, 0, 'R', false);
-            $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($tr), $COLS[6] - 1),     1, 0, 'R', false);
-            $pdf->Cell($COLS[7], 6, $pdf->fitText($codigo_op_str, $COLS[7] - 1), 1, 0, 'C', false);
-            $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($tt), $COLS[8] - 1),     1, 0, 'R', false);
+            $pdf->Cell($COLS[0], 6, $pdf->fitText($cliente_raw, $COLS[0] - 1), 1, 0, 'L', false);
+            $pdf->Cell($COLS[1], 6, $pdf->fitText($articulo_raw, $COLS[1] - 1),1, 0, 'L', false);
+            $pdf->Cell($COLS[2], 6, $pdf->fitText($cuotas_str, $COLS[2] - 1), 1, 0, 'C', false);
+            $pdf->Cell($COLS[3], 6, $pdf->fitText(fmt($vlr_cuota), $COLS[3] - 1), 1, 0, 'R', false);
+            $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($ef), $COLS[4] - 1),     1, 0, 'R', false);
+            $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($tr), $COLS[5] - 1),     1, 0, 'R', false);
+            $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($tt), $COLS[6] - 1),     1, 0, 'R', false);
             $pdf->Ln();
 
             // Nota: sobrante no aplicado a ninguna cuota
@@ -438,8 +422,8 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
                 $sobrante_txt = '** SOBRANTE: $' . fmt($sobrante_p) . ' ingresados por el cobrador no fueron aplicados a ninguna cuota.';
                 $pdf->SetFont('Helvetica', 'BI', 7);
                 $pdf->SetTextColor(150, 60, 0);
-                $pdf->Cell($COLS[0], 4, '', 0, 0);
-                $pdf->Cell($ANCHO_TOTAL - $COLS[0], 4, lat($sobrante_txt), 0, 1, 'L');
+                $pdf->Cell(5, 4, '', 0, 0);
+                $pdf->Cell($ANCHO_TOTAL - 5, 4, lat($sobrante_txt), 0, 1, 'L');
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetFont('Helvetica', '', 8);
             }
@@ -450,24 +434,21 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
                 $baja_txt = 'Solicitud de baja' . ($motivo ? ': ' . mb_strimwidth($motivo, 0, 60, '..') : '');
                 $pdf->SetFont('Helvetica', 'I', 7);
                 $pdf->SetTextColor(100, 100, 100);
-                $pdf->Cell($COLS[0], 4, '', 0, 0);
-                $pdf->Cell($ANCHO_TOTAL - $COLS[0], 4, lat($baja_txt), 0, 1, 'L');
+                $pdf->Cell(5, 4, '', 0, 0);
+                $pdf->Cell($ANCHO_TOTAL - 5, 4, lat($baja_txt), 0, 1, 'L');
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetFont('Helvetica', '', 8);
             }
-
-            $index++;
         }
-        
+
         // Fila subtotal sección
         $pdf->SetFont('Helvetica', 'B', 8);
-        $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+        $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3];
         $label_total = 'SUBTOTAL ' . mb_strtoupper($sec['titulo'], 'UTF-8');
         $pdf->Cell($ancho_label, 6, lat($label_total), 1, 0, 'R', false);
-        $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($sec_efectivo), $COLS[5] - 1),  1, 0, 'R', false);
-        $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($sec_transfer), $COLS[6] - 1),  1, 0, 'R', false);
-        $pdf->Cell($COLS[7], 6, '',                                                1, 0, 'C', false);
-        $pdf->Cell($COLS[8], 6, $pdf->fitText(fmt($sec_total), $COLS[8] - 1),     1, 0, 'R', false);
+        $pdf->Cell($COLS[4], 6, $pdf->fitText(fmt($sec_efectivo), $COLS[4] - 1),  1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($sec_transfer), $COLS[5] - 1),  1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($sec_total), $COLS[6] - 1),     1, 0, 'R', false);
         $pdf->Ln();
         
         $j_efectivo += $sec_efectivo;
@@ -478,14 +459,13 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
 
     // Fila total de jornada
     $pdf->SetFont('Helvetica', 'B', 8);
-    $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+    $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3];
     $label_total = $es_multi ? 'TOTAL JORNADA' : 'TOTALES';
     $pdf->SetFillColor(240, 240, 240);
     $pdf->Cell($ancho_label, 7, lat($label_total), 1, 0, 'R', true);
-    $pdf->Cell($COLS[5], 7, $pdf->fitText(fmt($j_efectivo), $COLS[5] - 1),  1, 0, 'R', true);
-    $pdf->Cell($COLS[6], 7, $pdf->fitText(fmt($j_transfer), $COLS[6] - 1),  1, 0, 'R', true);
-    $pdf->Cell($COLS[7], 7, '',                                              1, 0, 'C', true);
-    $pdf->Cell($COLS[8], 7, $pdf->fitText(fmt($j_total), $COLS[8] - 1),     1, 0, 'R', true);
+    $pdf->Cell($COLS[4], 7, $pdf->fitText(fmt($j_efectivo), $COLS[4] - 1),  1, 0, 'R', true);
+    $pdf->Cell($COLS[5], 7, $pdf->fitText(fmt($j_transfer), $COLS[5] - 1),  1, 0, 'R', true);
+    $pdf->Cell($COLS[6], 7, $pdf->fitText(fmt($j_total), $COLS[6] - 1),     1, 0, 'R', true);
     $pdf->SetFillColor(255, 255, 255);
     $pdf->Ln();
 
@@ -499,12 +479,11 @@ endforeach;
 // ── Fila TOTAL GLOBAL (solo si multi-jornada) ───────────────
 if ($es_multi) {
     $pdf->SetFont('Helvetica', 'B', 9);
-    $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+    $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3];
     $pdf->Cell($ancho_label, 8, lat('TOTAL GENERAL'), 1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 8, $pdf->fitText(fmt($total_efectivo), $COLS[5] - 1),      1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 8, $pdf->fitText(fmt($total_transferencia), $COLS[6] - 1), 1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 8, '',                                                      1, 0, 'C', false);
-    $pdf->Cell($COLS[8], 8, $pdf->fitText(fmt($total_general + $total_sobrante), $COLS[8] - 1), 1, 0, 'R', false);
+    $pdf->Cell($COLS[4], 8, $pdf->fitText(fmt($total_efectivo), $COLS[4] - 1),      1, 0, 'R', false);
+    $pdf->Cell($COLS[5], 8, $pdf->fitText(fmt($total_transferencia), $COLS[5] - 1), 1, 0, 'R', false);
+    $pdf->Cell($COLS[6], 8, $pdf->fitText(fmt($total_general + $total_sobrante), $COLS[6] - 1), 1, 0, 'R', false);
     $pdf->Ln();
 }
 
