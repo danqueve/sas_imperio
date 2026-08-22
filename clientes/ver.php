@@ -159,6 +159,12 @@ require_once __DIR__ . '/../views/layout.php';
             <span class="text-muted" style="padding:2px 0">Dirección</span>
             <span style="padding:2px 0"><?= e($c['direccion'] ?: '—') ?></span>
 
+            <span class="text-muted" style="padding:2px 0">Localidad</span>
+            <span style="padding:2px 0"><?= e($c['localidad'] ?: '—') ?></span>
+
+            <span class="text-muted" style="padding:2px 0">Barrio</span>
+            <span style="padding:2px 0"><?= e($c['barrio'] ?: '—') ?></span>
+
             <?php if ($c['direccion_laboral']): ?>
             <span class="text-muted" style="padding:2px 0">Dir. Lab.</span>
             <span style="padding:2px 0"><?= e($c['direccion_laboral']) ?></span>

@@ -85,9 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("
             INSERT INTO ic_clientes
               (nombres, apellidos, dni, cuil, telefono, telefono_alt, fecha_nacimiento,
-               direccion, calle1, calle2, direccion_laboral, coordenadas, cobrador_id, dia_cobro,
+               direccion, localidad, barrio, calle1, calle2, direccion_laboral, coordenadas, cobrador_id, dia_cobro,
                zona, estado, token_acceso, tiene_garante)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
         $stmt->execute([
             trim($v['nombres']),
@@ -98,6 +98,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             trim($v['telefono_alt'] ?? ''),
             $v['fecha_nacimiento'] ?: null,
             trim($v['direccion'] ?? ''),
+            trim($v['localidad'] ?? ''),
+            trim($v['barrio'] ?? ''),
             trim($v['calle1'] ?? ''),
             trim($v['calle2'] ?? ''),
             trim($v['direccion_laboral'] ?? ''),
@@ -206,6 +208,14 @@ require_once __DIR__ . '/../views/layout.php';
                     <label>Dirección (domicilio)</label>
                     <input type="text" name="direccion" value="<?= e($v['direccion'] ?? '') ?>"
                         placeholder="Calle 123, Localidad">
+                </div>
+                <div class="form-group">
+                    <label>Localidad</label>
+                    <input type="text" name="localidad" value="<?= e($v['localidad'] ?? '') ?>" placeholder="Ej: Tafí Viejo">
+                </div>
+                <div class="form-group">
+                    <label>Barrio</label>
+                    <input type="text" name="barrio" value="<?= e($v['barrio'] ?? '') ?>" placeholder="Ej: Villa Mariano Moreno">
                 </div>
                 <div class="form-group">
                     <label>Entre Calle</label>

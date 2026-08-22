@@ -14,6 +14,8 @@ $pdo = obtener_conexion();
 $q = trim($_GET['q'] ?? '');
 $estado = trim($_GET['estado'] ?? '');
 $zona = trim($_GET['zona'] ?? '');
+$localidad = trim($_GET['localidad'] ?? '');
+$barrio = trim($_GET['barrio'] ?? '');
 $cobrId = (int) ($_GET['cobrador_id'] ?? 0);
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $limit = 25;
@@ -33,6 +35,14 @@ if ($estado !== '') {
 if ($zona !== '') {
     $where[] = 'c.zona = ?';
     $params[] = $zona;
+}
+if ($localidad !== '') {
+    $where[] = 'c.localidad = ?';
+    $params[] = $localidad;
+}
+if ($barrio !== '') {
+    $where[] = 'c.barrio = ?';
+    $params[] = $barrio;
 }
 if ($cobrId > 0) {
     $where[] = 'c.cobrador_id = ?';
@@ -66,6 +76,8 @@ $clientes = $stmt->fetchAll();
 // Opciones
 $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
 $zonas = $pdo->query("SELECT DISTINCT zona FROM ic_clientes WHERE zona IS NOT NULL AND zona<>'' ORDER BY zona")->fetchAll(PDO::FETCH_COLUMN);
+$localidades = $pdo->query("SELECT DISTINCT localidad FROM ic_clientes WHERE localidad IS NOT NULL AND localidad<>'' ORDER BY localidad")->fetchAll(PDO::FETCH_COLUMN);
+$barrios = $pdo->query("SELECT DISTINCT barrio FROM ic_clientes WHERE barrio IS NOT NULL AND barrio<>'' ORDER BY barrio")->fetchAll(PDO::FETCH_COLUMN);
 
 $page_title = 'Clientes';
 $page_current = 'clientes';
@@ -98,6 +110,22 @@ require_once __DIR__ . '/../views/layout.php';
             <?php foreach ($zonas as $z): ?>
                 <option value="<?= e($z) ?>" <?= $zona === $z ? 'selected' : '' ?>>
                     <?= e($z) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <select name="localidad">
+            <option value="">Todas las localidades</option>
+            <?php foreach ($localidades as $l): ?>
+                <option value="<?= e($l) ?>" <?= $localidad === $l ? 'selected' : '' ?>>
+                    <?= e($l) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <select name="barrio">
+            <option value="">Todos los barrios</option>
+            <?php foreach ($barrios as $b): ?>
+                <option value="<?= e($b) ?>" <?= $barrio === $b ? 'selected' : '' ?>>
+                    <?= e($b) ?>
                 </option>
             <?php endforeach; ?>
         </select>
@@ -143,6 +171,8 @@ require_once __DIR__ . '/../views/layout.php';
                     <th>DNI</th>
                     <th>Teléfono</th>
                     <th>Zona</th>
+                    <th>Localidad</th>
+                    <th>Barrio</th>
                     <th>Cobrador</th>
                     <th>Créditos</th>
                     <th>Estado</th>
@@ -152,7 +182,7 @@ require_once __DIR__ . '/../views/layout.php';
             <tbody>
                 <?php if (empty($clientes)): ?>
                     <tr>
-                        <td colspan="9" class="text-center text-muted" style="padding:40px">
+                        <td colspan="11" class="text-center text-muted" style="padding:40px">
                             Sin resultados para los filtros aplicados.
                         </td>
                     </tr>
@@ -186,6 +216,12 @@ require_once __DIR__ . '/../views/layout.php';
                             </td>
                             <td>
                                 <?= e($c['zona'] ?: '—') ?>
+                            </td>
+                            <td>
+                                <?= e($c['localidad'] ?: '—') ?>
+                            </td>
+                            <td>
+                                <?= e($c['barrio'] ?: '—') ?>
                             </td>
                             <td class="text-muted">
                                 <?= $c['cobrador_nombre'] ? e($c['cobrador_nombre'] . ' ' . $c['cobrador_apellido']) : '—' ?>
