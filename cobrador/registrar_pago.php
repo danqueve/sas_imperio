@@ -20,12 +20,9 @@ $obs           = substr(trim($_POST['observaciones'] ?? ''), 0, 500);
 $total         = $ef + $tr;
 $es_cuota_pura = (int) ($_POST['es_cuota_pura'] ?? 0);
 
-// Validar fecha de jornada: debe ser una de las fechas permitidas para este momento
-$jornadas_ok       = jornadas_disponibles();
-$fecha_jornada_sel = $_POST['fecha_jornada_sel'] ?? $jornadas_ok[0];
-if (!in_array($fecha_jornada_sel, $jornadas_ok, true)) {
-    $fecha_jornada_sel = $jornadas_ok[0];
-}
+// La jornada del pago la calcula siempre el servidor (nunca hay más de una
+// fecha válida en este momento) — no se confía en ningún valor enviado por POST.
+$fecha_jornada_sel = jornadas_disponibles()[0];
 
 if (!$cuota_id || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];

@@ -19,9 +19,7 @@ $is_cobrador = es_cobrador();
 $dia_laboral = $dia_semana !== 7;
 
 // Jornadas disponibles para registrar pagos ahora
-$jornadas_disp     = jornadas_disponibles();
-$es_modo_finde     = count($jornadas_disp) > 1; // Lunes antes de 10 AM
-$jornada_principal = $jornadas_disp[0];
+$jornadas_disp = jornadas_disponibles();
 
 // Filtro de cobrador (admin/supervisor pueden ver a otros)
 $cobrador_filtro = $is_cobrador ? $user_id : (int) ($_GET['cobrador_id'] ?? $user_id);
@@ -1247,29 +1245,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
             <?php csrf_input(); ?>
             <input type="hidden" name="cuota_id" id="input_cuota_id">
 
-            <?php if ($es_modo_finde): ?>
-            <!-- Selector de jornada: visible solo el lunes antes de las 10 AM -->
-            <div style="margin-bottom:14px;padding:10px 14px;background:rgba(79,70,229,.12);border-radius:8px;border:1px solid rgba(79,70,229,.3)">
-                <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:8px">
-                    <i class="fa fa-calendar-week"></i> ¿A qué jornada pertenece este pago?
-                </div>
-                <div style="display:flex;gap:20px">
-                    <?php foreach ($jornadas_disp as $i => $jornada): ?>
-                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.9rem;font-weight:600">
-                        <input type="radio" name="fecha_jornada_sel" value="<?= $jornada ?>"
-                            <?= $i === 0 ? 'checked' : '' ?>
-                            style="accent-color:var(--primary);width:16px;height:16px">
-                        <?= nombre_dia((int) date('N', strtotime($jornada))) ?>
-                        <span style="font-weight:400;color:var(--text-muted);font-size:.8rem">
-                            <?= date('d/m', strtotime($jornada)) ?>
-                        </span>
-                    </label>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php else: ?>
             <input type="hidden" name="fecha_jornada_sel" value="<?= $jornadas_disp[0] ?>">
-            <?php endif; ?>
 
             <div class="form-group" id="wrap_forma_pago" style="margin-bottom:14px">
                 <label style="color:#0d6efd">Forma de Pago</label>
