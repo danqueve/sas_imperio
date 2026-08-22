@@ -325,20 +325,6 @@ function determinar_estado_cuota(float $monto_base, float $mora, float $saldo_pa
 }
 
 /**
- * Devuelve la fecha de jornada para un pago.
- * Corte: antes de las 10:00 AM → el pago pertenece a la jornada del día anterior.
- * Esto permite que los cobradores registren cobros de madrugada sin cortar la jornada.
- */
-function fecha_jornada(?string $datetime = null): string
-{
-    $hora = (int) date('H', $datetime ? strtotime($datetime) : time());
-    if ($hora < 10) {
-        return date('Y-m-d', strtotime('-1 day'));
-    }
-    return date('Y-m-d');
-}
-
-/**
  * Avanza una fecha al siguiente vencimiento según la frecuencia del crédito.
  * Para diario: salta domingos automáticamente.
  */
