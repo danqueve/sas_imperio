@@ -34,7 +34,7 @@ $params = array_merge([$cobrador_id], $dias_sel);
 
 $stmt = $pdo->prepare("
     SELECT cl.id AS cliente_id,
-           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.direccion, cr.dia_cobro,
+           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.direccion, cl.localidad, cl.barrio, cr.dia_cobro,
            cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas,
            cr.estado AS credito_estado,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
@@ -93,11 +93,11 @@ function fmt(float $v): string {
 
 require_once __DIR__ . '/../lib/PDFBase.php';
 
-// Anchos columnas = 190mm total (A4 210mm − 10mm izq − 10mm der)
-// #(8) + Cliente(46) + Articulo(26) + Cuota(14) + Vencim.(13) + Monto(33) + Direccion(50)
-$COLS   = [8, 46, 26, 14, 13, 33, 50];
-$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Monto', 'Direccion'];
-$ALIGNS = ['C', 'L', 'L', 'C', 'C', 'R', 'L'];
+// Anchos columnas = 277mm total (A4 landscape 297mm − 10mm izq − 10mm der)
+// #(8) + Cliente(50) + Articulo(30) + Cuota(15) + Vencim.(15) + Monto(35) + Direccion(55) + Localidad(32) + Barrio(37)
+$COLS   = [8, 50, 30, 15, 15, 35, 55, 32, 37];
+$LABELS = ['#', 'Cliente', 'Articulo', 'Cuota', 'Vencim.', 'Monto', 'Direccion', 'Localidad', 'Barrio'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'C', 'R', 'L', 'L', 'L'];
 
 class AgendaPDF extends PDFBase
 {
@@ -149,9 +149,9 @@ class AgendaPDF extends PDFBase
         $row_h      = ($has_phone || $has_monto2) ? 9 : 6;
         $es_moroso  = ($r['credito_estado'] ?? '') === 'MOROSO';
 
-        $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 24, '..');
+        $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 26, '..');
         if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
-        $articulo = mb_strimwidth($r['articulo'] ?? '-', 0, 17, '..');
+        $articulo = mb_strimwidth($r['articulo'] ?? '-', 0, 20, '..');
 
         // Dibujar celdas con bordes, todas vacías — el texto se superpone centrado
         $this->Cell($cols[0], $row_h, $num > 0 ? (string)$num : '', 1, 0, 'C', false); // número
@@ -161,6 +161,8 @@ class AgendaPDF extends PDFBase
         $this->Cell($cols[4], $row_h, '', 1, 0, 'C', false); // vencim (solo borde)
         $this->Cell($cols[5], $row_h, '', 1, 0, 'R', false); // monto (solo borde)
         $this->Cell($cols[6], $row_h, '', 1, 0, 'L', false); // direccion (solo borde)
+        $this->Cell($cols[7], $row_h, '', 1, 0, 'L', false); // localidad (solo borde)
+        $this->Cell($cols[8], $row_h, '', 1, 0, 'L', false); // barrio (solo borde)
         $this->Ln();
 
         $y_centro = $y0 + ($row_h - 3.5) / 2; // centrado vertical para texto de 1 línea
@@ -228,7 +230,23 @@ class AgendaPDF extends PDFBase
         $this->SetFont('Helvetica', 'I', 6);
         $this->SetTextColor(80, 80, 80);
         $this->SetXY($dx + 0.8, $y_centro);
-        $this->Cell($cols[6] - 1, 3.5, lat(mb_strimwidth(trim($r['direccion'] ?? '') ?: '-', 0, 40, '..')), 0, 0, 'L', false);
+        $this->Cell($cols[6] - 1, 3.5, lat(mb_strimwidth(trim($r['direccion'] ?? '') ?: '-', 0, 44, '..')), 0, 0, 'L', false);
+        $this->SetTextColor(0, 0, 0);
+
+        // Texto localidad — 1 línea, centrada verticalmente según alto de fila
+        $lx = $dx + $cols[6];
+        $this->SetFont('Helvetica', 'I', 6);
+        $this->SetTextColor(80, 80, 80);
+        $this->SetXY($lx + 0.8, $y_centro);
+        $this->Cell($cols[7] - 1, 3.5, $this->fitText(trim($r['localidad'] ?? '') ?: '—', $cols[7] - 2), 0, 0, 'L', false);
+        $this->SetTextColor(0, 0, 0);
+
+        // Texto barrio — 1 línea, centrada verticalmente según alto de fila
+        $bx = $lx + $cols[7];
+        $this->SetFont('Helvetica', 'I', 6);
+        $this->SetTextColor(80, 80, 80);
+        $this->SetXY($bx + 0.8, $y_centro);
+        $this->Cell($cols[8] - 1, 3.5, $this->fitText(trim($r['barrio'] ?? '') ?: '—', $cols[8] - 2), 0, 0, 'L', false);
         $this->SetTextColor(0, 0, 0);
 
         // Restablecer cursor al inicio de la siguiente fila
@@ -239,7 +257,7 @@ class AgendaPDF extends PDFBase
     }
 }
 
-$pdf = new AgendaPDF('P', 'mm', 'A4');
+$pdf = new AgendaPDF('L', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->cobrador_nombre = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
 $pdf->cols   = $COLS;
@@ -255,13 +273,13 @@ $pdf->SetFillColor(255, 255, 255);
 
 // ── Encabezado del documento ─────────────────────────────────────
 $pdf->SetFont('Helvetica', 'B', 13);
-$pdf->Cell(190, 7, lat('Imperio Comercial - Ficha Semanal de Cobros'), 0, 1, 'L');
+$pdf->Cell(277, 7, lat('Imperio Comercial - Ficha Semanal de Cobros'), 0, 1, 'L');
 $pdf->SetFont('Helvetica', '', 8);
-$pdf->Cell(95, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
+$pdf->Cell(138.5, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
 $dias_label = implode(', ', array_map(fn($d) => [1=>'Lun',2=>'Mar',3=>'Mie',4=>'Jue',5=>'Vie',6=>'Sab'][$d], $dias_sel));
-$pdf->Cell(95, 5, lat('Dias: ' . $dias_label . '   |   Emision: ' . date('d/m/Y')), 0, 1, 'R');
+$pdf->Cell(138.5, 5, lat('Dias: ' . $dias_label . '   |   Emision: ' . date('d/m/Y')), 0, 1, 'R');
 $pdf->SetLineWidth(0.4);
-$pdf->Line(10, $pdf->GetY() + 1, 200, $pdf->GetY() + 1);
+$pdf->Line(10, $pdf->GetY() + 1, 287, $pdf->GetY() + 1);
 $pdf->Ln(5);
 
 // Mejora 5: coleccionar datos para resumen
@@ -287,9 +305,9 @@ foreach ($dias_sel as $dia) {
 
     $cant = count($clientes_dia);
     $pdf->SetFont('Helvetica', 'B', 10);
-    $pdf->Cell(100, 7, lat($nombre_dia . ' — ' . $cant . ' cuota(s)'), 0, 0, 'L');
+    $pdf->Cell(146, 7, lat($nombre_dia . ' — ' . $cant . ' cuota(s)'), 0, 0, 'L');
     $pdf->SetFont('Helvetica', '', 9);
-    $pdf->Cell(90, 7, lat('Total del dia: ' . fmt($total_dia)), 0, 1, 'R');
+    $pdf->Cell(131, 7, lat('Total del dia: ' . fmt($total_dia)), 0, 1, 'R');
 
     $pdf->encabezadoTabla();
     $pdf->SetFont('Helvetica', '', 7);
@@ -303,7 +321,7 @@ foreach ($dias_sel as $dia) {
         if ($pdf->GetY() + 16 > $pdf->GetPageHeight() - 18) {
             $pdf->AddPage();
             $pdf->SetFont('Helvetica', 'B', 9);
-            $pdf->Cell(190, 6, lat($nombre_dia . ' (continuacion)'), 0, 1, 'L');
+            $pdf->Cell(277, 6, lat($nombre_dia . ' (continuacion)'), 0, 1, 'L');
             $pdf->encabezadoTabla();
             $pdf->SetFont('Helvetica', '', 7);
             $reprint_zona = true;
@@ -348,6 +366,8 @@ foreach ($dias_sel as $dia) {
     $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($nombre_dia)), 1, 0, 'R', false);
     $pdf->Cell($COLS[5], 6, fmt($total_dia), 1, 0, 'R', false);
     $pdf->Cell($COLS[6], 6, '', 1, 0, 'L', false);
+    $pdf->Cell($COLS[7], 6, '', 1, 0, 'L', false);
+    $pdf->Cell($COLS[8], 6, '', 1, 0, 'L', false);
     $pdf->Ln();
     $pdf->Ln(3);
 
@@ -356,7 +376,7 @@ foreach ($dias_sel as $dia) {
 
 // ── Sección: Quincenales y Mensuales ────────────────────────────
 $stmt_qm = $pdo->prepare("
-    SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.direccion,
+    SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.direccion, cl.localidad, cl.barrio,
            cr.frecuencia, cr.cant_cuotas, cr.estado AS credito_estado,
            cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota, cu.estado AS cuota_estado,
            cu.monto_mora, cu.saldo_pagado,
@@ -427,9 +447,9 @@ if (!empty($rows_qm)) {
         $total_frec = array_sum(array_column($lista, 'total_final'));
 
         $pdf->SetFont('Helvetica', 'B', 10);
-        $pdf->Cell(100, 7, lat($titulo . ' — ' . count($lista) . ' cliente(s)'), 0, 0, 'L');
+        $pdf->Cell(146, 7, lat($titulo . ' — ' . count($lista) . ' cliente(s)'), 0, 0, 'L');
         $pdf->SetFont('Helvetica', '', 9);
-        $pdf->Cell(90, 7, lat('Total: ' . fmt($total_frec)), 0, 1, 'R');
+        $pdf->Cell(131, 7, lat('Total: ' . fmt($total_frec)), 0, 1, 'R');
 
         $pdf->encabezadoTabla();
         $pdf->SetFont('Helvetica', '', 7);
@@ -442,7 +462,7 @@ if (!empty($rows_qm)) {
             if ($pdf->GetY() + 16 > $pdf->GetPageHeight() - 18) {
                 $pdf->AddPage();
                 $pdf->SetFont('Helvetica', 'B', 9);
-                $pdf->Cell(190, 6, lat($titulo . ' (continuacion)'), 0, 1, 'L');
+                $pdf->Cell(277, 6, lat($titulo . ' (continuacion)'), 0, 1, 'L');
                 $pdf->encabezadoTabla();
                 $pdf->SetFont('Helvetica', '', 7);
                 $reprint_zona = true;
@@ -479,6 +499,8 @@ if (!empty($rows_qm)) {
         $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($titulo)), 1, 0, 'R', false);
         $pdf->Cell($COLS[5], 6, fmt($total_frec), 1, 0, 'R', false);
         $pdf->Cell($COLS[6], 6, '', 1, 0, 'L', false);
+        $pdf->Cell($COLS[7], 6, '', 1, 0, 'L', false);
+        $pdf->Cell($COLS[8], 6, '', 1, 0, 'L', false);
         $pdf->Ln();
         $pdf->Ln(3);
 
@@ -489,7 +511,7 @@ if (!empty($rows_qm)) {
 // ── Sección: Clientes con 5+ cuotas atrasadas ───────────────────
 $stmt_atr = $pdo->prepare("
     SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono,
-           COALESCE(cl.zona,'') AS zona,
+           COALESCE(cl.zona,'') AS zona, cl.localidad, cl.barrio,
            cr.id AS credito_id, cr.cant_cuotas, cr.frecuencia,
            cr.estado AS credito_estado, cr.interes_moratorio_pct,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
@@ -509,7 +531,7 @@ $stmt_atr = $pdo->prepare("
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
     WHERE cr.cobrador_id = ?
       AND cr.estado IN ('EN_CURSO','MOROSO')
-    GROUP BY cr.id, cl.id, cl.nombres, cl.apellidos, cl.telefono, cl.zona,
+    GROUP BY cr.id, cl.id, cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.localidad, cl.barrio,
              cr.cant_cuotas, cr.frecuencia, cr.estado, cr.interes_moratorio_pct, articulo
     HAVING COUNT(cu.id) >= 5
     ORDER BY COALESCE(cl.zona,'') ASC, cl.apellidos ASC
@@ -529,17 +551,17 @@ if (!empty($rows_atr)) {
 
     // Encabezado sección
     $pdf->SetFont('Helvetica', 'B', 13);
-    $pdf->Cell(190, 7, lat('Clientes con 5 o mas cuotas atrasadas'), 0, 1, 'L');
+    $pdf->Cell(277, 7, lat('Clientes con 5 o mas cuotas atrasadas'), 0, 1, 'L');
     $pdf->SetFont('Helvetica', '', 8);
-    $pdf->Cell(95, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
-    $pdf->Cell(95, 5, lat('Emision: ' . date('d/m/Y')), 0, 1, 'R');
+    $pdf->Cell(138.5, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
+    $pdf->Cell(138.5, 5, lat('Emision: ' . date('d/m/Y')), 0, 1, 'R');
     $pdf->SetLineWidth(0.4);
-    $pdf->Line(10, $pdf->GetY() + 1, 200, $pdf->GetY() + 1);
+    $pdf->Line(10, $pdf->GetY() + 1, 287, $pdf->GetY() + 1);
     $pdf->Ln(5);
 
-    // Columnas: #(8) + Cliente(40) + Artículo(40) + Adeud.(18) + Valor cuota(28) + Total(30) + Ult.Pago(26) = 190
-    $CA = [8, 40, 40, 18, 28, 30, 26];
-    $LA = ['#', 'Cliente / Tel.', 'Articulo', 'Adeud.', 'Valor cuota', 'Total', 'Ult. Pago'];
+    // Columnas: #(8) + Cliente(45) + Articulo(45) + Adeud.(18) + Valor cuota(28) + Total(30) + Ult.Pago(30) + Localidad(34) + Barrio(39) = 277
+    $CA = [8, 45, 45, 18, 28, 30, 30, 34, 39];
+    $LA = ['#', 'Cliente / Tel.', 'Articulo', 'Adeud.', 'Valor cuota', 'Total', 'Ult. Pago', 'Localidad', 'Barrio'];
 
     $zona_actual = null;
 
@@ -548,7 +570,7 @@ if (!empty($rows_atr)) {
         $pdf->SetFont('Helvetica', 'BI', 8);
         $pdf->SetFillColor(240, 240, 240);
         $zona_txt = !empty($zona) ? strtoupper($zona) : 'SIN ZONA';
-        $pdf->Cell(190, 6, lat('  Zona: ' . $zona_txt . '  (' . count($lista) . ' credito(s))'), 1, 1, 'L', true);
+        $pdf->Cell(277, 6, lat('  Zona: ' . $zona_txt . '  (' . count($lista) . ' credito(s))'), 1, 1, 'L', true);
         $pdf->SetFillColor(255, 255, 255);
 
         // Encabezado columnas
@@ -567,7 +589,7 @@ if (!empty($rows_atr)) {
             if ($pdf->GetY() + 11 > $pdf->GetPageHeight() - 18) {
                 $pdf->AddPage();
                 $pdf->SetFont('Helvetica', 'B', 9);
-                $pdf->Cell(190, 6, lat('Clientes con 5+ cuotas atrasadas (continuacion)'), 0, 1, 'L');
+                $pdf->Cell(277, 6, lat('Clientes con 5+ cuotas atrasadas (continuacion)'), 0, 1, 'L');
                 $pdf->SetFont('Helvetica', 'B', 7);
                 foreach ($CA as $i => $w) {
                     $pdf->Cell($w, 5, lat($LA[$i]), 1, 0, 'L');
@@ -583,9 +605,9 @@ if (!empty($rows_atr)) {
             $y0 = $pdf->GetY();
 
             $es_moroso    = $r['credito_estado'] === 'MOROSO';
-            $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 28, '..');
+            $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 31, '..');
             if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
-            $articulo    = mb_strimwidth($r['articulo'] ?? '-', 0, 30, '..');
+            $articulo    = mb_strimwidth($r['articulo'] ?? '-', 0, 34, '..');
             $valor_cuota = (float)$r['valor_cuota'];
             $monto_total = (float)$r['monto_base'];
             $total_zona += $monto_total;
@@ -598,6 +620,12 @@ if (!empty($rows_atr)) {
             $pdf->Cell($CA[4], $row_h, lat(fmt($valor_cuota)), 1, 0, 'R', false);
             $pdf->Cell($CA[5], $row_h, '', 1, 0, 'R', false);              // total (borde)
             $pdf->Cell($CA[6], $row_h, '', 1, 0, 'L', false);              // ult. pago (borde)
+            $pdf->SetFont('Helvetica', 'I', 6);
+            $pdf->SetTextColor(80, 80, 80);
+            $pdf->Cell($CA[7], $row_h, $pdf->fitText(trim($r['localidad'] ?? '') ?: '—', $CA[7] - 2), 1, 0, 'L', false); // localidad
+            $pdf->Cell($CA[8], $row_h, $pdf->fitText(trim($r['barrio'] ?? '') ?: '—', $CA[8] - 2), 1, 0, 'L', false);    // barrio
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('Helvetica', '', 7);
             $pdf->Ln();
 
             // Texto cliente — línea 1
@@ -652,7 +680,9 @@ if (!empty($rows_atr)) {
         $pdf->SetFont('Helvetica', 'B', 7);
         $pdf->Cell($CA[0] + $CA[1] + $CA[2] + $CA[3] + $CA[4], 5, lat('Total zona'), 1, 0, 'R');
         $pdf->Cell($CA[5], 5, lat(fmt($total_zona)), 1, 0, 'R');
-        $pdf->Cell($CA[6], 5, '', 1, 1, 'L');
+        $pdf->Cell($CA[6], 5, '', 1, 0, 'L');
+        $pdf->Cell($CA[7], 5, '', 1, 0, 'L');
+        $pdf->Cell($CA[8], 5, '', 1, 1, 'L');
         $pdf->Ln(3);
     }
 
@@ -662,18 +692,20 @@ if (!empty($rows_atr)) {
     $ancho_atr = $CA[0] + $CA[1] + $CA[2] + $CA[3] + $CA[4];
     $pdf->Cell($ancho_atr, 6, lat('TOTAL GENERAL — ' . count($rows_atr) . ' credito(s)'), 1, 0, 'R');
     $pdf->Cell($CA[5], 6, lat(fmt($total_atr)), 1, 0, 'R');
-    $pdf->Cell($CA[6], 6, '', 1, 1, 'L');
+    $pdf->Cell($CA[6], 6, '', 1, 0, 'L');
+    $pdf->Cell($CA[7], 6, '', 1, 0, 'L');
+    $pdf->Cell($CA[8], 6, '', 1, 1, 'L');
 }
 
 // ── Resumen general al final ─────────────────────────────────────
 if (!empty($resumen)) {
     $pdf->Ln(2);
     $pdf->SetLineWidth(0.4);
-    $pdf->Line(10, $pdf->GetY(), 200, $pdf->GetY());
+    $pdf->Line(10, $pdf->GetY(), 287, $pdf->GetY());
     $pdf->Ln(4);
 
     $pdf->SetFont('Helvetica', 'B', 10);
-    $pdf->Cell(190, 7, lat('Resumen General'), 0, 1, 'L');
+    $pdf->Cell(277, 7, lat('Resumen General'), 0, 1, 'L');
 
     $dias_res = array_values(array_filter($resumen, fn($r) => $r['tipo'] === 'dia'));
     $frec_res = array_values(array_filter($resumen, fn($r) => $r['tipo'] === 'frec'));
@@ -684,34 +716,34 @@ if (!empty($resumen)) {
     // ── Grupo Semanales (Lun–Sáb) ──────────────────────────────
     $pdf->SetFont('Helvetica', 'B', 8);
     $pdf->SetFillColor(240, 240, 240);
-    $pdf->Cell(190, 6, lat('  Semanales'), 1, 1, 'L', true);
+    $pdf->Cell(277, 6, lat('  Semanales'), 1, 1, 'L', true);
     $pdf->SetFillColor(255, 255, 255);
 
     $pdf->SetFont('Helvetica', 'B', 7);
-    $pdf->Cell(100, 5, lat('Dia'), 1, 0, 'L');
-    $pdf->Cell(45,  5, lat('Cuotas'), 1, 0, 'C');
-    $pdf->Cell(45,  5, lat('Monto'), 1, 1, 'R');
+    $pdf->Cell(146, 5, lat('Dia'), 1, 0, 'L');
+    $pdf->Cell(66,  5, lat('Cuotas'), 1, 0, 'C');
+    $pdf->Cell(65,  5, lat('Monto'), 1, 1, 'R');
 
     $sub_cant_dias  = 0;
     $sub_monto_dias = 0.0;
     $pdf->SetFont('Helvetica', '', 7);
     foreach ($dias_res as $row) {
-        $pdf->Cell(100, 5, lat($row['label']), 1, 0, 'L');
-        $pdf->Cell(45,  5, (string)$row['cant'], 1, 0, 'C');
-        $pdf->Cell(45,  5, fmt($row['total']), 1, 1, 'R');
+        $pdf->Cell(146, 5, lat($row['label']), 1, 0, 'L');
+        $pdf->Cell(66,  5, (string)$row['cant'], 1, 0, 'C');
+        $pdf->Cell(65,  5, fmt($row['total']), 1, 1, 'R');
         $sub_cant_dias  += $row['cant'];
         $sub_monto_dias += $row['total'];
     }
     $pdf->SetFont('Helvetica', 'B', 7);
-    $pdf->Cell(100, 5, lat('Subtotal Semanales'), 1, 0, 'R');
-    $pdf->Cell(45,  5, (string)$sub_cant_dias, 1, 0, 'C');
-    $pdf->Cell(45,  5, fmt($sub_monto_dias), 1, 1, 'R');
+    $pdf->Cell(146, 5, lat('Subtotal Semanales'), 1, 0, 'R');
+    $pdf->Cell(66,  5, (string)$sub_cant_dias, 1, 0, 'C');
+    $pdf->Cell(65,  5, fmt($sub_monto_dias), 1, 1, 'R');
     $total_gral_cant  += $sub_cant_dias;
     $total_gral_monto += $sub_monto_dias;
 
     $pdf->SetFont('Helvetica', 'I', 7);
     $pdf->SetTextColor(80, 80, 80);
-    $pdf->Cell(190, 4, lat('Nota: excluye Criticos (5+ atrasadas) y toma 1 cuota por cliente (la mas antigua pendiente) - puede diferir del Monto Estimado de la Rendicion.'), 0, 1, 'L');
+    $pdf->Cell(277, 4, lat('Nota: excluye Criticos (5+ atrasadas) y toma 1 cuota por cliente (la mas antigua pendiente) - puede diferir del Monto Estimado de la Rendicion.'), 0, 1, 'L');
     $pdf->SetTextColor(0, 0, 0);
 
     // ── Grupo Quincenales y Mensuales ───────────────────────────
@@ -719,28 +751,28 @@ if (!empty($resumen)) {
         $pdf->Ln(2);
         $pdf->SetFont('Helvetica', 'B', 8);
         $pdf->SetFillColor(240, 240, 240);
-        $pdf->Cell(190, 6, lat('  Quincenales / Mensuales'), 1, 1, 'L', true);
+        $pdf->Cell(277, 6, lat('  Quincenales / Mensuales'), 1, 1, 'L', true);
         $pdf->SetFillColor(255, 255, 255);
 
         $pdf->SetFont('Helvetica', 'B', 7);
-        $pdf->Cell(100, 5, lat('Frecuencia'), 1, 0, 'L');
-        $pdf->Cell(45,  5, lat('Clientes'), 1, 0, 'C');
-        $pdf->Cell(45,  5, lat('Monto'), 1, 1, 'R');
+        $pdf->Cell(146, 5, lat('Frecuencia'), 1, 0, 'L');
+        $pdf->Cell(66,  5, lat('Clientes'), 1, 0, 'C');
+        $pdf->Cell(65,  5, lat('Monto'), 1, 1, 'R');
 
         $sub_cant_frec  = 0;
         $sub_monto_frec = 0.0;
         $pdf->SetFont('Helvetica', '', 7);
         foreach ($frec_res as $row) {
-            $pdf->Cell(100, 5, lat($row['label']), 1, 0, 'L');
-            $pdf->Cell(45,  5, (string)$row['cant'], 1, 0, 'C');
-            $pdf->Cell(45,  5, fmt($row['total']), 1, 1, 'R');
+            $pdf->Cell(146, 5, lat($row['label']), 1, 0, 'L');
+            $pdf->Cell(66,  5, (string)$row['cant'], 1, 0, 'C');
+            $pdf->Cell(65,  5, fmt($row['total']), 1, 1, 'R');
             $sub_cant_frec  += $row['cant'];
             $sub_monto_frec += $row['total'];
         }
         $pdf->SetFont('Helvetica', 'B', 7);
-        $pdf->Cell(100, 5, lat('Subtotal Quinc./Mens.'), 1, 0, 'R');
-        $pdf->Cell(45,  5, (string)$sub_cant_frec, 1, 0, 'C');
-        $pdf->Cell(45,  5, fmt($sub_monto_frec), 1, 1, 'R');
+        $pdf->Cell(146, 5, lat('Subtotal Quinc./Mens.'), 1, 0, 'R');
+        $pdf->Cell(66,  5, (string)$sub_cant_frec, 1, 0, 'C');
+        $pdf->Cell(65,  5, fmt($sub_monto_frec), 1, 1, 'R');
         $total_gral_cant  += $sub_cant_frec;
         $total_gral_monto += $sub_monto_frec;
     }
@@ -748,9 +780,9 @@ if (!empty($resumen)) {
     // ── Total General ───────────────────────────────────────────
     $pdf->Ln(2);
     $pdf->SetFont('Helvetica', 'B', 9);
-    $pdf->Cell(100, 7, lat('TOTAL GENERAL'), 1, 0, 'R');
-    $pdf->Cell(45,  7, (string)$total_gral_cant, 1, 0, 'C');
-    $pdf->Cell(45,  7, fmt($total_gral_monto), 1, 1, 'R');
+    $pdf->Cell(146, 7, lat('TOTAL GENERAL'), 1, 0, 'R');
+    $pdf->Cell(66,  7, (string)$total_gral_cant, 1, 0, 'C');
+    $pdf->Cell(65,  7, fmt($total_gral_monto), 1, 1, 'R');
 }
 
 $nombre = 'agenda_semanal_' . $cobrador_id . '_' . date('Ymd') . '.pdf';
