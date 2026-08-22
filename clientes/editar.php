@@ -28,9 +28,17 @@ $garante->execute([$id]);
 $g = $garante->fetch() ?: [];
 
 $cobradores = $pdo->query("SELECT id,nombre,apellido,usuario FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
-$zona_por_usuario = ['santizalazar' => 'Zona 1', 'jpbicego' => 'Norte', 'enzoteceira' => 'Sur', 'sebadelga' => 'Este', 'masanchez' => 'Zona 4-6'];
+$zona_por_usuario = ['santizalazar' => 'Zona 1', 'jpbicego' => 'Norte', 'enzoteceira' => 'Sur', 'sebadelga' => 'Este', 'masanchez' => 'Zona 4-6', 'TURCOCOBRANZA' => 'Sur', 'davbrizuela' => 'Norte'];
 $cob_zona_map = [];
 foreach ($cobradores as $cb) { $cob_zona_map[(int)$cb['id']] = $zona_por_usuario[$cb['usuario']] ?? ''; }
+
+// Día de Cobro: por defecto solo Lunes-Miércoles (la mayoría de los cobradores
+// cobra esos 3 días) — estos 3 cobradores sí trabajan toda la semana.
+$USUARIOS_SEMANA_COMPLETA = ['masanchez', 'silvadaniel', '39360197'];
+$cob_dias_map = [];
+foreach ($cobradores as $cb) { $cob_dias_map[(int)$cb['id']] = in_array($cb['usuario'], $USUARIOS_SEMANA_COMPLETA, true); }
+$dia_cobro_semana_completa = $cob_dias_map[(int)($c['cobrador_id'] ?? 0)] ?? false;
+
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -219,7 +227,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="card-ic-header"><span class="card-title"><i class="fa fa-user-tie"></i> Asignación</span></div>
             <div class="form-grid">
                 <div class="form-group"><label>Cobrador</label>
-                    <select name="cobrador_id" id="cobrador_id" onchange="autoZona()">
+                    <select name="cobrador_id" id="cobrador_id" onchange="autoZona(); actualizarDiasCobro();">
                         <option value="">— Sin asignar —</option>
                         <?php foreach ($cobradores as $cb): ?>
                             <option value="<?= $cb['id'] ?>" <?= $v['cobrador_id'] == $cb['id'] ? 'selected' : '' ?>>
@@ -229,9 +237,11 @@ require_once __DIR__ . '/../views/layout.php';
                     </select>
                 </div>
                 <div class="form-group"><label>Día de Cobro</label>
-                    <select name="dia_cobro">
+                    <select name="dia_cobro" id="dia_cobro">
                         <option value="">— Cualquier día —</option>
-                        <?php foreach ([1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado'] as $n => $d): ?>
+                        <?php foreach ([1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado'] as $n => $d):
+                            if ($n > 3 && !$dia_cobro_semana_completa) continue; // Jue/Vie/Sab solo para cobradores de semana completa
+                        ?>
                             <option value="<?= $n ?>" <?= $v['dia_cobro'] == $n ? 'selected' : '' ?>>
                                 <?= $d ?>
                             </option>
@@ -297,15 +307,45 @@ require_once __DIR__ . '/../views/layout.php';
 
 <?php
 $cob_zona_json = json_encode($cob_zona_map, JSON_UNESCAPED_UNICODE);
+$cob_dias_json = json_encode($cob_dias_map, JSON_UNESCAPED_UNICODE);
 $page_scripts = <<<JS
 <script>
 const cobZonaMap = $cob_zona_json;
+const cobDiasSemanaCompleta = $cob_dias_json;
 function autoZona() {
     const cid  = parseInt(document.getElementById('cobrador_id').value) || 0;
     const zona = cobZonaMap[cid] || '';
     const inp  = document.querySelector('[name=zona]');
     if (zona) inp.value = zona;
 }
+
+// Jueves/Viernes/Sábado solo se ofrecen para cobradores que trabajan la
+// semana completa (ver \$USUARIOS_SEMANA_COMPLETA en PHP) — para el resto,
+// que solo cobra Lunes-Miércoles, esos días ni aparecen como opción.
+function actualizarDiasCobro() {
+    const cid           = parseInt(document.getElementById('cobrador_id').value) || 0;
+    const semanaCompleta = !!cobDiasSemanaCompleta[cid];
+    const sel           = document.getElementById('dia_cobro');
+    const valorActual   = sel.value;
+    const diasExtra     = [[4, 'Jueves'], [5, 'Viernes'], [6, 'Sábado']];
+
+    diasExtra.forEach(([val]) => {
+        const existente = sel.querySelector('option[value="' + val + '"]');
+        if (existente) existente.remove();
+    });
+
+    if (semanaCompleta) {
+        diasExtra.forEach(([val, label]) => {
+            const opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = label;
+            sel.appendChild(opt);
+        });
+    }
+
+    sel.value = [...sel.options].some(o => o.value === valorActual) ? valorActual : '';
+}
+actualizarDiasCobro();
 document.getElementById('chk_garante').addEventListener('change', function(){
   document.getElementById('seccion_garante').style.display = this.checked ? '' : 'none';
 });
