@@ -107,36 +107,6 @@ window.formatPesos = function (val) {
   return '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
-// ── Calculador de cuotas (usado en creditos/nuevo.php) ────
-window.calcularCuotas = function () {
-  const precio = parseFloat(document.getElementById('precio_articulo')?.value) || 0;
-  const interes = parseFloat(document.getElementById('interes_pct')?.value) || 0;
-  const cant = parseInt(document.getElementById('cant_cuotas')?.value) || 1;
-
-  if (precio <= 0 || cant <= 0) return;
-
-  const total = precio * (1 + interes / 100);
-  const cuota = total / cant;
-
-  const elTotal = document.getElementById('monto_total_display');
-  const elCuota = document.getElementById('monto_cuota_display');
-  const inpTotal = document.getElementById('monto_total');
-  const inpCuota = document.getElementById('monto_cuota');
-
-  if (elTotal) elTotal.textContent = formatPesos(total);
-  if (elCuota) elCuota.textContent = formatPesos(cuota);
-  if (inpTotal) inpTotal.value = total.toFixed(2);
-  if (inpCuota) inpCuota.value = cuota.toFixed(2);
-};
-
-// ── Mostrar/ocultar sección dia_cobro según frecuencia ───
-window.toggleDiaCobro = function () {
-  const frec = document.getElementById('frecuencia');
-  const grupo = document.getElementById('grupo_dia_cobro');
-  if (!frec || !grupo) return;
-  grupo.style.display = frec.value === 'semanal' ? '' : 'none';
-};
-
 // ── Modal genérico ────────────────────────────────────────
 window.openModal = function (id) {
   const m = document.getElementById(id);
@@ -151,15 +121,6 @@ document.addEventListener('click', function (e) {
     e.target.classList.remove('open');
   }
 });
-
-// ── Debounce helper ───────────────────────────────────────
-window.debounce = function (fn, ms) {
-  let timer;
-  return function (...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn.apply(this, args), ms);
-  };
-};
 
 // ── Prevenir doble submit en formularios críticos ─────────
 document.addEventListener('DOMContentLoaded', function () {
