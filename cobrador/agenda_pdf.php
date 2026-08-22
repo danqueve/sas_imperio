@@ -95,13 +95,13 @@ function fmt(float $v): string {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Anchos columnas = 277mm total (A4 landscape 297mm − 10mm izq − 10mm der).
-// Orden: quien/donde primero, que/cuando/cuanto al final terminando en el
-// monto (facil de sumar con la vista, convencion habitual en tablas de
-// rendicion/facturacion).
-// #(8) + Cliente(59) + Direccion(65) + Localidad(28) + Barrio(32) + Articulo(24) + Cuota(14) + Vencim.(14) + Monto(33)
-$COLS   = [8, 59, 65, 28, 32, 24, 14, 14, 33];
-$LABELS = ['#', 'Cliente', 'Direccion', 'Localidad', 'Barrio', 'Articulo', 'Cuota', 'Vencim.', 'Monto'];
-$ALIGNS = ['C', 'L', 'L', 'L', 'L', 'L', 'C', 'C', 'R'];
+// Orden: quien/donde primero (Vencim. pegado al Cliente, para ver rapido
+// "quien y cuando"), que/cuanto al final terminando en el monto (facil de
+// sumar con la vista, convencion habitual en tablas de rendicion/facturacion).
+// #(8) + Cliente(59) + Vencim.(14) + Direccion(65) + Localidad(28) + Barrio(32) + Articulo(24) + Cuota(14) + Monto(33)
+$COLS   = [8, 59, 14, 65, 28, 32, 24, 14, 33];
+$LABELS = ['#', 'Cliente', 'Vencim.', 'Direccion', 'Localidad', 'Barrio', 'Articulo', 'Cuota', 'Monto'];
+$ALIGNS = ['C', 'L', 'C', 'L', 'L', 'L', 'L', 'C', 'R'];
 
 class AgendaPDF extends PDFBase
 {
@@ -159,15 +159,15 @@ class AgendaPDF extends PDFBase
         $articulo = mb_strimwidth($r['articulo'] ?? '-', 0, 16, '..');
 
         // Dibujar celdas con bordes, todas vacías — el texto se superpone centrado.
-        // Orden: # / Cliente / Direccion / Localidad / Barrio / Articulo / Cuota / Vencim. / Monto
+        // Orden: # / Cliente / Vencim. / Direccion / Localidad / Barrio / Articulo / Cuota / Monto
         $this->Cell($cols[0], $row_h, $num > 0 ? (string)$num : '', 1, 0, 'C', false); // número
         $this->Cell($cols[1], $row_h, '', 1, 0, 'L', false); // cliente (solo borde)
-        $this->Cell($cols[2], $row_h, '', 1, 0, 'L', false); // direccion (solo borde)
-        $this->Cell($cols[3], $row_h, '', 1, 0, 'L', false); // localidad (solo borde)
-        $this->Cell($cols[4], $row_h, '', 1, 0, 'L', false); // barrio (solo borde)
-        $this->Cell($cols[5], $row_h, '', 1, 0, 'L', false); // articulo (solo borde)
-        $this->Cell($cols[6], $row_h, '', 1, 0, 'C', false); // cuota (solo borde)
-        $this->Cell($cols[7], $row_h, '', 1, 0, 'C', false); // vencim (solo borde)
+        $this->Cell($cols[2], $row_h, '', 1, 0, 'C', false); // vencim (solo borde)
+        $this->Cell($cols[3], $row_h, '', 1, 0, 'L', false); // direccion (solo borde)
+        $this->Cell($cols[4], $row_h, '', 1, 0, 'L', false); // localidad (solo borde)
+        $this->Cell($cols[5], $row_h, '', 1, 0, 'L', false); // barrio (solo borde)
+        $this->Cell($cols[6], $row_h, '', 1, 0, 'L', false); // articulo (solo borde)
+        $this->Cell($cols[7], $row_h, '', 1, 0, 'C', false); // cuota (solo borde)
         $this->Cell($cols[8], $row_h, '', 1, 0, 'R', false); // monto (solo borde)
         $this->Ln();
 
@@ -187,48 +187,49 @@ class AgendaPDF extends PDFBase
             $this->SetTextColor(0, 0, 0);
         }
 
+        // Texto vencimiento (centrado) — pegado al cliente
+        $vx = $x0 + $cols[0] + $cols[1];
+        $this->SetFont('Helvetica', '', 7);
+        $this->SetXY($vx, $y_centro);
+        $this->Cell($cols[2], 4, $venc, 0, 0, 'C', false);
+
         // Texto dirección — 1 línea, centrada verticalmente según alto de fila
-        $dx = $x0 + $cols[0] + $cols[1];
+        $dx = $vx + $cols[2];
         $this->SetFont('Helvetica', 'I', 6);
         $this->SetTextColor(80, 80, 80);
         $this->SetXY($dx + 0.8, $y_centro);
-        $this->Cell($cols[2] - 1, 3.5, lat(mb_strimwidth(trim($r['direccion'] ?? '') ?: '-', 0, 50, '..')), 0, 0, 'L', false);
+        $this->Cell($cols[3] - 1, 3.5, lat(mb_strimwidth(trim($r['direccion'] ?? '') ?: '-', 0, 50, '..')), 0, 0, 'L', false);
         $this->SetTextColor(0, 0, 0);
 
         // Texto localidad — 1 línea, centrada verticalmente según alto de fila
-        $lx = $dx + $cols[2];
+        $lx = $dx + $cols[3];
         $this->SetFont('Helvetica', 'I', 6);
         $this->SetTextColor(80, 80, 80);
         $this->SetXY($lx + 0.8, $y_centro);
-        $this->Cell($cols[3] - 1, 3.5, $this->fitText(trim($r['localidad'] ?? '') ?: '—', $cols[3] - 2), 0, 0, 'L', false);
+        $this->Cell($cols[4] - 1, 3.5, $this->fitText(trim($r['localidad'] ?? '') ?: '—', $cols[4] - 2), 0, 0, 'L', false);
         $this->SetTextColor(0, 0, 0);
 
         // Texto barrio — 1 línea, centrada verticalmente según alto de fila
-        $bx = $lx + $cols[3];
+        $bx = $lx + $cols[4];
         $this->SetFont('Helvetica', 'I', 6);
         $this->SetTextColor(80, 80, 80);
         $this->SetXY($bx + 0.8, $y_centro);
-        $this->Cell($cols[4] - 1, 3.5, $this->fitText(trim($r['barrio'] ?? '') ?: '—', $cols[4] - 2), 0, 0, 'L', false);
+        $this->Cell($cols[5] - 1, 3.5, $this->fitText(trim($r['barrio'] ?? '') ?: '—', $cols[5] - 2), 0, 0, 'L', false);
         $this->SetTextColor(0, 0, 0);
 
         // Texto artículo (centrado)
-        $ax = $bx + $cols[4];
+        $ax = $bx + $cols[5];
         $this->SetFont('Helvetica', '', 7);
         $this->SetXY($ax + 0.8, $y_centro);
-        $this->Cell($cols[5] - 1, 4, lat($articulo), 0, 0, 'L', false);
+        $this->Cell($cols[6] - 1, 4, lat($articulo), 0, 0, 'L', false);
 
         // Texto cuota (centrado)
-        $qx = $ax + $cols[5];
+        $qx = $ax + $cols[6];
         $this->SetXY($qx, $y_centro);
-        $this->Cell($cols[6], 4, lat($cuota_label), 0, 0, 'C', false);
-
-        // Texto vencimiento (centrado)
-        $vx = $qx + $cols[6];
-        $this->SetXY($vx, $y_centro);
-        $this->Cell($cols[7], 4, $venc, 0, 0, 'C', false);
+        $this->Cell($cols[7], 4, lat($cuota_label), 0, 0, 'C', false);
 
         // Texto monto — línea 1: monto de la cuota
-        $mx        = $vx + $cols[7];
+        $mx        = $qx + $cols[7];
         $y_monto1  = $has_monto2 ? $y0 + 0.8 : $y0 + 1.5;
         $this->SetFont('Helvetica', '', 7);
         $this->SetXY($mx + 0.5, $y_monto1);
