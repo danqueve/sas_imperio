@@ -50,8 +50,9 @@ $cobradores_multizona = array_values(array_filter($cobradores, fn($c) => (int)$c
 // ── Datos por zona del cobrador seleccionado ─────────────────
 $nombre_cob   = '';
 $zonas_cob    = [];
-$total_cobrado_cob = 0.0;
-$total_vencido_cob = 0.0;
+$total_cobrado_cob  = 0.0;
+$total_estimado_cob = 0.0;
+$total_faltante_cob = 0.0;
 
 if ($cobrador_id > 0) {
     foreach ($cobradores as $c) {
@@ -62,7 +63,7 @@ if ($cobrador_id > 0) {
     }
 
     if ($nombre_cob !== '') {
-        $zInit = ['clientes' => 0, 'cuotas_cobradas' => 0, 'cobrado' => 0.0, 'vencido' => 0.0];
+        $zInit = ['clientes' => 0, 'cuotas_cobradas' => 0, 'cobrado' => 0.0, 'estimado' => 0.0, 'faltante' => 0.0];
 
         // Monto cobrado + cuotas + clientes, por zona, en el período
         $stmtCobrado = $pdo->prepare("
@@ -75,23 +76,10 @@ if ($cobrador_id > 0) {
             JOIN ic_creditos cr ON cr.id = cu.credito_id
             JOIN ic_clientes cl ON cl.id = cr.cliente_id
             WHERE pc.cobrador_id = ? AND pc.fecha_jornada BETWEEN ? AND ?
+              AND pc.origen = 'cobrador'
             GROUP BY zona
         ");
         $stmtCobrado->execute([$cobrador_id, $desde, $hasta]);
-
-        // Cartera vencida por zona (situación actual, no depende del período elegido)
-        $stmtVencido = $pdo->prepare("
-            SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-                   SUM(cu.monto_cuota - cu.saldo_pagado) AS vencido
-            FROM ic_cuotas cu
-            JOIN ic_creditos cr ON cu.credito_id = cr.id
-            JOIN ic_clientes cl ON cr.cliente_id = cl.id
-            WHERE cr.cobrador_id = ?
-              AND cu.estado IN ('VENCIDA','PARCIAL')
-              AND cu.fecha_vencimiento < CURDATE()
-            GROUP BY zona
-        ");
-        $stmtVencido->execute([$cobrador_id]);
 
         foreach ($stmtCobrado->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $z = $r['zona'];
@@ -100,20 +88,61 @@ if ($cobrador_id > 0) {
             $zonas_cob[$z]['cuotas_cobradas'] = (int)$r['cuotas_cobradas'];
             $zonas_cob[$z]['cobrado']         = (float)$r['cobrado'];
         }
-        foreach ($stmtVencido->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $z = $r['zona'];
+
+        // Estimado/Faltante por zona: cuotas cuyo vencimiento cae dentro de
+        // Desde-Hasta, cuota nominal + mora de las que ya están atrasadas
+        // (mismo criterio que admin/estadisticas_cobranza.php: Estimado =
+        // monto_cuota + mora; Faltante = lo que de eso todavía no se cobró).
+        $stmtEstimado = $pdo->prepare("
+            SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+                   cu.id, cu.estado, cu.monto_cuota, cu.monto_mora, cu.saldo_pagado,
+                   cu.fecha_vencimiento, cr.interes_moratorio_pct,
+                   EXISTS(
+                       SELECT 1 FROM ic_pagos_temporales pt2
+                       WHERE pt2.cuota_id = cu.id AND pt2.estado IN ('PENDIENTE','APROBADO')
+                         AND pt2.origen = 'cobrador'
+                   ) AS tiene_pago
+            FROM ic_cuotas cu
+            JOIN ic_creditos cr ON cu.credito_id = cr.id
+            JOIN ic_clientes cl ON cr.cliente_id = cl.id
+            WHERE cr.cobrador_id = ?
+              AND cr.estado IN ('EN_CURSO','MOROSO')
+              AND cu.estado != 'CANCELADA'
+              AND cu.fecha_vencimiento BETWEEN ? AND ?
+        ");
+        $stmtEstimado->execute([$cobrador_id, $desde, $hasta]);
+
+        foreach ($stmtEstimado->fetchAll(PDO::FETCH_ASSOC) as $cu) {
+            $z = $cu['zona'];
             $zonas_cob[$z] = $zonas_cob[$z] ?? $zInit;
-            $zonas_cob[$z]['vencido'] = (float)$r['vencido'];
+
+            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+            $mora = (float)$cu['monto_mora'] > 0
+                ? (float)$cu['monto_mora']
+                : calcular_mora((float)$cu['monto_cuota'], $dias_atraso, (float)$cu['interes_moratorio_pct']);
+
+            $zonas_cob[$z]['estimado'] += (float)$cu['monto_cuota'] + $mora;
+
+            $cobrado_cuota = ((float)$cu['saldo_pagado'] > 0)
+                || in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA'], true)
+                || (bool)$cu['tiene_pago'];
+
+            if (!$cobrado_cuota) {
+                $zonas_cob[$z]['faltante'] += max(0, (float)$cu['monto_cuota'] + $mora - (float)$cu['saldo_pagado']);
+            }
         }
 
         uasort($zonas_cob, fn($a, $b) => $b['cobrado'] <=> $a['cobrado']);
 
         foreach ($zonas_cob as $dz) {
-            $total_cobrado_cob += $dz['cobrado'];
-            $total_vencido_cob += $dz['vencido'];
+            $total_cobrado_cob  += $dz['cobrado'];
+            $total_estimado_cob += $dz['estimado'];
+            $total_faltante_cob += $dz['faltante'];
         }
     }
 }
+
+$pct_exito_total = $total_estimado_cob > 0 ? round($total_cobrado_cob / $total_estimado_cob * 100) : 0;
 
 $page_title   = 'Cobranza por Zona';
 $page_current = 'estadisticas_zona';
@@ -223,7 +252,7 @@ require_once __DIR__ . '/../views/layout.php';
 
 <?php if (empty($zonas_cob)): ?>
     <div class="card-ic" style="padding:20px;color:var(--text-muted)">
-        Sin cobros ni cartera vencida registrados para este cobrador en el período elegido.
+        Sin cobros ni cuotas con vencimiento registrados para este cobrador en el período elegido.
     </div>
 <?php else: ?>
 
@@ -242,8 +271,14 @@ require_once __DIR__ . '/../views/layout.php';
         <div style="font-size:1.05rem;font-weight:800"><?= e((string) array_key_first($zonas_cob)) ?></div>
     </div>
     <div class="card-ic" style="padding:14px 18px">
-        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">Cartera Vencida</div>
-        <div style="font-size:1.3rem;font-weight:800;color:var(--danger)"><?= formato_pesos($total_vencido_cob) ?></div>
+        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">% Éxito</div>
+        <?php if ($total_estimado_cob > 0): ?>
+        <div style="font-size:1.3rem;font-weight:800;color:<?= $pct_exito_total >= 80 ? 'var(--success)' : ($pct_exito_total >= 50 ? 'var(--warning)' : 'var(--danger)') ?>">
+            <?= $pct_exito_total ?>%
+        </div>
+        <?php else: ?>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--text-muted)">—</div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -253,14 +288,16 @@ require_once __DIR__ . '/../views/layout.php';
         <span class="card-title"><i class="fa fa-table-columns"></i> Cobrado por Zona</span>
     </div>
     <div style="overflow-x:auto">
-        <table class="table-ic" style="min-width:520px">
+        <table class="table-ic" style="min-width:760px">
             <thead>
                 <tr>
                     <th>Zona</th>
                     <th style="text-align:right">Clientes</th>
                     <th style="text-align:right">Cuotas cobradas</th>
                     <th style="text-align:right">Monto cobrado</th>
-                    <th style="text-align:right">Cartera vencida</th>
+                    <th style="text-align:right">Estimado</th>
+                    <th style="text-align:right">Faltante</th>
+                    <th style="text-align:right">% Éxito</th>
                 </tr>
             </thead>
             <tbody>
@@ -270,9 +307,16 @@ require_once __DIR__ . '/../views/layout.php';
                     <td style="text-align:right"><?= number_format($dz['clientes'], 0, ',', '.') ?></td>
                     <td style="text-align:right"><?= number_format($dz['cuotas_cobradas'], 0, ',', '.') ?></td>
                     <td style="text-align:right;font-weight:700;color:var(--success)"><?= formato_pesos($dz['cobrado']) ?></td>
-                    <td style="text-align:right;color:<?= $dz['vencido'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
-                        <?= formato_pesos($dz['vencido']) ?>
+                    <td style="text-align:right"><?= formato_pesos($dz['estimado']) ?></td>
+                    <td style="text-align:right;color:<?= $dz['faltante'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
+                        <?= formato_pesos($dz['faltante']) ?>
                     </td>
+                    <?php if ($dz['estimado'] > 0): $pct_zona = round($dz['cobrado'] / $dz['estimado'] * 100);
+                        $color_pct = $pct_zona >= 80 ? 'var(--success)' : ($pct_zona >= 50 ? 'var(--warning)' : 'var(--danger)'); ?>
+                    <td style="text-align:right;font-weight:700;color:<?= $color_pct ?>"><?= $pct_zona ?>%</td>
+                    <?php else: ?>
+                    <td style="text-align:right;color:var(--text-muted)" title="Nada vencía en esta zona en el período elegido">—</td>
+                    <?php endif; ?>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -282,7 +326,9 @@ require_once __DIR__ . '/../views/layout.php';
                     <td></td>
                     <td></td>
                     <td style="text-align:right;color:var(--success)"><?= formato_pesos($total_cobrado_cob) ?></td>
-                    <td style="text-align:right;color:var(--danger)"><?= formato_pesos($total_vencido_cob) ?></td>
+                    <td style="text-align:right"><?= formato_pesos($total_estimado_cob) ?></td>
+                    <td style="text-align:right;color:var(--danger)"><?= formato_pesos($total_faltante_cob) ?></td>
+                    <td style="text-align:right"><?= $pct_exito_total ?>%</td>
                 </tr>
             </tfoot>
         </table>
