@@ -102,11 +102,17 @@ if ($es_cobrador_semanal) {
     // ic_cuotas.saldo_pagado todavía no lo refleje (recién se actualiza al aprobar).
     $cuotas_con_pago_pendiente = array_flip(array_column($pagos_raw, 'cuota_id'));
 
-    // Ventana Lunes-Sábado de la semana en curso
-    $hoy_dt     = new DateTime();
-    $dow_hoy    = (int) $hoy_dt->format('N'); // 1=Lunes ... 7=Domingo
-    $lunes_sem  = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->format('Y-m-d');
-    $sabado_sem = (clone $hoy_dt)->modify('-' . ($dow_hoy - 1) . ' days')->modify('+5 days')->format('Y-m-d');
+    // Ventana Lunes-Sábado del Resumen: anclada a la jornada que se está
+    // imprimiendo (para que reimprimir el mismo PDF más tarde siga
+    // mostrando el mismo Resumen Semanal, no el de la semana actual). En
+    // modo "PDF Completo" (todas las jornadas pendientes juntas, sin una
+    // fecha única) no hay una sola fecha a la cual anclarse, sigue usando
+    // la semana actual.
+    $fecha_ancla = $multi_jornada ? date('Y-m-d') : $fecha_sel;
+    $ancla_dt    = new DateTime($fecha_ancla);
+    $dow_ancla   = (int) $ancla_dt->format('N'); // 1=Lunes ... 7=Domingo
+    $lunes_sem   = (clone $ancla_dt)->modify('-' . ($dow_ancla - 1) . ' days')->format('Y-m-d');
+    $sabado_sem  = (clone $ancla_dt)->modify('-' . ($dow_ancla - 1) . ' days')->modify('+5 days')->format('Y-m-d');
 
     // Semanal: clientes con cuota venciendo esta semana, cobrados vs faltan
     $stmt_sem = $pdo->prepare("
@@ -539,7 +545,7 @@ if ($es_cobrador_semanal) {
     $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->SetFillColor(230, 230, 230);
     $pdf->SetX($bx_s);
-    $pdf->Cell($bw_s, 6, lat('Resumen Semanal (Lun-Sab)'), 1, 1, 'L', true);
+    $pdf->Cell($bw_s, 6, lat('Resumen Semanal (Lun-Sab) ' . date('d/m', strtotime($lunes_sem)) . '-' . date('d/m', strtotime($sabado_sem))), 1, 1, 'L', true);
     $pdf->SetFillColor(255, 255, 255);
 
     // Filas de 2 KPIs (label + valor, label + valor)
@@ -608,6 +614,13 @@ if ($es_cobrador_semanal) {
     $pdf->Cell($ANCHO_TOTAL, 5, lat('Nota: incluye TODOS los clientes de la semana (tambien Criticos) - puede diferir del "Subtotal Semanales" de la Agenda de Cobro.'), 0, 1, 'L');
     $pdf->SetTextColor(0, 0, 0);
 }
+// ── Nota aclaratoria: el PDF refleja el momento de generacion ────
+$pdf->Ln(6);
+$pdf->SetFont('Helvetica', 'I', 8);
+$pdf->SetTextColor(80, 80, 80);
+$pdf->SetX(10);
+$pdf->MultiCell($ANCHO_TOTAL, 5, lat('Nota: este PDF refleja los pagos pendientes de aprobar en el momento de generarlo (ver hora de Emision arriba). Si despues se aprueba, rechaza o edita un pago, un PDF nuevo puede mostrar otro total.'), 0, 'L');
+$pdf->SetTextColor(0, 0, 0);
 // ── Nota al pie sobre mora pendiente ─────────────────────────
 if ($total_mora_pend > 0) {
     $pdf->Ln(6);
