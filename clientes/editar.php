@@ -42,6 +42,7 @@ $dia_cobro_semana_completa = $cob_dias_map[(int)($c['cobrador_id'] ?? 0)] ?? fal
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $v = $_POST;
     if (empty($v['nombres']) || empty($v['apellidos']) || empty($v['telefono'])) {
         $error = 'Los campos Nombres, Apellidos y Teléfono son obligatorios.';
@@ -155,6 +156,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
+        <?php csrf_input(); ?>
         <div class="card-ic mb-4">
             <div class="card-ic-header">
                 <span class="card-title"><i class="fa fa-user"></i> Datos del Cliente</span>

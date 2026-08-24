@@ -110,6 +110,10 @@ try {
     $pdo->commit();
     $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Vencimiento de la cuota #' . $cuota['numero_cuota']
         . ' actualizado. Se reprogramaron ' . $cant_desplazadas . ' cuota(s).'];
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('editar_vencimiento_cuota error: ' . $e->getMessage());
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Ocurrió un error al reprogramar la cuota. Intente nuevamente.'];
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => $e->getMessage()];

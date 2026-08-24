@@ -105,6 +105,7 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <form method="POST" action="reconocimiento_guardar.php" id="formRecon">
+  <?php csrf_input(); ?>
   <input type="hidden" name="credito_id" value="<?= $credito_id ?>">
 
   <!-- DEUDOR -->

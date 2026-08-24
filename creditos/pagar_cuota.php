@@ -32,7 +32,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_pago_input) || $fecha_pago_input
     $fecha_pago_input = $fecha_hoy_real;
 }
 
-if (!$cuota_id || !$credito_id || $total <= 0) {
+if (!$cuota_id || !$credito_id || $ef < 0 || $tr < 0 || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
     header('Location: ver?id=' . $credito_id);
     exit;

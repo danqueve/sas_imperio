@@ -12,6 +12,18 @@ $pdo = obtener_conexion();
 $error = '';
 $resumen = [];
 
+// Antepone un apóstrofe a valores que empiecen con =,+,-,@: neutraliza CSV/formula
+// injection en cualquier planilla que más adelante exporte estos campos (varios
+// reportes del sistema hacen fputcsv() sobre nombres/apellidos/direccion/zona).
+function sanear_csv_formula(string $v): string
+{
+    $v = trim($v);
+    if ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) {
+        return "'" . $v;
+    }
+    return $v;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     $file = $_FILES['csv_file']['tmp_name'];
     
@@ -51,19 +63,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         ");
                         
                         $stmt->execute([
-                            trim($row['nombres'] ?? ''),
-                            trim($row['apellidos'] ?? ''),
+                            sanear_csv_formula($row['nombres'] ?? ''),
+                            sanear_csv_formula($row['apellidos'] ?? ''),
                             trim($row['dni'] ?? ''),
                             trim($row['cuil'] ?? ''),
                             trim($row['telefono'] ?? ''),
                             trim($row['telefono_alt'] ?? ''),
                             ($row['fecha_nacimiento'] ?? null) ?: null,
-                            trim($row['direccion'] ?? ''),
-                            trim($row['direccion_laboral'] ?? ''),
+                            sanear_csv_formula($row['direccion'] ?? ''),
+                            sanear_csv_formula($row['direccion_laboral'] ?? ''),
                             trim($row['coordenadas'] ?? ''),
                             ((isset($row['cobrador_id']) && $row['cobrador_id'] !== '') ? (int)$row['cobrador_id'] : null),
                             ((isset($row['dia_cobro']) && $row['dia_cobro'] !== '') ? (int)$row['dia_cobro'] : null),
-                            trim($row['zona'] ?? ''),
+                            sanear_csv_formula($row['zona'] ?? ''),
                             $row['estado'] ?? 'ACTIVO',
                             $token,
                             (!empty($row['tiene_garante']) ? 1 : 0),
@@ -78,11 +90,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                 VALUES (?,?,?,?,?,?,?)
                             ")->execute([
                                 $cliente_id,
-                                trim($row['g_nombres']),
-                                trim($row['g_apellidos']),
+                                sanear_csv_formula($row['g_nombres']),
+                                sanear_csv_formula($row['g_apellidos']),
                                 trim($row['g_dni'] ?? ''),
                                 trim($row['g_telefono'] ?? ''),
-                                trim($row['g_direccion'] ?? ''),
+                                sanear_csv_formula($row['g_direccion'] ?? ''),
                                 trim($row['g_coordenadas'] ?? ''),
                             ]);
                         }

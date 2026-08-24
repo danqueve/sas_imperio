@@ -38,6 +38,7 @@ $vendedores = $pdo->query("SELECT id,nombre,apellido FROM ic_vendedores WHERE ac
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $vendedor_id = !empty($_POST['vendedor_id']) ? (int) $_POST['vendedor_id'] : null;
     
     if (!$vendedor_id) {
@@ -79,6 +80,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
+        <?php csrf_input(); ?>
         <div class="card-ic mb-4">
             <div class="card-ic-header">
                 <span class="card-title text-primary"><i class="fa fa-user-tag"></i> Seleccionar Vendedor</span>

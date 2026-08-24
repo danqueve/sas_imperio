@@ -40,6 +40,7 @@ $error = '';
 $v = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $v = $_POST;
 
     // Validación básica
@@ -164,6 +165,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
+        <?php csrf_input(); ?>
 
         <!-- DATOS DEL CLIENTE -->
         <div class="card-ic mb-4">

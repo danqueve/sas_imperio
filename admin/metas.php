@@ -12,6 +12,7 @@ $pdo = obtener_conexion();
 
 // ── Guardar metas (override manual opcional; vacío = automático) ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'guardar_metas') {
+    verificar_csrf();
     $metas   = $_POST['meta'] ?? [];
     $stmt_set   = $pdo->prepare("UPDATE ic_usuarios SET meta_semanal = ? WHERE id = ? AND rol = 'cobrador'");
     $stmt_clear = $pdo->prepare("UPDATE ic_usuarios SET meta_semanal = NULL WHERE id = ? AND rol = 'cobrador'");
@@ -35,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'guard
 
 // ── Snapshot manual de la semana pasada (respaldo si el cron no corrió) ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'snapshot_manual') {
+    verificar_csrf();
     $semana_pasada = new DateTimeImmutable('-7 days');
     $ids_activos   = $pdo->query("SELECT id FROM ic_usuarios WHERE rol = 'cobrador' AND activo = 1")
         ->fetchAll(PDO::FETCH_COLUMN);
@@ -104,6 +106,7 @@ require_once __DIR__ . '/../views/layout.php';
             · La meta se calcula sola: semanales por vencimiento dentro de esta semana, quincenales/mensuales/diarios por toda la cartera ya vencida. Dejá el campo vacío para usar el cálculo automático, o cargá un monto para fijarlo manualmente.
         </div>
         <form method="POST" style="flex-shrink:0">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="snapshot_manual">
             <button type="submit" class="btn-ic btn-ghost btn-sm" style="white-space:nowrap"
                 onclick="return confirm('Esto guarda en el historial las metas y lo cobrado de la semana pasada. Si ya existe un snapshot de esa semana, se actualiza. ¿Continuar?')">
@@ -114,6 +117,7 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <form method="POST">
+    <?php csrf_input(); ?>
     <input type="hidden" name="accion" value="guardar_metas">
 
     <div class="card-ic">

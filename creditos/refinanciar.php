@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $f['frecuencia']         =         ($_POST['frecuencia']         ?? $cr['frecuencia']);
     $f['primer_vencimiento'] =         ($_POST['primer_vencimiento'] ?? '');
     $f['capitalizar_mora']   = isset($_POST['capitalizar_mora']);
-    $f['interes_adicional']  = max(0, (float) ($_POST['interes_adicional'] ?? 0));
+    $f['interes_adicional']  = min(999, max(0, (float) ($_POST['interes_adicional'] ?? 0)));
     $f['cobrador_id']        = (int)   ($_POST['cobrador_id']         ?? $cr['cobrador_id']);
     $f['observaciones']      = trim(   ($_POST['observaciones']       ?? ''));
 

@@ -24,7 +24,7 @@ $es_cuota_pura = (int) ($_POST['es_cuota_pura'] ?? 0);
 // fecha válida en este momento) — no se confía en ningún valor enviado por POST.
 $fecha_jornada_sel = jornadas_disponibles()[0];
 
-if (!$cuota_id || $total <= 0) {
+if (!$cuota_id || $ef < 0 || $tr < 0 || $total <= 0) {
     $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
     header('Location: agenda');
     exit;
