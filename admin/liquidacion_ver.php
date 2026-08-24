@@ -50,6 +50,7 @@ $cobros_dias = $cobros_stmt->fetchAll();
 
 // Acciones POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $accion = $_POST['accion'] ?? '';
 
     if ($accion === 'aprobar' && $liq['estado'] === 'BORRADOR') {
@@ -98,6 +99,7 @@ if ($liq['estado'] === 'BORRADOR') {
         <i class="fa fa-pen"></i> Editar
     </a>';
     $topbar_actions .= ' <form method="POST" style="display:inline" class="no-print">
+        <input type="hidden" name="_csrf" value="' . e(csrf_token()) . '">
         <input type="hidden" name="accion" value="aprobar">
         <button type="submit" class="btn-ic btn-primary btn-sm" data-confirm="¿Aprobar esta liquidación?">
             <i class="fa fa-check-circle"></i> Aprobar
@@ -106,12 +108,14 @@ if ($liq['estado'] === 'BORRADOR') {
 }
 if ($liq['estado'] === 'APROBADA') {
     $topbar_actions .= ' <form method="POST" style="display:inline" class="no-print">
+        <input type="hidden" name="_csrf" value="' . e(csrf_token()) . '">
         <input type="hidden" name="accion" value="revertir">
         <button type="submit" class="btn-ic btn-ghost btn-sm" data-confirm="¿Revertir a Borrador para poder editarla?">
             <i class="fa fa-undo"></i> Revertir a Borrador
         </button>
     </form>';
     $topbar_actions .= ' <form method="POST" style="display:inline" class="no-print">
+        <input type="hidden" name="_csrf" value="' . e(csrf_token()) . '">
         <input type="hidden" name="accion" value="marcar_pagada">
         <button type="submit" class="btn-ic btn-success btn-sm" data-confirm="¿Marcar como pagada?">
             <i class="fa fa-money-bill-wave"></i> Marcar Pagada
@@ -315,6 +319,7 @@ require_once __DIR__ . '/../views/layout.php';
 <div class="d-flex gap-3 no-print mb-4">
     <?php if ($liq['estado'] === 'BORRADOR'): ?>
         <form method="POST" style="display:inline">
+            <?php csrf_input(); ?>
             <input type="hidden" name="accion" value="eliminar">
             <button type="submit" class="btn-ic btn-danger btn-sm" data-confirm="¿Eliminar este borrador?">
                 <i class="fa fa-trash"></i> Eliminar Borrador

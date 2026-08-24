@@ -303,7 +303,7 @@ foreach ($historial_pagos as $hp) {
         'sub'   => formato_pesos($hp['monto_total']) . ' — ' . e($hp['cobrador_nombre'])];
 }
 foreach ($ref_historial as $rh) {
-    $obs = !empty($rh['observaciones']) ? ' — ' . mb_substr($rh['observaciones'], 0, 60) : '';
+    $obs = !empty($rh['observaciones']) ? ' — ' . e(mb_substr($rh['observaciones'], 0, 60)) : '';
     $timeline[] = ['fecha' => $rh['fecha'], 'tipo' => 'refin', 'icon' => 'fa-sync-alt',
         'color' => 'var(--warning)', 'texto' => 'Refinanciación',
         'sub'   => $rh['cuotas_nuevas'] . ' cuotas × ' . formato_pesos($rh['monto_cuota_nueva']) . $obs];
@@ -1404,7 +1404,7 @@ JS;
                 el.innerHTML = notas.map(n => `
                     <div style="padding:8px 0;border-bottom:1px solid var(--dark-border);display:flex;gap:10px;align-items:start">
                         <div style="flex:1">
-                            <div style="font-size:.82rem;margin-bottom:2px">${n.nota.replace(/\n/g,'<br>')}</div>
+                            <div style="font-size:.82rem;margin-bottom:2px">${n.nota.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</div>
                             <div class="text-muted" style="font-size:.72rem">${n.autor} — ${n.created_at}</div>
                         </div>
                         ${esAdmin ? `<button onclick="eliminarNota(${n.id})" class="btn-ic btn-ghost btn-icon btn-sm" style="opacity:.5;flex-shrink:0" title="Eliminar"><i class="fa fa-trash"></i></button>` : ''}

@@ -263,7 +263,7 @@ const clientes = <?= json_encode(array_map(fn($cl) => [
     'estado_cr'  => $cl['credito_estado'] ?? 'sin_credito',
     'lat'        => $cl['lat'],
     'lng'        => $cl['lng'],
-], $clientes_mapa), JSON_UNESCAPED_UNICODE) ?>;
+], $clientes_mapa), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 
 const PALETA = ['#ef4444','#eab308','#22c55e','#3b82f6','#f97316','#38bdf8'];
 

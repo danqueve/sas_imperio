@@ -247,8 +247,8 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
-$art_map_json    = json_encode($articulos_map,        JSON_UNESCAPED_UNICODE);
-$art_search_json = json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE);
+$art_map_json    = json_encode($articulos_map,        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+$art_search_json = json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
 $page_scripts = <<<JS
 <script>
 const artMapV    = $art_map_json;

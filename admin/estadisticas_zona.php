@@ -363,7 +363,7 @@ require_once __DIR__ . '/../views/layout.php';
 <?php
 $labels_zona = array_keys($zonas_cob);
 $vals_zona   = array_map(fn($z) => round($z['cobrado'], 2), array_values($zonas_cob));
-$json_lz = json_encode($labels_zona, JSON_UNESCAPED_UNICODE);
+$json_lz = json_encode($labels_zona, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
 $json_vz = json_encode($vals_zona);
 ?>
 <?php endif; ?>

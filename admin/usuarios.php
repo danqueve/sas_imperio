@@ -65,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($accion === 'guardar') {
+        verificar_csrf();
         $nombre = trim($_POST['nombre'] ?? '');
         $apellido = trim($_POST['apellido'] ?? '');
         $usuario = trim($_POST['usuario'] ?? '');
@@ -287,6 +288,7 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
             <?php endif; ?>
             <form method="POST" class="form-ic">
+                <?php csrf_input(); ?>
                 <input type="hidden" name="accion" value="guardar">
                 <div class="form-group mb-3"><label>Apellido *</label>
                     <input type="text" name="apellido" value="<?= e($u['apellido'] ?? '') ?>" required>

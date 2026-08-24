@@ -251,11 +251,15 @@ require_once __DIR__ . '/../views/layout.php';
                                             <i class="fa fa-pencil"></i>
                                         </a>
                                         <?php if (es_admin()): ?>
-                                            <a href="eliminar?id=<?= $c['id'] ?>" class="btn-ic btn-danger btn-sm btn-icon"
-                                                title="Eliminar"
-                                                data-confirm="¿Eliminar al cliente <?= e($c['nombres'] . ' ' . $c['apellidos']) ?>? Esta acción no se puede deshacer.">
-                                                <i class="fa fa-trash"></i>
-                                            </a>
+                                            <form method="POST" action="eliminar" style="display:inline">
+                                                <?php csrf_input(); ?>
+                                                <input type="hidden" name="id" value="<?= $c['id'] ?>">
+                                                <button type="submit" class="btn-ic btn-danger btn-sm btn-icon"
+                                                    title="Eliminar"
+                                                    data-confirm="¿Eliminar al cliente <?= e($c['nombres'] . ' ' . $c['apellidos']) ?>? Esta acción no se puede deshacer.">
+                                                    <i class="fa fa-trash"></i>
+                                                </button>
+                                            </form>
                                         <?php endif; ?>
                                     <?php endif; ?>
                                     <?php if ($c['coordenadas']): ?>

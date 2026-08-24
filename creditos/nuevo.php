@@ -520,7 +520,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div id="seccion-precio-simple" class="form-group">
                     <label>Precio del Artículo $</label>
                     <input type="number" name="precio_articulo" id="precio_articulo"
-                           value="<?= $v['precio_articulo'] ?? '' ?>"
+                           value="<?= e($v['precio_articulo'] ?? '') ?>"
                            step="0.01" min="0" oninput="calcularCuotas()"
                            placeholder="0.00">
                     <small class="text-muted">Pre-llenado desde el catálogo, editable.</small>
@@ -529,14 +529,14 @@ require_once __DIR__ . '/../views/layout.php';
                 <div id="seccion-interes-simple" class="form-group">
                     <label>Interés Total % (sobre el precio)</label>
                     <input type="number" name="interes_pct" id="interes_pct"
-                           value="<?= $v['interes_pct'] ?? 0 ?>"
+                           value="<?= e($v['interes_pct'] ?? 0) ?>"
                            step="0.01" min="0" max="999" oninput="calcularCuotas()">
                 </div>
 
                 <div class="form-group">
                     <label>Interés Moratorio % semanal</label>
                     <input type="number" name="interes_moratorio_pct"
-                           value="<?= $v['interes_moratorio_pct'] ?? 5 ?>"
+                           value="<?= e($v['interes_moratorio_pct'] ?? 5) ?>"
                            step="0.01" min="0">
                 </div>
 
@@ -624,7 +624,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Cantidad de Cuotas *</label>
                     <input type="number" name="cant_cuotas" id="cant_cuotas"
-                           value="<?= $v['cant_cuotas'] ?? 12 ?>"
+                           value="<?= e($v['cant_cuotas'] ?? 12) ?>"
                            min="1" max="520" required
                            oninput="calcularCuotas();updateComboTotal();previsualizarFechas()">
                 </div>
@@ -632,7 +632,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Primer Vencimiento *</label>
                     <input type="date" name="primer_vencimiento" id="primer_vencimiento"
-                           value="<?= $v['primer_vencimiento'] ?? '' ?>" required
+                           value="<?= e($v['primer_vencimiento'] ?? '') ?>" required
                            onchange="previsualizarFechas()">
                     <small id="preview_fechas" style="color:var(--text-muted);font-size:.76rem"></small>
                 </div>
@@ -660,7 +660,7 @@ require_once __DIR__ . '/../views/layout.php';
                          style="font-size:1.7rem;font-weight:800;color:var(--primary-light);margin-top:6px">
                         $ 0,00
                     </div>
-                    <input type="hidden" name="monto_total" id="monto_total" value="<?= $v['monto_total'] ?? 0 ?>">
+                    <input type="hidden" name="monto_total" id="monto_total" value="<?= e($v['monto_total'] ?? 0) ?>">
                 </div>
                 <div style="background:rgba(0,0,0,.3);border-radius:10px;padding:18px">
                     <div class="text-muted" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.8px">
@@ -670,7 +670,7 @@ require_once __DIR__ . '/../views/layout.php';
                          style="font-size:1.7rem;font-weight:800;color:var(--success);margin-top:6px">
                         $ 0,00
                     </div>
-                    <input type="hidden" name="monto_cuota" id="monto_cuota" value="<?= $v['monto_cuota'] ?? 0 ?>">
+                    <input type="hidden" name="monto_cuota" id="monto_cuota" value="<?= e($v['monto_cuota'] ?? 0) ?>">
                 </div>
             </div>
         </div>
@@ -694,10 +694,10 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <?php
-$clientes_cob_json    = json_encode($clientes_cob_map,    JSON_UNESCAPED_UNICODE);
-$articulos_map_json   = json_encode($articulos_map,        JSON_UNESCAPED_UNICODE);
-$art_search_json      = json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE);
-$combo_items_ini_json = json_encode($combo_items_post,     JSON_UNESCAPED_UNICODE);
+$clientes_cob_json    = json_encode($clientes_cob_map,    JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+$articulos_map_json   = json_encode($articulos_map,        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+$art_search_json      = json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+$combo_items_ini_json = json_encode($combo_items_post,     JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
 
 $page_scripts = <<<JS
 <script>

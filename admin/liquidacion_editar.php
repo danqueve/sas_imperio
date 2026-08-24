@@ -90,6 +90,7 @@ if (isset($_GET['ajax_cobros'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $v           = $_POST;
     $items_desc  = $v['item_desc']  ?? [];
     $items_tipo  = $v['item_tipo']  ?? [];
@@ -216,6 +217,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <form method="POST" class="form-ic" id="form-liq">
+        <?php csrf_input(); ?>
 
         <!-- ── Cobrador y Semana ─────────────────────────── -->
         <div class="card-ic mb-4">

@@ -63,6 +63,7 @@ $ya_ejecutado = ((int)$stats_cr['total_creditos'] === 0);
 // ── POST: ejecutar ────────────────────────────────────────────
 $resultado = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'ejecutar' && !$ya_ejecutado) {
+    verificar_csrf();
     try {
         $pdo->beginTransaction();
 
@@ -246,6 +247,7 @@ require_once __DIR__ . '/../views/layout.php';
 <!-- BOTÓN EJECUTAR -->
 <?php if (!$ya_ejecutado && (!$resultado || !$resultado['ok'])): ?>
 <form method="POST">
+    <?php csrf_input(); ?>
     <input type="hidden" name="accion" value="ejecutar">
     <div class="d-flex gap-3 mb-5">
         <button type="button" class="btn-ic btn-danger" onclick="abrirModal()">

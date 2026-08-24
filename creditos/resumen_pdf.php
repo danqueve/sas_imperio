@@ -6,6 +6,7 @@ require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
+verificar_permiso('ver_agenda');
 
 require_once __DIR__ . '/../lib/PDFBase.php';
 
@@ -13,6 +14,13 @@ $pdo = obtener_conexion();
 $id  = (int) ($_GET['id'] ?? 0);
 if (!$id) die('ID invalido');
 
+// Un cobrador solo puede ver créditos de sus propios clientes (evita IDOR por enumeración de id)
+$params_cr = [$id];
+$where_cob = '';
+if (es_cobrador()) {
+    $where_cob = ' AND cr.cobrador_id = ?';
+    $params_cr[] = $_SESSION['user_id'];
+}
 // ── Datos principales ─────────────────────────────────────────
 $stmt = $pdo->prepare("
     SELECT cr.*, cl.nombres, cl.apellidos, cl.dni, cl.telefono, cl.direccion,
@@ -22,9 +30,9 @@ $stmt = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id=cl.id
     LEFT JOIN ic_articulos a ON cr.articulo_id=a.id
     JOIN ic_usuarios u ON cr.cobrador_id=u.id
-    WHERE cr.id=?
+    WHERE cr.id=?$where_cob
 ");
-$stmt->execute([$id]);
+$stmt->execute($params_cr);
 $cr = $stmt->fetch();
 if (!$cr) die('Credito no encontrado');
 

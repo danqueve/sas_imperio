@@ -50,6 +50,7 @@ foreach ($articulos_raw as $art) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verificar_csrf();
     $v = $_POST;
 
     $articulo_id_edit   = (int)($v['articulo_id'] ?? 0);
@@ -221,6 +222,7 @@ require_once __DIR__ . '/../views/layout.php';
     <?php endif; ?>
 
     <form method="POST" class="form-ic">
+        <?php csrf_input(); ?>
 
         <!-- ── Datos del crédito ──────────────────────────────── -->
         <div class="card-ic mb-4">
@@ -269,21 +271,21 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Precio del Artículo $</label>
                     <input type="number" name="precio_articulo" id="precio_articulo"
-                           value="<?= $v['precio_articulo'] ?>"
+                           value="<?= e($v['precio_articulo']) ?>"
                            step="0.01" min="0" required oninput="calcularCuotas()">
                 </div>
 
                 <div class="form-group">
                     <label>Interés Total %</label>
                     <input type="number" name="interes_pct" id="interes_pct"
-                           value="<?= $v['interes_pct'] ?>"
+                           value="<?= e($v['interes_pct']) ?>"
                            step="0.01" min="0" max="999" oninput="calcularCuotas()">
                 </div>
 
                 <div class="form-group">
                     <label>Cantidad de Cuotas *</label>
                     <input type="number" name="cant_cuotas" id="cant_cuotas"
-                           value="<?= $v['cant_cuotas'] ?>"
+                           value="<?= e($v['cant_cuotas']) ?>"
                            min="<?= $cuotas_pagadas > 0 ? $cuotas_pagadas + 1 : 1 ?>" max="520"
                            required oninput="calcularCuotas()">
                 </div>
@@ -302,7 +304,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Primer Vencimiento *</label>
                     <input type="date" name="primer_vencimiento"
-                           value="<?= $v['primer_vencimiento'] ?>" required>
+                           value="<?= e($v['primer_vencimiento']) ?>" required>
                     <?php if ($cuotas_pagadas > 0): ?>
                         <small class="text-muted">Cambiar esta fecha reajusta las fechas de todas las cuotas (incluidas las ya pagadas).</small>
                     <?php endif; ?>
@@ -311,7 +313,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <div class="form-group">
                     <label>Interés Moratorio % semanal</label>
                     <input type="number" name="interes_moratorio_pct"
-                           value="<?= $v['interes_moratorio_pct'] ?>" step="0.01">
+                           value="<?= e($v['interes_moratorio_pct']) ?>" step="0.01">
                 </div>
 
                 <div class="form-group">
@@ -392,8 +394,8 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 
 <script>
-const articulosMapEdit  = <?= json_encode($articulos_map,        JSON_UNESCAPED_UNICODE) ?>;
-const artSearchMapEdit  = <?= json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE) ?>;
+const articulosMapEdit  = <?= json_encode($articulos_map,        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+const artSearchMapEdit  = <?= json_encode($articulos_search_map, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 
 document.getElementById('articulo_search_edit').addEventListener('change', function() {
     const val  = this.value.trim();

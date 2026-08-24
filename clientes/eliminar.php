@@ -6,7 +6,13 @@ require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('eliminar_clientes');
 
-$id = (int) ($_GET['id'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: index');
+    exit;
+}
+verificar_csrf();
+
+$id = (int) ($_POST['id'] ?? 0);
 if (!$id) {
     header('Location: index');
     exit;
