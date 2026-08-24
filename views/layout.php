@@ -114,6 +114,12 @@ if ($rol === 'admin') {
                         <i class="fa fa-chart-bar"></i>
                         <span class="nav-text">Estadísticas</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'estadisticas_zona' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/estadisticas_zona"
+                       data-tooltip="Cobranza por Zona">
+                        <i class="fa fa-map-location-dot"></i>
+                        <span class="nav-text">Cobranza por Zona</span>
+                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'riesgo_cartera' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/riesgo_cartera"
                        data-tooltip="Riesgo de Cartera">
