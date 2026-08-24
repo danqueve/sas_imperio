@@ -986,6 +986,14 @@ function e(string $s): string
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * Contraseña débil: menos de 8 caracteres, o sin al menos una letra y un número.
+ */
+function password_es_debil(string $pw): bool
+{
+    return strlen($pw) < 8 || !preg_match('/[A-Za-z]/', $pw) || !preg_match('/[0-9]/', $pw);
+}
+
 // ── Log de Actividades ────────────────────────────────────────
 
 function registrar_log(

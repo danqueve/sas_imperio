@@ -76,8 +76,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$nombre || !$apellido || !$usuario) {
             $error = 'Nombre, apellido y usuario son obligatorios.';
-        } elseif ($id === 0 && strlen($password) < 8) {
-            $error = 'La contraseña debe tener al menos 8 caracteres.';
+        } elseif ($id === 0 && password_es_debil($password)) {
+            $error = 'La contraseña debe tener al menos 8 caracteres, con letras y números.';
         } else {
             if ($id === 0) {
                 // Nuevo
@@ -103,8 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 // Editar
                 if ($password !== '') {
-                    if (strlen($password) < 8) {
-                        $error = 'La contraseña debe tener al menos 8 caracteres.';
+                    if (password_es_debil($password)) {
+                        $error = 'La contraseña debe tener al menos 8 caracteres, con letras y números.';
                     } else {
                         $hash = password_hash($password, PASSWORD_DEFAULT);
                         $pdo->prepare("UPDATE ic_usuarios SET nombre=?,apellido=?,usuario=?,password_hash=?,rol=?,telefono=?,zona=? WHERE id=?")

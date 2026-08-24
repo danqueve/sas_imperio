@@ -4,10 +4,14 @@
 // ============================================================
 
 if (session_status() === PHP_SESSION_NONE) {
+    // Detecta HTTPS directo (Apache termina TLS) o detrás de un proxy
+    // inverso que termina TLS y reenvía por HTTP (nginx, balanceador, etc.)
+    $es_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     session_set_cookie_params([
         'httponly' => true,
         'samesite' => 'Lax',
-        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure'   => $es_https,
     ]);
     // Endurecer ID de sesión
     ini_set('session.use_strict_mode', '1');

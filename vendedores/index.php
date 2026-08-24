@@ -30,8 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && es_admin()) {
         $password  = $_POST['password'] ?? '';
         $password2 = $_POST['password2'] ?? '';
 
-        if (!$usuario || strlen($password) < 8) {
-            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Usuario y contraseña (mín. 8 caracteres) son obligatorios.'];
+        if (!$usuario || password_es_debil($password)) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Usuario y contraseña (mín. 8 caracteres, con letras y números) son obligatorios.'];
         } elseif ($password !== $password2) {
             $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Las contraseñas no coinciden.'];
         } else {
@@ -73,8 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && es_admin()) {
         $password2 = $_POST['password2'] ?? '';
         $uid       = (int)$vend_row['usuario_id'];
 
-        if (strlen($password) < 8) {
-            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'La contraseña debe tener al menos 8 caracteres.'];
+        if (password_es_debil($password)) {
+            $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'La contraseña debe tener al menos 8 caracteres, con letras y números.'];
         } elseif ($password !== $password2) {
             $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Las contraseñas no coinciden.'];
         } elseif (!$uid) {

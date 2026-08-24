@@ -208,6 +208,7 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
             <?php else: ?>
                 <form method="POST" action="generar_token_portal">
+                    <?php csrf_input(); ?>
                     <input type="hidden" name="cliente_id" value="<?= $c['id'] ?>">
                     <button type="submit" class="btn-ic btn-accent btn-sm">
                         <i class="fa fa-link"></i> Generar link de acceso

@@ -191,6 +191,8 @@ foreach ($lista_cuotas as &$cuota) {
                 $fecha_pago_fix = $cuota['fecha_pago'] ?? date('Y-m-d');
                 $pdo->prepare("UPDATE ic_cuotas SET estado='PAGADA', fecha_pago=COALESCE(fecha_pago, ?) WHERE id=?")
                     ->execute([$fecha_pago_fix, $cuota['id']]);
+                registrar_log($pdo, $_SESSION['user_id'], 'CUOTA_AUTOCORREGIDA', 'cuota', $cuota['id'],
+                    'PARCIAL -> PAGADA automático: saldo_pagado (' . $saldo . ') ya cubría capital + mora (' . $total_debido . ')');
                 $cuota['estado']           = 'PAGADA';
                 $cuota['fecha_pago']       = $fecha_pago_fix;
                 $cuota['dias_atraso_calc'] = 0;

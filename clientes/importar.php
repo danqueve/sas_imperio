@@ -25,6 +25,7 @@ function sanear_csv_formula(string $v): string
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
+    verificar_csrf();
     $file = $_FILES['csv_file']['tmp_name'];
     
     if (is_uploaded_file($file)) {
@@ -166,6 +167,7 @@ require_once __DIR__ . '/../views/layout.php';
         </div>
 
         <form method="POST" enctype="multipart/form-data" class="form-ic">
+            <?php csrf_input(); ?>
             <div class="form-group">
                 <label>Seleccionar archivo CSV</label>
                 <input type="file" name="csv_file" accept=".csv" required>
