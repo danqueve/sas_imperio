@@ -288,7 +288,7 @@ require_once __DIR__ . '/../views/layout.php';
         <span class="card-title"><i class="fa fa-table-columns"></i> Cobrado por Zona</span>
     </div>
     <div style="overflow-x:auto">
-        <table class="table-ic" style="min-width:760px">
+        <table class="table-ic" style="min-width:860px">
             <thead>
                 <tr>
                     <th>Zona</th>
@@ -298,10 +298,13 @@ require_once __DIR__ . '/../views/layout.php';
                     <th style="text-align:right">Estimado</th>
                     <th style="text-align:right">Faltante</th>
                     <th style="text-align:right">% Éxito</th>
+                    <th style="text-align:center">PDF</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($zonas_cob as $zona => $dz): ?>
+                <?php foreach ($zonas_cob as $zona => $dz):
+                    $qs_pdf = http_build_query(['cobrador_id' => $cobrador_id, 'desde' => $desde, 'hasta' => $hasta, 'zona' => $zona]);
+                ?>
                 <tr>
                     <td style="font-weight:600"><?= e($zona) ?></td>
                     <td style="text-align:right"><?= number_format($dz['clientes'], 0, ',', '.') ?></td>
@@ -317,6 +320,17 @@ require_once __DIR__ . '/../views/layout.php';
                     <?php else: ?>
                     <td style="text-align:right;color:var(--text-muted)" title="Nada vencía en esta zona en el período elegido">—</td>
                     <?php endif; ?>
+                    <td style="text-align:center;white-space:nowrap">
+                        <a href="estadisticas_zona_resumen_pdf?<?= $qs_pdf ?>" target="_blank" title="PDF Resumen">
+                            <i class="fa fa-file-pdf" style="color:var(--text-muted)"></i>
+                        </a>
+                        <a href="estadisticas_zona_cobrados_pdf?<?= $qs_pdf ?>" target="_blank" title="PDF Clientes Cobrados" style="margin-left:8px">
+                            <i class="fa fa-file-invoice-dollar" style="color:var(--success)"></i>
+                        </a>
+                        <a href="estadisticas_zona_faltantes_pdf?<?= $qs_pdf ?>" target="_blank" title="PDF Clientes Faltantes" style="margin-left:8px">
+                            <i class="fa fa-file-circle-exclamation" style="color:var(--danger)"></i>
+                        </a>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -329,6 +343,7 @@ require_once __DIR__ . '/../views/layout.php';
                     <td style="text-align:right"><?= formato_pesos($total_estimado_cob) ?></td>
                     <td style="text-align:right;color:var(--danger)"><?= formato_pesos($total_faltante_cob) ?></td>
                     <td style="text-align:right"><?= $pct_exito_total ?>%</td>
+                    <td></td>
                 </tr>
             </tfoot>
         </table>
