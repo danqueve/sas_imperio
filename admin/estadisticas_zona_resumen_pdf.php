@@ -86,7 +86,13 @@ foreach ($stmtEst->fetchAll(PDO::FETCH_ASSOC) as $cu) {
         $faltante += max(0, (float)$cu['monto_cuota'] + $mora - (float)$cu['saldo_pagado']);
     }
 }
-$pct_exito = $estimado > 0 ? round($cobrado / $estimado * 100) : null;
+// Cobrado (del período) y % Éxito se derivan de Estimado/Faltante (misma
+// fuente, no de la caja real) para que siempre reconcilien matemáticamente:
+// Cobrado_periodo + Faltante = Estimado, y el % nunca supera el 100%.
+// "Cobrado" (caja real del período, puede incluir deuda de otros períodos)
+// se muestra aparte.
+$cobrado_periodo = max(0, $estimado - $faltante);
+$pct_exito = $estimado > 0 ? round($cobrado_periodo / $estimado * 100) : null;
 
 // ── PDF ──────────────────────────────────────────────────────
 require_once __DIR__ . '/../lib/PDFBase.php';
@@ -110,13 +116,15 @@ $pdf->Ln(4);
 
 // ── Fila de KPIs coloreados (plantilla riesgo_cartera_pdf.php) ──
 $pct_color = $pct_exito === null ? [148, 163, 184] : ($pct_exito >= 80 ? [34, 197, 94] : ($pct_exito >= 50 ? [245, 158, 11] : [239, 68, 68]));
+$gris_caja = [140, 145, 155];
 $kpis = [
-    ['Clientes',         (string)$clientes,        [96, 102, 112]],
-    ['Cuotas Cobradas',  (string)$cuotas_cobradas, [96, 102, 112]],
-    ['Monto Cobrado',    fmt($cobrado),             [34, 197, 94]],
-    ['Estimado',         fmt($estimado),            [96, 102, 112]],
-    ['Faltante',         fmt($faltante),            [239, 68, 68]],
-    ['% Exito',          $pct_exito === null ? '-' : $pct_exito . '%', $pct_color],
+    ['Clientes',              (string)$clientes,        [96, 102, 112]],
+    ['Cuotas Cobradas',       (string)$cuotas_cobradas, [96, 102, 112]],
+    ['Estimado',              fmt($estimado),            [96, 102, 112]],
+    ['Cobrado (del periodo)', fmt($cobrado_periodo),     [34, 197, 94]],
+    ['Faltante',               fmt($faltante),            [239, 68, 68]],
+    ['% Exito',               $pct_exito === null ? '-' : $pct_exito . '%', $pct_color],
+    ['Caja Total',            fmt($cobrado),             $gris_caja],
 ];
 $kpi_w = 190 / count($kpis);
 $kpi_y0 = $pdf->GetY();
@@ -141,10 +149,12 @@ $pdf->SetXY(10, $kpi_y0 + 20);
 $pdf->SetFont('Helvetica', 'I', 7);
 $pdf->SetTextColor(80, 80, 80);
 $pdf->MultiCell(190, 4, lat(
-    'Estimado = cuota nominal + mora de las cuotas ya atrasadas, con vencimiento dentro del periodo elegido. ' .
-    'Faltante = de ese Estimado, lo que todavia no se cobro. % Exito = Monto Cobrado / Estimado (puede superar ' .
-    '100% si en el periodo tambien se cobro deuda de zonas o periodos anteriores). Solo se cuentan pagos ' .
-    'cargados por el cobrador (no incluye carga manual de admin/supervisor).'
+    'Estimado = cuota nominal + mora de las cuotas con vencimiento dentro del periodo elegido. ' .
+    'Cobrado (del periodo) y Faltante se calculan sobre ese mismo Estimado y siempre suman exacto entre si ' .
+    '(el % Exito nunca supera el 100%). Caja Total es la plata real que entro en el periodo (solo pagos ' .
+    'cargados por el cobrador) y puede no coincidir con "Cobrado (del periodo)": puede incluir cobros de ' .
+    'cuotas vencidas en otros periodos, o no incluir cuotas de este periodo pagadas manualmente por un ' .
+    'admin/supervisor.'
 ), 0, 'L');
 $pdf->SetTextColor(0, 0, 0);
 

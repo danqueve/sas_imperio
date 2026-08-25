@@ -134,6 +134,17 @@ if ($cobrador_id > 0) {
 
         uasort($zonas_cob, fn($a, $b) => $b['cobrado'] <=> $a['cobrado']);
 
+        // Cobrado (del período) y % Éxito se derivan de Estimado/Faltante
+        // (misma fuente, no una consulta de caja aparte) para que siempre
+        // reconcilien matemáticamente: Cobrado_periodo + Faltante = Estimado,
+        // y el % nunca puede superar el 100%. "Cobrado" (caja real del
+        // período, puede incluir deuda de otros períodos) queda aparte.
+        foreach ($zonas_cob as $z => &$dz) {
+            $dz['cobrado_periodo'] = max(0, $dz['estimado'] - $dz['faltante']);
+            $dz['pct_periodo'] = $dz['estimado'] > 0 ? round($dz['cobrado_periodo'] / $dz['estimado'] * 100) : null;
+        }
+        unset($dz);
+
         foreach ($zonas_cob as $dz) {
             $total_cobrado_cob  += $dz['cobrado'];
             $total_estimado_cob += $dz['estimado'];
@@ -142,7 +153,8 @@ if ($cobrador_id > 0) {
     }
 }
 
-$pct_exito_total = $total_estimado_cob > 0 ? round($total_cobrado_cob / $total_estimado_cob * 100) : 0;
+$total_cobrado_periodo = max(0, $total_estimado_cob - $total_faltante_cob);
+$pct_periodo_total = $total_estimado_cob > 0 ? round($total_cobrado_periodo / $total_estimado_cob * 100) : null;
 
 $page_title   = 'Cobranza por Zona';
 $page_current = 'estadisticas_zona';
@@ -256,11 +268,42 @@ require_once __DIR__ . '/../views/layout.php';
     </div>
 <?php else: ?>
 
-<!-- KPIs -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:16px">
+<!-- KPIs: grupo principal (reconcilia siempre: Cobrado + Faltante = Estimado) -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:10px">
     <div class="card-ic" style="padding:14px 18px">
-        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">Total Cobrado</div>
-        <div style="font-size:1.3rem;font-weight:800;color:var(--success)"><?= formato_pesos($total_cobrado_cob) ?></div>
+        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">Estimado del período</div>
+        <div style="font-size:1.3rem;font-weight:800"><?= formato_pesos($total_estimado_cob) ?></div>
+    </div>
+    <div class="card-ic" style="padding:14px 18px">
+        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">Cobrado del período</div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--success)"><?= formato_pesos($total_cobrado_periodo) ?></div>
+    </div>
+    <div class="card-ic" style="padding:14px 18px">
+        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">Faltante</div>
+        <div style="font-size:1.3rem;font-weight:800;color:<?= $total_faltante_cob > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>"><?= formato_pesos($total_faltante_cob) ?></div>
+    </div>
+    <div class="card-ic" style="padding:14px 18px">
+        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">% Éxito del período</div>
+        <?php if ($pct_periodo_total !== null): ?>
+        <div style="font-size:1.3rem;font-weight:800;color:<?= $pct_periodo_total >= 80 ? 'var(--success)' : ($pct_periodo_total >= 50 ? 'var(--warning)' : 'var(--danger)') ?>">
+            <?= $pct_periodo_total ?>%
+        </div>
+        <?php else: ?>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--text-muted)">—</div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- KPIs: grupo secundario — caja real (puede incluir deuda de otros períodos) -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:16px;
+            padding-top:12px;border-top:1px dashed rgba(255,255,255,.1)">
+    <div class="card-ic" style="padding:14px 18px">
+        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">
+            Caja Total Recibida
+            <i class="fa fa-circle-info" style="opacity:.6"
+               title="Todo lo que entró en el período. Puede incluir cobros de cuotas vencidas en otros períodos, o no incluir cuotas de este período pagadas manualmente por un admin/supervisor — por eso no se resta contra Estimado/Faltante."></i>
+        </div>
+        <div style="font-size:1.3rem;font-weight:800"><?= formato_pesos($total_cobrado_cob) ?></div>
     </div>
     <div class="card-ic" style="padding:14px 18px">
         <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">Zonas</div>
@@ -270,16 +313,6 @@ require_once __DIR__ . '/../views/layout.php';
         <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">Zona con más cobro</div>
         <div style="font-size:1.05rem;font-weight:800"><?= e((string) array_key_first($zonas_cob)) ?></div>
     </div>
-    <div class="card-ic" style="padding:14px 18px">
-        <div style="font-size:.75rem;color:var(--text-muted);font-weight:600;margin-bottom:4px">% Éxito</div>
-        <?php if ($total_estimado_cob > 0): ?>
-        <div style="font-size:1.3rem;font-weight:800;color:<?= $pct_exito_total >= 80 ? 'var(--success)' : ($pct_exito_total >= 50 ? 'var(--warning)' : 'var(--danger)') ?>">
-            <?= $pct_exito_total ?>%
-        </div>
-        <?php else: ?>
-        <div style="font-size:1.3rem;font-weight:800;color:var(--text-muted)">—</div>
-        <?php endif; ?>
-    </div>
 </div>
 
 <!-- Tabla Cobrado por Zona -->
@@ -288,38 +321,42 @@ require_once __DIR__ . '/../views/layout.php';
         <span class="card-title"><i class="fa fa-table-columns"></i> Cobrado por Zona</span>
     </div>
     <div style="overflow-x:auto">
-        <table class="table-ic" style="min-width:860px">
+        <table class="table-ic" style="min-width:980px">
             <thead>
                 <tr>
                     <th>Zona</th>
                     <th style="text-align:right">Clientes</th>
                     <th style="text-align:right">Cuotas cobradas</th>
-                    <th style="text-align:right">Monto cobrado</th>
                     <th style="text-align:right">Estimado</th>
+                    <th style="text-align:right">Cobrado (del período)</th>
                     <th style="text-align:right">Faltante</th>
                     <th style="text-align:right">% Éxito</th>
+                    <th style="text-align:right;border-left:1px dashed rgba(255,255,255,.15)"
+                        title="Caja real del período — puede no coincidir con 'Cobrado (del período)', ver nota abajo">Caja Total</th>
                     <th style="text-align:center">PDF</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($zonas_cob as $zona => $dz):
                     $qs_pdf = http_build_query(['cobrador_id' => $cobrador_id, 'desde' => $desde, 'hasta' => $hasta, 'zona' => $zona]);
+                    $color_pct = $dz['pct_periodo'] === null ? null
+                        : ($dz['pct_periodo'] >= 80 ? 'var(--success)' : ($dz['pct_periodo'] >= 50 ? 'var(--warning)' : 'var(--danger)'));
                 ?>
                 <tr>
                     <td style="font-weight:600"><?= e($zona) ?></td>
                     <td style="text-align:right"><?= number_format($dz['clientes'], 0, ',', '.') ?></td>
                     <td style="text-align:right"><?= number_format($dz['cuotas_cobradas'], 0, ',', '.') ?></td>
-                    <td style="text-align:right;font-weight:700;color:var(--success)"><?= formato_pesos($dz['cobrado']) ?></td>
                     <td style="text-align:right"><?= formato_pesos($dz['estimado']) ?></td>
+                    <td style="text-align:right;font-weight:700;color:var(--success)"><?= formato_pesos($dz['cobrado_periodo']) ?></td>
                     <td style="text-align:right;color:<?= $dz['faltante'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>">
                         <?= formato_pesos($dz['faltante']) ?>
                     </td>
-                    <?php if ($dz['estimado'] > 0): $pct_zona = round($dz['cobrado'] / $dz['estimado'] * 100);
-                        $color_pct = $pct_zona >= 80 ? 'var(--success)' : ($pct_zona >= 50 ? 'var(--warning)' : 'var(--danger)'); ?>
-                    <td style="text-align:right;font-weight:700;color:<?= $color_pct ?>"><?= $pct_zona ?>%</td>
+                    <?php if ($color_pct !== null): ?>
+                    <td style="text-align:right;font-weight:700;color:<?= $color_pct ?>"><?= $dz['pct_periodo'] ?>%</td>
                     <?php else: ?>
                     <td style="text-align:right;color:var(--text-muted)" title="Nada vencía en esta zona en el período elegido">—</td>
                     <?php endif; ?>
+                    <td style="text-align:right;border-left:1px dashed rgba(255,255,255,.15)"><?= formato_pesos($dz['cobrado']) ?></td>
                     <td style="text-align:center;white-space:nowrap">
                         <a href="estadisticas_zona_resumen_pdf?<?= $qs_pdf ?>" target="_blank" title="PDF Resumen">
                             <i class="fa fa-file-pdf" style="color:var(--text-muted)"></i>
@@ -339,14 +376,21 @@ require_once __DIR__ . '/../views/layout.php';
                     <td>TOTAL</td>
                     <td></td>
                     <td></td>
-                    <td style="text-align:right;color:var(--success)"><?= formato_pesos($total_cobrado_cob) ?></td>
                     <td style="text-align:right"><?= formato_pesos($total_estimado_cob) ?></td>
+                    <td style="text-align:right;color:var(--success)"><?= formato_pesos($total_cobrado_periodo) ?></td>
                     <td style="text-align:right;color:var(--danger)"><?= formato_pesos($total_faltante_cob) ?></td>
-                    <td style="text-align:right"><?= $pct_exito_total ?>%</td>
+                    <td style="text-align:right"><?= $pct_periodo_total ?? '—' ?><?= $pct_periodo_total !== null ? '%' : '' ?></td>
+                    <td style="text-align:right;border-left:1px dashed rgba(255,255,255,.15)"><?= formato_pesos($total_cobrado_cob) ?></td>
                     <td></td>
                 </tr>
             </tfoot>
         </table>
+        <div style="padding:10px 4px 2px;font-size:.75rem;color:var(--text-muted)">
+            <i class="fa fa-circle-info"></i>
+            "Cobrado (del período)" y "Faltante" siempre suman "Estimado". "Caja Total" es la plata real
+            que entró en el período y puede no coincidir: incluye cobros de cuotas vencidas en otros
+            períodos, o no incluye cuotas de este período pagadas manualmente por un admin/supervisor.
+        </div>
     </div>
 </div>
 
