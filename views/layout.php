@@ -120,6 +120,12 @@ if ($rol === 'admin') {
                         <i class="fa fa-map-location-dot"></i>
                         <span class="nav-text">Cobranza por Zona</span>
                     </a>
+                    <a class="nav-item <?= ($page_current ?? '') === 'cartera_zona' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/cartera_zona"
+                       data-tooltip="Cartera por Zona">
+                        <i class="fa fa-layer-group"></i>
+                        <span class="nav-text">Cartera por Zona</span>
+                    </a>
                     <a class="nav-item <?= ($page_current ?? '') === 'riesgo_cartera' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/riesgo_cartera"
                        data-tooltip="Riesgo de Cartera">

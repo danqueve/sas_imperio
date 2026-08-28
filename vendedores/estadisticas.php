@@ -64,6 +64,9 @@ $aging_subq = "
      WHERE estado IN ('VENCIDA','PENDIENTE') AND fecha_vencimiento < CURDATE()
      GROUP BY credito_id)";
 
+// (objetivo_del_periodo() y obtener_objetivos_vendedores() viven en
+// config/funciones.php — se comparten con el export CSV y el PDF)
+
 // ── HTML helper para el selector de período ──────────────────
 function filtro_periodo_html(string $preset_act, ?string $f_desde, ?string $f_hasta,
                              int $vendedor_id, array $presets_labels): string {
@@ -643,6 +646,28 @@ if ($vendedor_id !== 0) {
     $sv_stmt->execute($params_fecha);
     $sin_vendedor = $sv_stmt->fetch();
 
+    // ── Export CSV — tabla Objetivos de Venta ────────────────
+    if (($_GET['export'] ?? '') === 'csv_objetivos') {
+        $filas_export = obtener_objetivos_vendedores($pdo, $f_desde, $f_hasta);
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="objetivos_venta_' . ($f_desde ?? 'historico') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Vendedor', 'Monto Vendido', 'Objetivo (del periodo)', 'Faltante', '% Cumplido', '% Para Cumplir'], ';', '"', '\\');
+        foreach ($filas_export as $f) {
+            fputcsv($out, [
+                $f['vendedor'],
+                number_format($f['vendido'], 2, ',', '.'),
+                number_format($f['objetivo'], 2, ',', '.'),
+                number_format($f['faltante'], 2, ',', '.'),
+                $f['pct_cumpl'] . '%',
+                $f['pct_falta'] . '%',
+            ], ';', '"', '\\');
+        }
+        fclose($out);
+        exit;
+    }
+
     $page_title   = 'Estadísticas de Vendedores';
     $page_current = 'vendedores_stats';
     require_once __DIR__ . '/../views/layout.php';
@@ -654,6 +679,76 @@ if ($vendedor_id !== 0) {
             <span class="card-title"><i class="fa fa-calendar-days"></i> <?= e($label_periodo) ?></span>
             <?= filtro_periodo_html($preset, $f_desde, $f_hasta, 0, $presets_labels) ?>
         </div>
+    </div>
+
+    <!-- Objetivos de Venta -->
+    <?php $filas_objetivos = obtener_objetivos_vendedores($pdo, $f_desde, $f_hasta); ?>
+    <div class="card-ic mb-4">
+        <div class="card-ic-header">
+            <span class="card-title"><i class="fa fa-bullseye"></i> Objetivos de Venta</span>
+            <div style="display:flex;align-items:center;gap:8px">
+                <?php if (es_admin()): ?>
+                    <a href="objetivos" class="btn-ic btn-ghost btn-sm"><i class="fa fa-pen"></i> Editar objetivos</a>
+                <?php endif; ?>
+                <?php if ($tiene_filtro && !empty($filas_objetivos)):
+                    $qs_export = http_build_query(array_filter([
+                        'periodo' => $preset,
+                        'desde'   => $preset === 'custom' ? $f_desde : null,
+                        'hasta'   => $preset === 'custom' ? $f_hasta : null,
+                    ]));
+                ?>
+                    <a href="estadisticas?<?= $qs_export ?>&export=csv_objetivos" class="btn-ic btn-success btn-sm" title="Exportar a CSV">
+                        <i class="fa fa-file-csv"></i> CSV
+                    </a>
+                    <a href="estadisticas_objetivos_pdf?<?= $qs_export ?>" target="_blank" class="btn-ic btn-ghost btn-sm" title="Exportar a PDF">
+                        <i class="fa fa-file-pdf"></i> PDF
+                    </a>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php if (!$tiene_filtro): ?>
+            <div style="padding:20px;color:var(--text-muted)">
+                <i class="fa fa-info-circle"></i> Elegí un período con fecha (no "Histórico completo") para ver el objetivo prorrateado.
+            </div>
+        <?php else: ?>
+        <div style="overflow-x:auto">
+            <table class="table-ic">
+                <thead>
+                    <tr>
+                        <th>Vendedor</th>
+                        <th style="text-align:right">Monto Vendido</th>
+                        <th style="text-align:right">Objetivo (del período)</th>
+                        <th style="text-align:right">Faltante</th>
+                        <th style="text-align:right">% Cumplido</th>
+                        <th style="text-align:right">% Para Cumplir</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($filas_objetivos)): ?>
+                    <tr>
+                        <td colspan="6" class="text-center text-muted" style="padding:24px">
+                            Ningún vendedor tiene objetivo cargado.
+                            <?php if (es_admin()): ?>
+                                <a href="objetivos">Cargar objetivos</a>.
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php else: foreach ($filas_objetivos as $f):
+                    $color = $f['pct_cumpl'] >= 100 ? 'var(--success)' : ($f['pct_cumpl'] >= 70 ? 'var(--warning)' : 'var(--danger)');
+                ?>
+                    <tr>
+                        <td class="fw-bold"><?= e($f['vendedor']) ?></td>
+                        <td style="text-align:right;font-weight:700;color:var(--primary-light)"><?= formato_pesos($f['vendido']) ?></td>
+                        <td style="text-align:right"><?= formato_pesos($f['objetivo']) ?></td>
+                        <td style="text-align:right;color:<?= $f['faltante'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>"><?= formato_pesos($f['faltante']) ?></td>
+                        <td style="text-align:right;font-weight:700;color:<?= $color ?>"><?= $f['pct_cumpl'] ?>%</td>
+                        <td style="text-align:right;color:var(--text-muted)"><?= $f['pct_falta'] ?>%</td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
     </div>
 
     <!-- Tabla ranking -->

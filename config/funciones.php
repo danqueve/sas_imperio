@@ -994,6 +994,193 @@ function password_es_debil(string $pw): bool
     return strlen($pw) < 8 || !preg_match('/[A-Za-z]/', $pw) || !preg_match('/[0-9]/', $pw);
 }
 
+// ── Objetivo de venta por vendedor ──────────────────────────────
+
+/**
+ * Escala el objetivo mensual de un vendedor al período elegido, redondeando
+ * a la cantidad de meses más cercana (mínimo 1) — no por fracción de días.
+ * "Mes actual"/"Mes anterior" siempre muestran el objetivo mensual completo
+ * (redondean a 1), y los períodos de varios meses escalan por esa cantidad
+ * (trimestre ×3, semestre ×6, etc.). Se prefirió esto sobre prorratear por
+ * días exactos porque para un mes en curso (parcial por definición, del
+ * día 1 a hoy) reducir el objetivo según cuántos días pasaron generaba un
+ * número que no se sentía relacionado con lo cargado. 30.4375 = promedio
+ * de días/mes (365.25/12). Sin fechas (histórico) no hay ventana para calcular.
+ */
+function objetivo_del_periodo(?float $objetivo_mensual, ?string $desde, ?string $hasta): ?float
+{
+    if ($objetivo_mensual === null || !$desde || !$hasta) return null;
+    $dias  = (strtotime($hasta) - strtotime($desde)) / 86400 + 1;
+    $meses = max(1, (int) round($dias / 30.4375));
+    return round($objetivo_mensual * $meses, 2);
+}
+
+/**
+ * Vendedores con objetivo cargado + su monto vendido en el período, listos
+ * para mostrar en pantalla o exportar (CSV/PDF) — una sola fuente de verdad
+ * para que los 3 siempre coincidan.
+ */
+function obtener_objetivos_vendedores(PDO $pdo, ?string $f_desde, ?string $f_hasta): array
+{
+    if (!$f_desde || !$f_hasta) return [];
+
+    $stmt = $pdo->prepare("
+        SELECT v.nombre, v.apellido, v.objetivo_mensual,
+               COALESCE(SUM(cr.monto_total), 0) AS monto_vendido
+        FROM ic_vendedores v
+        LEFT JOIN ic_creditos cr ON cr.vendedor_id = v.id AND cr.fecha_alta BETWEEN ? AND ?
+        WHERE v.objetivo_mensual IS NOT NULL
+        GROUP BY v.id, v.nombre, v.apellido, v.objetivo_mensual
+        ORDER BY v.apellido, v.nombre
+    ");
+    $stmt->execute([$f_desde, $f_hasta]);
+
+    $filas = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $v) {
+        $obj       = objetivo_del_periodo((float)$v['objetivo_mensual'], $f_desde, $f_hasta);
+        $vendido   = (float)$v['monto_vendido'];
+        $faltante  = max(0, $obj - $vendido);
+        $pct_cumpl = $obj > 0 ? round($vendido / $obj * 100) : 0;
+        $pct_falta = max(0, 100 - $pct_cumpl);
+        $filas[] = [
+            'vendedor'  => $v['apellido'] . ', ' . $v['nombre'],
+            'vendido'   => $vendido,
+            'objetivo'  => $obj,
+            'faltante'  => $faltante,
+            'pct_cumpl' => $pct_cumpl,
+            'pct_falta' => $pct_falta,
+        ];
+    }
+    return $filas;
+}
+
+// ── Cartera por Zona (cobradores) ────────────────────────────────
+
+/**
+ * Cartera por zona de un cobrador, para los créditos otorgados en el
+ * período (cohorte por fecha_alta). Todas las métricas se calculan
+ * sobre el estado ACTUAL de esos créditos, no sobre vencimientos
+ * dentro del rango. Una sola fuente de verdad para pantalla, CSV y PDF.
+ */
+function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?string $hasta): array
+{
+    $zInit = ['clientes' => 0, 'monto_otorgado' => 0.0, 'importe_total' => 0.0,
+              'atraso' => 0.0, 'devolucion' => 0.0, 'cobrado' => 0.0];
+    $por_zona = [];
+    $zona_de = fn(string $zona) => $zona !== '' ? $zona : 'Sin zona';
+
+    // Sin fecha (histórico) = toda la cartera del cobrador, sin acotar por fecha_alta
+    $con_fecha    = ($desde !== null && $hasta !== null);
+    $where_fecha  = $con_fecha ? 'AND cr.fecha_alta BETWEEN ? AND ?' : '';
+    $params_fecha = $con_fecha ? [$desde, $hasta] : [];
+
+    // 1) Clientes + monto otorgado — todos los créditos de la cohorte (o toda la cartera)
+    $stmt1 = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               COUNT(DISTINCT cl.id) AS clientes,
+               COALESCE(SUM(cr.monto_total), 0) AS monto_otorgado
+        FROM ic_creditos cr
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE cr.cobrador_id = ? $where_fecha
+        GROUP BY zona
+    ");
+    $stmt1->execute(array_merge([$cobrador_id], $params_fecha));
+    foreach ($stmt1->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $z = $zona_de($r['zona']);
+        $por_zona[$z] = $por_zona[$z] ?? $zInit;
+        $por_zona[$z]['clientes']       = (int) $r['clientes'];
+        $por_zona[$z]['monto_otorgado'] = (float) $r['monto_otorgado'];
+    }
+
+    // 2) Importe Total pendiente — créditos EN_CURSO/MOROSO de la cohorte
+    $stmt2 = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               cu.monto_cuota, cu.monto_mora, cu.saldo_pagado,
+               cu.fecha_vencimiento, cr.interes_moratorio_pct
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE cr.cobrador_id = ? $where_fecha
+          AND cr.estado IN ('EN_CURSO', 'MOROSO')
+          AND cu.estado NOT IN ('PAGADA', 'CANCELADA')
+    ");
+    $stmt2->execute(array_merge([$cobrador_id], $params_fecha));
+    foreach ($stmt2->fetchAll(PDO::FETCH_ASSOC) as $cu) {
+        $z = $zona_de($cu['zona']);
+        $por_zona[$z] = $por_zona[$z] ?? $zInit;
+        $dias = dias_atraso_habiles($cu['fecha_vencimiento']);
+        $mora = (float)$cu['monto_mora'] > 0
+            ? (float)$cu['monto_mora']
+            : calcular_mora((float)$cu['monto_cuota'], $dias, (float)$cu['interes_moratorio_pct']);
+        $por_zona[$z]['importe_total'] += max(0, (float)$cu['monto_cuota'] + $mora - (float)$cu['saldo_pagado']);
+    }
+
+    // 3) Atraso — cuotas vencidas hoy, de la cohorte (mismo criterio que admin/atrasados.php)
+    $stmt3 = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               SUM(cu.monto_cuota - cu.saldo_pagado) AS atraso_zona
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE cr.cobrador_id = ? $where_fecha
+          AND cu.estado IN ('VENCIDA', 'PENDIENTE') AND cu.fecha_vencimiento < CURDATE()
+        GROUP BY zona
+    ");
+    $stmt3->execute(array_merge([$cobrador_id], $params_fecha));
+    foreach ($stmt3->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $z = $zona_de($r['zona']);
+        $por_zona[$z] = $por_zona[$z] ?? $zInit;
+        $por_zona[$z]['atraso'] = (float) $r['atraso_zona'];
+    }
+
+    // 4) Devolución de artículos — cuotas CANCELADA por retiro de producto, de la cohorte
+    $stmt4 = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               SUM(cu.monto_cuota - cu.saldo_pagado) AS devolucion_zona
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE cr.cobrador_id = ? $where_fecha
+          AND cr.motivo_finalizacion = 'RETIRO_PRODUCTO' AND cu.estado = 'CANCELADA'
+        GROUP BY zona
+    ");
+    $stmt4->execute(array_merge([$cobrador_id], $params_fecha));
+    foreach ($stmt4->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $z = $zona_de($r['zona']);
+        $por_zona[$z] = $por_zona[$z] ?? $zInit;
+        $por_zona[$z]['devolucion'] = (float) $r['devolucion_zona'];
+    }
+
+    // 5) Cobrado — consulta directa a ic_pagos_confirmados, de la cohorte
+    $stmt5 = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               SUM(pc.monto_total) AS cobrado_zona
+        FROM ic_pagos_confirmados pc
+        JOIN ic_cuotas cu   ON cu.id = pc.cuota_id
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE cr.cobrador_id = ? $where_fecha
+        GROUP BY zona
+    ");
+    $stmt5->execute(array_merge([$cobrador_id], $params_fecha));
+    foreach ($stmt5->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $z = $zona_de($r['zona']);
+        $por_zona[$z] = $por_zona[$z] ?? $zInit;
+        $por_zona[$z]['cobrado'] = (float) $r['cobrado_zona'];
+    }
+
+    foreach ($por_zona as &$dz) {
+        $dz['pct_cobro']  = $dz['monto_otorgado'] > 0 ? round($dz['cobrado'] / $dz['monto_otorgado'] * 100) : 0;
+        $dz['pct_atraso'] = $dz['monto_otorgado'] > 0 ? round($dz['atraso']  / $dz['monto_otorgado'] * 100) : 0;
+    }
+    unset($dz);
+
+    // Zonas más riesgosas primero — este reporte es "primero riesgo, no
+    // primero volumen" (a diferencia de estadisticas_zona.php)
+    uasort($por_zona, fn($a, $b) => $b['pct_atraso'] <=> $a['pct_atraso']);
+    return $por_zona;
+}
+
 // ── Log de Actividades ────────────────────────────────────────
 
 function registrar_log(

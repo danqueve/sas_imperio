@@ -133,6 +133,7 @@ $page_title = 'Vendedores';
 $page_current = 'vendedores';
 $topbar_actions = '<a href="estadisticas" class="btn-ic btn-ghost btn-sm"><i class="fa fa-chart-bar"></i> Estadísticas</a>';
 if (es_admin()) {
+    $topbar_actions .= ' <a href="objetivos" class="btn-ic btn-ghost btn-sm"><i class="fa fa-bullseye"></i> Objetivos</a>';
     $topbar_actions .= ' <a href="nuevo" class="btn-ic btn-primary btn-sm"><i class="fa fa-plus"></i> Nuevo Vendedor</a>';
 }
 require_once __DIR__ . '/../views/layout.php';
