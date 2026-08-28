@@ -53,7 +53,7 @@ $stmt = $pdo->prepare("
                         AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas cu ON cu.credito_id = cr.id
                       AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
-                      AND cu.fecha_vencimiento BETWEEN ? AND ?
+                      AND cu.fecha_vencimiento <= ?
     WHERE NOT EXISTS (
         SELECT 1
         FROM ic_pagos_temporales pt
@@ -65,7 +65,7 @@ $stmt = $pdo->prepare("
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
 ");
-$stmt->execute([$cobrador_id, $lunes_str, $sabado_str, $lunes_str, $sabado_str]);
+$stmt->execute([$cobrador_id, $sabado_str, $lunes_str, $sabado_str]);
 $rows = $stmt->fetchAll();
 
 // ── Diario/Quincenal/Mensual: cuotas con vencimiento dentro de la semana ──
@@ -94,7 +94,7 @@ $stmt2 = $pdo->prepare("
                         AND cr.frecuencia IN ('diario','quincenal','mensual')
     JOIN ic_cuotas cu ON cu.credito_id = cr.id
                       AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
-                      AND cu.fecha_vencimiento BETWEEN ? AND ?
+                      AND cu.fecha_vencimiento <= ?
     WHERE NOT EXISTS (
         SELECT 1
         FROM ic_pagos_temporales pt
@@ -106,7 +106,7 @@ $stmt2 = $pdo->prepare("
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
 ");
-$stmt2->execute([$cobrador_id, $lunes_str, $sabado_str, $lunes_str, $sabado_str]);
+$stmt2->execute([$cobrador_id, $sabado_str, $lunes_str, $sabado_str]);
 $rows = array_merge($rows, $stmt2->fetchAll());
 
 if (empty($rows)) die('No hay clientes faltantes para esta semana.');
@@ -120,6 +120,7 @@ foreach ($rows as $r) {
     $rows_dedup[] = $r;
 }
 $rows = $rows_dedup;
+$hay_atraso_previo = false;
 
 // ── Agrupar por frecuencia (Semanal/Quincenal/Mensual/Diario) ─
 $ORDEN_FREC = ['semanal' => 'Semanales', 'quincenal' => 'Quincenales', 'mensual' => 'Mensuales', 'diario' => 'Diarios'];
@@ -247,6 +248,8 @@ foreach ($por_zona as $zona => $lista) {
         if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
         $direccion = mb_strimwidth(trim($r['direccion'] ?? '') ?: '-', 0, 36, '..');
         $venc      = date('d/m/y', strtotime($r['fecha_vencimiento']));
+        $es_previo = $r['fecha_vencimiento'] < $lunes_str;
+        if ($es_previo) $hay_atraso_previo = true;
 
         // Celdas con borde, todas vacías — el texto se superpone centrado verticalmente
         $pdf->Cell($CA[0], $row_h, (string) $num, 1, 0, 'C', false);
@@ -284,10 +287,12 @@ foreach ($por_zona as $zona => $lista) {
         $pdf->SetXY($dx + 0.8, $y_centro);
         $pdf->Cell($CA[2] - 1, 4, lat($direccion), 0, 0, 'L', false);
 
-        // Texto vencimiento
+        // Texto vencimiento (naranja si viene de semanas anteriores)
         $vx = $dx + $CA[2];
+        if ($es_previo) $pdf->SetTextColor(200, 80, 0);
         $pdf->SetXY($vx, $y_centro);
         $pdf->Cell($CA[3], 4, $venc, 0, 0, 'C', false);
+        if ($es_previo) $pdf->SetTextColor(0, 0, 0);
 
         // Texto monto adeudado
         $mx = $vx + $CA[3];
@@ -339,6 +344,15 @@ $pdf->SetFont('Helvetica', 'B', 9);
 $pdf->Cell($CA[0] + $CA[1] + $CA[2] + $CA[3], 7, lat('TOTAL GENERAL — ' . count($rows) . ' cliente(s)'), 1, 0, 'R');
 $pdf->Cell($CA[4], 7, lat(fmt($total_gral)), 1, 0, 'R');
 $pdf->Cell($CA[5], 7, '', 1, 1, 'L');
+
+if ($hay_atraso_previo) {
+    $pdf->Ln(4);
+    $pdf->SetFont('Helvetica', 'I', 7);
+    $pdf->SetTextColor(200, 80, 0);
+    $pdf->SetX(10);
+    $pdf->Cell(190, 4, lat('Fecha en naranja = cuota vencida de semanas anteriores, todavia sin cobrar.'), 0, 1, 'L');
+    $pdf->SetTextColor(0, 0, 0);
+}
 
 $nombre_pdf = 'faltantes_' . $cobrador_id . '_' . str_replace('-', '', $lunes_str) . '.pdf';
 $pdf->Output('I', $nombre_pdf);
