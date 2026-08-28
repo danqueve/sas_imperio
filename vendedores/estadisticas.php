@@ -157,7 +157,7 @@ if ($vendedor_id !== 0) {
     // Clientes recurrentes (≥2 créditos en el período)
     $where_vend_bare = $vendedor_id === -1 ? "vendedor_id IS NULL" : "vendedor_id = ?";
     $rec_sql = "SELECT COUNT(*) FROM (
-        SELECT cliente_id FROM ic_creditos WHERE $where_vend_bare $where_fecha
+        SELECT cliente_id FROM ic_creditos cr WHERE $where_vend_bare $where_fecha
         GROUP BY cliente_id HAVING COUNT(*) >= 2
     ) sub";
     $rec_stmt = $pdo->prepare($rec_sql);
