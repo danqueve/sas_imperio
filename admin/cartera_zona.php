@@ -85,6 +85,7 @@ $total_atraso     = array_sum(array_column($zonas_cob, 'atraso'));
 $total_devolucion = array_sum(array_column($zonas_cob, 'devolucion'));
 $total_otorgado   = array_sum(array_column($zonas_cob, 'monto_otorgado'));
 $total_cobrado    = array_sum(array_column($zonas_cob, 'cobrado'));
+$total_faltante   = array_sum(array_column($zonas_cob, 'faltante'));
 $pct_cobro_total  = $total_otorgado > 0 ? round($total_cobrado / $total_otorgado * 100) : 0;
 $pct_atraso_total = $total_otorgado > 0 ? round($total_atraso  / $total_otorgado * 100) : 0;
 
@@ -94,14 +95,15 @@ if (($_GET['export'] ?? '') === 'csv' && $cobrador_id > 0 && !empty($zonas_cob))
     header('Content-Disposition: attachment; filename="cartera_zona_cob' . $cobrador_id . '_' . ($desde ?? 'historico') . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['Zona', 'Clientes', 'Importe Total', 'Atraso', 'Devolucion Articulos', 'Cobrado', '% Cobro', '% Atraso'], ';', '"', '\\');
+    fputcsv($out, ['Zona', 'Clientes', 'Importe Total', 'Cobrado', 'Faltante', 'Atraso', 'Devolucion Articulos', '% Cobro', '% Atraso'], ';', '"', '\\');
     foreach ($zonas_cob as $zona => $dz) {
         fputcsv($out, [
             $zona, $dz['clientes'],
             number_format($dz['importe_total'], 2, ',', '.'),
+            number_format($dz['cobrado'], 2, ',', '.'),
+            number_format($dz['faltante'], 2, ',', '.'),
             number_format($dz['atraso'], 2, ',', '.'),
             number_format($dz['devolucion'], 2, ',', '.'),
-            number_format($dz['cobrado'], 2, ',', '.'),
             $dz['pct_cobro'] . '%', $dz['pct_atraso'] . '%',
         ], ';', '"', '\\');
     }
@@ -269,12 +271,16 @@ $color_hero = color_atraso($pct_atraso_total);
             <span style="font-weight:700"><?= formato_pesos($total_importe) ?></span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
-            <span style="color:var(--text-muted)">Devolución Artículos</span>
-            <span style="font-weight:700;color:<?= $total_devolucion > 0 ? 'var(--warning)' : 'var(--text-muted)' ?>"><?= formato_pesos($total_devolucion) ?></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:.82rem">
             <span style="color:var(--text-muted)">Cobrado</span>
             <span style="font-weight:700"><?= formato_pesos($total_cobrado) ?></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.82rem">
+            <span style="color:var(--text-muted)">Faltante</span>
+            <span style="font-weight:700"><?= formato_pesos($total_faltante) ?></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.82rem">
+            <span style="color:var(--text-muted)">Devolución Artículos</span>
+            <span style="font-weight:700;color:<?= $total_devolucion > 0 ? 'var(--warning)' : 'var(--text-muted)' ?>"><?= formato_pesos($total_devolucion) ?></span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
             <span style="color:var(--text-muted)">% Cobro</span>
@@ -326,12 +332,16 @@ $color_hero = color_atraso($pct_atraso_total);
                 <span style="font-weight:700"><?= formato_pesos($dz['importe_total']) ?></span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px">
-                <span style="color:var(--text-muted)">Atraso</span>
-                <span style="font-weight:700;color:<?= $dz['atraso'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>"><?= formato_pesos($dz['atraso']) ?></span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:12px">
                 <span style="color:var(--text-muted)">Cobrado</span>
                 <span style="font-weight:700"><?= formato_pesos($dz['cobrado']) ?></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px">
+                <span style="color:var(--text-muted)">Faltante</span>
+                <span style="font-weight:700"><?= formato_pesos($dz['faltante']) ?></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:12px">
+                <span style="color:var(--text-muted)">Atraso</span>
+                <span style="font-weight:700;color:<?= $dz['atraso'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>"><?= formato_pesos($dz['atraso']) ?></span>
             </div>
 
             <?php if ($dz['devolucion'] > 0): ?>

@@ -1065,7 +1065,7 @@ function obtener_objetivos_vendedores(PDO $pdo, ?string $f_desde, ?string $f_has
 function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?string $hasta): array
 {
     $zInit = ['clientes' => 0, 'monto_otorgado' => 0.0, 'importe_total' => 0.0,
-              'atraso' => 0.0, 'devolucion' => 0.0, 'cobrado' => 0.0];
+              'atraso' => 0.0, 'devolucion' => 0.0, 'cobrado' => 0.0, 'faltante' => 0.0];
     $por_zona = [];
     $zona_de = fn(string $zona) => $zona !== '' ? $zona : 'Sin zona';
 
@@ -1172,6 +1172,7 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
     foreach ($por_zona as &$dz) {
         $dz['pct_cobro']  = $dz['monto_otorgado'] > 0 ? round($dz['cobrado'] / $dz['monto_otorgado'] * 100) : 0;
         $dz['pct_atraso'] = $dz['monto_otorgado'] > 0 ? round($dz['atraso']  / $dz['monto_otorgado'] * 100) : 0;
+        $dz['faltante']   = max(0, $dz['monto_otorgado'] - $dz['cobrado']);
     }
     unset($dz);
 

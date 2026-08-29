@@ -46,15 +46,16 @@ $total_atraso     = array_sum(array_column($zonas_cob, 'atraso'));
 $total_devolucion = array_sum(array_column($zonas_cob, 'devolucion'));
 $total_otorgado   = array_sum(array_column($zonas_cob, 'monto_otorgado'));
 $total_cobrado    = array_sum(array_column($zonas_cob, 'cobrado'));
+$total_faltante   = array_sum(array_column($zonas_cob, 'faltante'));
 $pct_cobro_total  = $total_otorgado > 0 ? round($total_cobrado / $total_otorgado * 100) : 0;
 $pct_atraso_total = $total_otorgado > 0 ? round($total_atraso  / $total_otorgado * 100) : 0;
 
 require_once __DIR__ . '/../lib/PDFBase.php';
 
-// Columnas: Zona(28) + Clientes(15) + Importe Total(26) + Atraso(24) + Devolucion(24) + Cobrado(26) + %Cobro(23) + %Atraso(24) = 190
-$COLS   = [28, 15, 26, 24, 24, 26, 23, 24];
-$LABELS = ['Zona', 'Clientes', 'Importe Total', 'Atraso', 'Devol. Articulos', 'Cobrado', '% Cobro', '% Atraso'];
-$ALIGNS = ['L', 'C', 'R', 'R', 'R', 'R', 'R', 'R'];
+// Columnas: Zona(24) + Clientes(13) + Importe Total(22) + Cobrado(21) + Faltante(21) + Atraso(20) + Devolucion(24) + %Cobro(22) + %Atraso(23) = 190
+$COLS   = [24, 13, 22, 21, 21, 20, 24, 22, 23];
+$LABELS = ['Zona', 'Clientes', 'Importe Total', 'Cobrado', 'Faltante', 'Atraso', 'Devol. Articulos', '% Cobro', '% Atraso'];
+$ALIGNS = ['L', 'C', 'R', 'R', 'R', 'R', 'R', 'R', 'R'];
 
 class CarteraZonaPDF extends PDFBase
 {
@@ -119,16 +120,17 @@ foreach ($zonas_cob as $zona => $dz) {
     $pdf->Cell($COLS[0], 5.5, $pdf->fitText($zona, $COLS[0] - 2), 1, 0, 'L');
     $pdf->Cell($COLS[1], 5.5, (string)$dz['clientes'], 1, 0, 'C');
     $pdf->Cell($COLS[2], 5.5, lat(fmt($dz['importe_total'])), 1, 0, 'R');
+    $pdf->Cell($COLS[3], 5.5, lat(fmt($dz['cobrado'])), 1, 0, 'R');
+    $pdf->Cell($COLS[4], 5.5, lat(fmt($dz['faltante'])), 1, 0, 'R');
     $pdf->SetTextColor($dz['atraso'] > 0 ? 200 : 0, 0, 0);
-    $pdf->Cell($COLS[3], 5.5, lat(fmt($dz['atraso'])), 1, 0, 'R');
+    $pdf->Cell($COLS[5], 5.5, lat(fmt($dz['atraso'])), 1, 0, 'R');
     $pdf->SetTextColor(0, 0, 0);
-    $pdf->Cell($COLS[4], 5.5, lat(fmt($dz['devolucion'])), 1, 0, 'R');
-    $pdf->Cell($COLS[5], 5.5, lat(fmt($dz['cobrado'])), 1, 0, 'R');
+    $pdf->Cell($COLS[6], 5.5, lat(fmt($dz['devolucion'])), 1, 0, 'R');
     $pdf->SetFont('Helvetica', 'B', 7);
     $pdf->SetTextColor($color_cobro[0], $color_cobro[1], $color_cobro[2]);
-    $pdf->Cell($COLS[6], 5.5, $dz['pct_cobro'] . '%', 1, 0, 'R');
+    $pdf->Cell($COLS[7], 5.5, $dz['pct_cobro'] . '%', 1, 0, 'R');
     $pdf->SetTextColor($color_atraso[0], $color_atraso[1], $color_atraso[2]);
-    $pdf->Cell($COLS[7], 5.5, $dz['pct_atraso'] . '%', 1, 0, 'R');
+    $pdf->Cell($COLS[8], 5.5, $dz['pct_atraso'] . '%', 1, 0, 'R');
     $pdf->SetTextColor(0, 0, 0);
     $pdf->SetFont('Helvetica', '', 7);
     $pdf->Ln();
@@ -139,11 +141,12 @@ $pdf->SetX(10);
 $pdf->Cell($COLS[0], 6, lat('TOTAL (' . count($zonas_cob) . ' zonas)'), 1, 0, 'L');
 $pdf->Cell($COLS[1], 6, (string)$total_clientes, 1, 0, 'C');
 $pdf->Cell($COLS[2], 6, lat(fmt($total_importe)), 1, 0, 'R');
-$pdf->Cell($COLS[3], 6, lat(fmt($total_atraso)), 1, 0, 'R');
-$pdf->Cell($COLS[4], 6, lat(fmt($total_devolucion)), 1, 0, 'R');
-$pdf->Cell($COLS[5], 6, lat(fmt($total_cobrado)), 1, 0, 'R');
-$pdf->Cell($COLS[6], 6, $pct_cobro_total . '%', 1, 0, 'R');
-$pdf->Cell($COLS[7], 6, $pct_atraso_total . '%', 1, 0, 'R');
+$pdf->Cell($COLS[3], 6, lat(fmt($total_cobrado)), 1, 0, 'R');
+$pdf->Cell($COLS[4], 6, lat(fmt($total_faltante)), 1, 0, 'R');
+$pdf->Cell($COLS[5], 6, lat(fmt($total_atraso)), 1, 0, 'R');
+$pdf->Cell($COLS[6], 6, lat(fmt($total_devolucion)), 1, 0, 'R');
+$pdf->Cell($COLS[7], 6, $pct_cobro_total . '%', 1, 0, 'R');
+$pdf->Cell($COLS[8], 6, $pct_atraso_total . '%', 1, 0, 'R');
 $pdf->Ln();
 
 $pdf->Ln(4);
@@ -158,6 +161,8 @@ $pdf->MultiCell(190, 4, lat(
     'Importe Total = saldo pendiente de cobro ' .
     'de creditos activos. Atraso = solo la porcion ya vencida hoy. Devolucion Articulos = saldo que faltaba ' .
     'cobrar en los creditos finalizados por retiro de producto. Cobrado = pagos confirmados de esos creditos. ' .
+    'Faltante = monto otorgado menos lo cobrado (incluye lo que quedo sin cobrar en creditos finalizados, ' .
+    'por ejemplo por devolucion de articulo). ' .
     '% Cobro y % Atraso se calculan sobre el monto ' .
     'total otorgado' . ($modo_historico ? '.' : ' en el periodo.')
 ), 0, 'L');
