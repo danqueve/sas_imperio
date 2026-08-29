@@ -1064,8 +1064,8 @@ function obtener_objetivos_vendedores(PDO $pdo, ?string $f_desde, ?string $f_has
  */
 function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?string $hasta): array
 {
-    $zInit = ['clientes' => 0, 'monto_otorgado' => 0.0, 'importe_total' => 0.0,
-              'atraso' => 0.0, 'devolucion' => 0.0, 'cobrado' => 0.0, 'faltante' => 0.0];
+    $zInit = ['clientes' => 0, 'monto_otorgado' => 0.0, 'cobrado' => 0.0,
+              'devolucion' => 0.0, 'incobrable' => 0.0, 'atraso' => 0.0, 'faltante' => 0.0];
     $por_zona = [];
     $zona_de = fn(string $zona) => $zona !== '' ? $zona : 'Sin zona';
 
@@ -1074,7 +1074,8 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
     $where_fecha  = $con_fecha ? 'AND cr.fecha_alta BETWEEN ? AND ?' : '';
     $params_fecha = $con_fecha ? [$desde, $hasta] : [];
 
-    // 1) Clientes + monto otorgado — todos los créditos de la cohorte (o toda la cartera)
+    // 1) Clientes + monto otorgado (Valor Total) — todos los créditos de la
+    //    cohorte (o toda la cartera), sin importar su estado actual
     $stmt1 = $pdo->prepare("
         SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
                COUNT(DISTINCT cl.id) AS clientes,
@@ -1090,29 +1091,6 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
         $por_zona[$z] = $por_zona[$z] ?? $zInit;
         $por_zona[$z]['clientes']       = (int) $r['clientes'];
         $por_zona[$z]['monto_otorgado'] = (float) $r['monto_otorgado'];
-    }
-
-    // 2) Importe Total pendiente — créditos EN_CURSO/MOROSO de la cohorte
-    $stmt2 = $pdo->prepare("
-        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-               cu.monto_cuota, cu.monto_mora, cu.saldo_pagado,
-               cu.fecha_vencimiento, cr.interes_moratorio_pct
-        FROM ic_cuotas cu
-        JOIN ic_creditos cr ON cu.credito_id = cr.id
-        JOIN ic_clientes cl ON cl.id = cr.cliente_id
-        WHERE cr.cobrador_id = ? $where_fecha
-          AND cr.estado IN ('EN_CURSO', 'MOROSO')
-          AND cu.estado NOT IN ('PAGADA', 'CANCELADA')
-    ");
-    $stmt2->execute(array_merge([$cobrador_id], $params_fecha));
-    foreach ($stmt2->fetchAll(PDO::FETCH_ASSOC) as $cu) {
-        $z = $zona_de($cu['zona']);
-        $por_zona[$z] = $por_zona[$z] ?? $zInit;
-        $dias = dias_atraso_habiles($cu['fecha_vencimiento']);
-        $mora = (float)$cu['monto_mora'] > 0
-            ? (float)$cu['monto_mora']
-            : calcular_mora((float)$cu['monto_cuota'], $dias, (float)$cu['interes_moratorio_pct']);
-        $por_zona[$z]['importe_total'] += max(0, (float)$cu['monto_cuota'] + $mora - (float)$cu['saldo_pagado']);
     }
 
     // 3) Atraso — cuotas vencidas hoy, de la cohorte (mismo criterio que admin/atrasados.php)
@@ -1169,10 +1147,33 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
         $por_zona[$z]['cobrado'] = (float) $r['cobrado_zona'];
     }
 
+    // 6) Incobrable — cuotas CANCELADA por incobrabilidad, mala reputación o
+    //    acuerdo extrajudicial (motivos de baja distintos a Retiro de
+    //    Producto, que ya tiene su propia columna "Devolución")
+    $stmt6 = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               SUM(cu.monto_cuota - cu.saldo_pagado) AS incobrable_zona
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE cr.cobrador_id = ? $where_fecha
+          AND cr.motivo_finalizacion IN ('INCOBRABILIDAD', 'FINALIZADO_CREDITO', 'ACUERDO_EXTRAJUDICIAL')
+          AND cu.estado = 'CANCELADA'
+        GROUP BY zona
+    ");
+    $stmt6->execute(array_merge([$cobrador_id], $params_fecha));
+    foreach ($stmt6->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $z = $zona_de($r['zona']);
+        $por_zona[$z] = $por_zona[$z] ?? $zInit;
+        $por_zona[$z]['incobrable'] = (float) $r['incobrable_zona'];
+    }
+
+    // Valor Total = Cobrado + Devolución + Incobrable + Faltante, siempre
+    // exacto por construcción (Faltante es lo que sobra de la resta)
     foreach ($por_zona as &$dz) {
         $dz['pct_cobro']  = $dz['monto_otorgado'] > 0 ? round($dz['cobrado'] / $dz['monto_otorgado'] * 100) : 0;
         $dz['pct_atraso'] = $dz['monto_otorgado'] > 0 ? round($dz['atraso']  / $dz['monto_otorgado'] * 100) : 0;
-        $dz['faltante']   = max(0, $dz['monto_otorgado'] - $dz['cobrado']);
+        $dz['faltante']   = max(0, $dz['monto_otorgado'] - $dz['cobrado'] - $dz['devolucion'] - $dz['incobrable']);
     }
     unset($dz);
 

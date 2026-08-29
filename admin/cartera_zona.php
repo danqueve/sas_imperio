@@ -80,9 +80,9 @@ if ($cobrador_id > 0) {
 }
 
 $total_clientes   = array_sum(array_column($zonas_cob, 'clientes'));
-$total_importe    = array_sum(array_column($zonas_cob, 'importe_total'));
 $total_atraso     = array_sum(array_column($zonas_cob, 'atraso'));
 $total_devolucion = array_sum(array_column($zonas_cob, 'devolucion'));
+$total_incobrable = array_sum(array_column($zonas_cob, 'incobrable'));
 $total_otorgado   = array_sum(array_column($zonas_cob, 'monto_otorgado'));
 $total_cobrado    = array_sum(array_column($zonas_cob, 'cobrado'));
 $total_faltante   = array_sum(array_column($zonas_cob, 'faltante'));
@@ -95,15 +95,16 @@ if (($_GET['export'] ?? '') === 'csv' && $cobrador_id > 0 && !empty($zonas_cob))
     header('Content-Disposition: attachment; filename="cartera_zona_cob' . $cobrador_id . '_' . ($desde ?? 'historico') . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['Zona', 'Clientes', 'Importe Total', 'Cobrado', 'Faltante', 'Atraso', 'Devolucion Articulos', '% Cobro', '% Atraso'], ';', '"', '\\');
+    fputcsv($out, ['Zona', 'Clientes', 'Valor Total', 'Cobrado', 'Devolucion Articulos', 'Incobrable', 'Faltante', 'Atraso', '% Cobro', '% Atraso'], ';', '"', '\\');
     foreach ($zonas_cob as $zona => $dz) {
         fputcsv($out, [
             $zona, $dz['clientes'],
-            number_format($dz['importe_total'], 2, ',', '.'),
+            number_format($dz['monto_otorgado'], 2, ',', '.'),
             number_format($dz['cobrado'], 2, ',', '.'),
+            number_format($dz['devolucion'], 2, ',', '.'),
+            number_format($dz['incobrable'], 2, ',', '.'),
             number_format($dz['faltante'], 2, ',', '.'),
             number_format($dz['atraso'], 2, ',', '.'),
-            number_format($dz['devolucion'], 2, ',', '.'),
             $dz['pct_cobro'] . '%', $dz['pct_atraso'] . '%',
         ], ';', '"', '\\');
     }
@@ -267,20 +268,24 @@ $color_hero = color_atraso($pct_atraso_total);
             <span style="font-weight:700"><?= number_format($total_clientes, 0, ',', '.') ?></span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
-            <span style="color:var(--text-muted)">Importe Total</span>
-            <span style="font-weight:700"><?= formato_pesos($total_importe) ?></span>
+            <span style="color:var(--text-muted)">Valor Total</span>
+            <span style="font-weight:700"><?= formato_pesos($total_otorgado) ?></span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
             <span style="color:var(--text-muted)">Cobrado</span>
             <span style="font-weight:700"><?= formato_pesos($total_cobrado) ?></span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
-            <span style="color:var(--text-muted)">Faltante</span>
-            <span style="font-weight:700"><?= formato_pesos($total_faltante) ?></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:.82rem">
             <span style="color:var(--text-muted)">Devolución Artículos</span>
             <span style="font-weight:700;color:<?= $total_devolucion > 0 ? 'var(--warning)' : 'var(--text-muted)' ?>"><?= formato_pesos($total_devolucion) ?></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.82rem">
+            <span style="color:var(--text-muted)">Incobrable</span>
+            <span style="font-weight:700;color:<?= $total_incobrable > 0 ? 'var(--warning)' : 'var(--text-muted)' ?>"><?= formato_pesos($total_incobrable) ?></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.82rem">
+            <span style="color:var(--text-muted)">Faltante</span>
+            <span style="font-weight:700"><?= formato_pesos($total_faltante) ?></span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
             <span style="color:var(--text-muted)">% Cobro</span>
@@ -328,8 +333,8 @@ $color_hero = color_atraso($pct_atraso_total);
             </div>
 
             <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px">
-                <span style="color:var(--text-muted)">Importe Total</span>
-                <span style="font-weight:700"><?= formato_pesos($dz['importe_total']) ?></span>
+                <span style="color:var(--text-muted)">Valor Total</span>
+                <span style="font-weight:700"><?= formato_pesos($dz['monto_otorgado']) ?></span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px">
                 <span style="color:var(--text-muted)">Cobrado</span>
@@ -344,10 +349,20 @@ $color_hero = color_atraso($pct_atraso_total);
                 <span style="font-weight:700;color:<?= $dz['atraso'] > 0 ? 'var(--danger)' : 'var(--text-muted)' ?>"><?= formato_pesos($dz['atraso']) ?></span>
             </div>
 
-            <?php if ($dz['devolucion'] > 0): ?>
-            <div style="display:inline-block;background:rgba(245,158,11,.15);color:#f59e0b;font-size:.72rem;
-                        font-weight:700;padding:3px 10px;border-radius:999px;margin-bottom:12px">
-                Devolución: <?= formato_pesos($dz['devolucion']) ?>
+            <?php if ($dz['devolucion'] > 0 || $dz['incobrable'] > 0): ?>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+                <?php if ($dz['devolucion'] > 0): ?>
+                <div style="background:rgba(245,158,11,.15);color:#f59e0b;font-size:.72rem;
+                            font-weight:700;padding:3px 10px;border-radius:999px">
+                    Devolución: <?= formato_pesos($dz['devolucion']) ?>
+                </div>
+                <?php endif; ?>
+                <?php if ($dz['incobrable'] > 0): ?>
+                <div style="background:rgba(245,158,11,.15);color:#f59e0b;font-size:.72rem;
+                            font-weight:700;padding:3px 10px;border-radius:999px">
+                    Incobrable: <?= formato_pesos($dz['incobrable']) ?>
+                </div>
+                <?php endif; ?>
             </div>
             <?php endif; ?>
 
@@ -365,10 +380,10 @@ $color_hero = color_atraso($pct_atraso_total);
     </div>
 </div>
 
-<!-- Gráfico: Importe Total vs % Atraso -->
+<!-- Gráfico: Valor Total vs % Atraso -->
 <div class="card-ic mb-4">
     <div class="card-ic-header">
-        <span class="card-title"><i class="fa fa-braille"></i> Importe Total vs % Atraso</span>
+        <span class="card-title"><i class="fa fa-braille"></i> Valor Total vs % Atraso</span>
         <span class="text-muted" style="font-size:.78rem">zonas grandes-y-sanas vs. chicas-pero-riesgosas</span>
     </div>
     <div style="padding:16px;position:relative;height:340px">
@@ -380,7 +395,7 @@ $color_hero = color_atraso($pct_atraso_total);
 $scatter_data = [];
 foreach ($zonas_cob as $zona => $dz) {
     $scatter_data[] = [
-        'x' => round($dz['importe_total'], 2),
+        'x' => round($dz['monto_otorgado'], 2),
         'y' => $dz['pct_atraso'],
         'zona' => $zona,
         'color' => color_atraso($dz['pct_atraso']),
@@ -433,7 +448,7 @@ Chart.defaults.font.family = "'Sarabun', sans-serif";
             },
             scales: {
                 x: {
-                    title: { display: true, text: 'Importe Total ($)' },
+                    title: { display: true, text: 'Valor Total ($)' },
                     grid: { color: 'rgba(255,255,255,.05)' },
                     ticks: { font: { size: 11 }, callback: v => '\$' + Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
                 },

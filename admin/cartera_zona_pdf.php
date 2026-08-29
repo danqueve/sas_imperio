@@ -41,9 +41,9 @@ if (empty($zonas_cob)) {
 }
 
 $total_clientes   = array_sum(array_column($zonas_cob, 'clientes'));
-$total_importe    = array_sum(array_column($zonas_cob, 'importe_total'));
 $total_atraso     = array_sum(array_column($zonas_cob, 'atraso'));
 $total_devolucion = array_sum(array_column($zonas_cob, 'devolucion'));
+$total_incobrable = array_sum(array_column($zonas_cob, 'incobrable'));
 $total_otorgado   = array_sum(array_column($zonas_cob, 'monto_otorgado'));
 $total_cobrado    = array_sum(array_column($zonas_cob, 'cobrado'));
 $total_faltante   = array_sum(array_column($zonas_cob, 'faltante'));
@@ -52,10 +52,12 @@ $pct_atraso_total = $total_otorgado > 0 ? round($total_atraso  / $total_otorgado
 
 require_once __DIR__ . '/../lib/PDFBase.php';
 
-// Columnas: Zona(24) + Clientes(13) + Importe Total(22) + Cobrado(21) + Faltante(21) + Atraso(20) + Devolucion(24) + %Cobro(22) + %Atraso(23) = 190
-$COLS   = [24, 13, 22, 21, 21, 20, 24, 22, 23];
-$LABELS = ['Zona', 'Clientes', 'Importe Total', 'Cobrado', 'Faltante', 'Atraso', 'Devol. Articulos', '% Cobro', '% Atraso'];
-$ALIGNS = ['L', 'C', 'R', 'R', 'R', 'R', 'R', 'R', 'R'];
+// Columnas (A4 landscape, 297mm - 10mm izq - 10mm der = 277mm utiles):
+// Zona(35) + Clientes(18) + Valor Total(32) + Cobrado(30) + Devolucion(30)
+// + Incobrable(30) + Faltante(30) + Atraso(28) + %Cobro(22) + %Atraso(22) = 277
+$COLS   = [35, 18, 32, 30, 30, 30, 30, 28, 22, 22];
+$LABELS = ['Zona', 'Clientes', 'Valor Total', 'Cobrado', 'Devol. Articulos', 'Incobrable', 'Faltante', 'Atraso', '% Cobro', '% Atraso'];
+$ALIGNS = ['L', 'C', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R'];
 
 class CarteraZonaPDF extends PDFBase
 {
@@ -73,19 +75,19 @@ class CarteraZonaPDF extends PDFBase
 
         $this->SetFont('Helvetica', 'B', 13);
         $this->SetXY(10, 8);
-        $this->Cell(190, 6, lat('Imperio Comercial'), 0, 1, 'C');
+        $this->Cell(277, 6, lat('Imperio Comercial'), 0, 1, 'C');
 
         $this->SetFont('Helvetica', '', 8);
         $this->SetX(10);
-        $this->Cell(190, 5, lat('Cartera por Zona'), 0, 1, 'C');
+        $this->Cell(277, 5, lat('Cartera por Zona'), 0, 1, 'C');
 
         $this->SetFont('Helvetica', '', 7);
         $this->SetX(10);
-        $this->Cell(95, 5, lat('Cobrador: ' . $this->cobrador_lbl), 0, 0, 'L');
-        $this->Cell(95, 5, lat('Creditos otorgados: ' . $this->periodo_lbl), 0, 1, 'R');
+        $this->Cell(138.5, 5, lat('Cobrador: ' . $this->cobrador_lbl), 0, 0, 'L');
+        $this->Cell(138.5, 5, lat('Creditos otorgados: ' . $this->periodo_lbl), 0, 1, 'R');
 
         $this->SetLineWidth(0.4);
-        $this->Line(10, $this->GetY() + 1, 200, $this->GetY() + 1);
+        $this->Line(10, $this->GetY() + 1, 287, $this->GetY() + 1);
         $this->Ln(3);
         $this->SetLineWidth(0.2);
 
@@ -100,7 +102,7 @@ class CarteraZonaPDF extends PDFBase
     }
 }
 
-$pdf = new CarteraZonaPDF('P', 'mm', 'A4');
+$pdf = new CarteraZonaPDF('L', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->SetMargins(10, 10, 10);
 $pdf->SetAutoPageBreak(true, 14);
@@ -119,18 +121,19 @@ foreach ($zonas_cob as $zona => $dz) {
     $pdf->SetX(10);
     $pdf->Cell($COLS[0], 5.5, $pdf->fitText($zona, $COLS[0] - 2), 1, 0, 'L');
     $pdf->Cell($COLS[1], 5.5, (string)$dz['clientes'], 1, 0, 'C');
-    $pdf->Cell($COLS[2], 5.5, lat(fmt($dz['importe_total'])), 1, 0, 'R');
+    $pdf->Cell($COLS[2], 5.5, lat(fmt($dz['monto_otorgado'])), 1, 0, 'R');
     $pdf->Cell($COLS[3], 5.5, lat(fmt($dz['cobrado'])), 1, 0, 'R');
-    $pdf->Cell($COLS[4], 5.5, lat(fmt($dz['faltante'])), 1, 0, 'R');
+    $pdf->Cell($COLS[4], 5.5, lat(fmt($dz['devolucion'])), 1, 0, 'R');
+    $pdf->Cell($COLS[5], 5.5, lat(fmt($dz['incobrable'])), 1, 0, 'R');
+    $pdf->Cell($COLS[6], 5.5, lat(fmt($dz['faltante'])), 1, 0, 'R');
     $pdf->SetTextColor($dz['atraso'] > 0 ? 200 : 0, 0, 0);
-    $pdf->Cell($COLS[5], 5.5, lat(fmt($dz['atraso'])), 1, 0, 'R');
+    $pdf->Cell($COLS[7], 5.5, lat(fmt($dz['atraso'])), 1, 0, 'R');
     $pdf->SetTextColor(0, 0, 0);
-    $pdf->Cell($COLS[6], 5.5, lat(fmt($dz['devolucion'])), 1, 0, 'R');
     $pdf->SetFont('Helvetica', 'B', 7);
     $pdf->SetTextColor($color_cobro[0], $color_cobro[1], $color_cobro[2]);
-    $pdf->Cell($COLS[7], 5.5, $dz['pct_cobro'] . '%', 1, 0, 'R');
+    $pdf->Cell($COLS[8], 5.5, $dz['pct_cobro'] . '%', 1, 0, 'R');
     $pdf->SetTextColor($color_atraso[0], $color_atraso[1], $color_atraso[2]);
-    $pdf->Cell($COLS[8], 5.5, $dz['pct_atraso'] . '%', 1, 0, 'R');
+    $pdf->Cell($COLS[9], 5.5, $dz['pct_atraso'] . '%', 1, 0, 'R');
     $pdf->SetTextColor(0, 0, 0);
     $pdf->SetFont('Helvetica', '', 7);
     $pdf->Ln();
@@ -140,31 +143,32 @@ $pdf->SetFont('Helvetica', 'B', 7);
 $pdf->SetX(10);
 $pdf->Cell($COLS[0], 6, lat('TOTAL (' . count($zonas_cob) . ' zonas)'), 1, 0, 'L');
 $pdf->Cell($COLS[1], 6, (string)$total_clientes, 1, 0, 'C');
-$pdf->Cell($COLS[2], 6, lat(fmt($total_importe)), 1, 0, 'R');
+$pdf->Cell($COLS[2], 6, lat(fmt($total_otorgado)), 1, 0, 'R');
 $pdf->Cell($COLS[3], 6, lat(fmt($total_cobrado)), 1, 0, 'R');
-$pdf->Cell($COLS[4], 6, lat(fmt($total_faltante)), 1, 0, 'R');
-$pdf->Cell($COLS[5], 6, lat(fmt($total_atraso)), 1, 0, 'R');
-$pdf->Cell($COLS[6], 6, lat(fmt($total_devolucion)), 1, 0, 'R');
-$pdf->Cell($COLS[7], 6, $pct_cobro_total . '%', 1, 0, 'R');
-$pdf->Cell($COLS[8], 6, $pct_atraso_total . '%', 1, 0, 'R');
+$pdf->Cell($COLS[4], 6, lat(fmt($total_devolucion)), 1, 0, 'R');
+$pdf->Cell($COLS[5], 6, lat(fmt($total_incobrable)), 1, 0, 'R');
+$pdf->Cell($COLS[6], 6, lat(fmt($total_faltante)), 1, 0, 'R');
+$pdf->Cell($COLS[7], 6, lat(fmt($total_atraso)), 1, 0, 'R');
+$pdf->Cell($COLS[8], 6, $pct_cobro_total . '%', 1, 0, 'R');
+$pdf->Cell($COLS[9], 6, $pct_atraso_total . '%', 1, 0, 'R');
 $pdf->Ln();
 
 $pdf->Ln(4);
 $pdf->SetFont('Helvetica', 'I', 7);
 $pdf->SetTextColor(80, 80, 80);
 $pdf->SetX(10);
-$pdf->MultiCell(190, 4, lat(
+$pdf->MultiCell(277, 4, lat(
     ($modo_historico
         ? 'Vista general: incluye toda la cartera del cobrador, sin importar cuando se otorgo el credito. '
         : 'El periodo elige que creditos entran al reporte segun su fecha de alta; los montos reflejan el estado ' .
           'actual de esos creditos (no solo lo ocurrido dentro del rango). ') .
-    'Importe Total = saldo pendiente de cobro ' .
-    'de creditos activos. Atraso = solo la porcion ya vencida hoy. Devolucion Articulos = saldo que faltaba ' .
-    'cobrar en los creditos finalizados por retiro de producto. Cobrado = pagos confirmados de esos creditos. ' .
-    'Faltante = monto otorgado menos lo cobrado (incluye lo que quedo sin cobrar en creditos finalizados, ' .
-    'por ejemplo por devolucion de articulo). ' .
-    '% Cobro y % Atraso se calculan sobre el monto ' .
-    'total otorgado' . ($modo_historico ? '.' : ' en el periodo.')
+    'Valor Total = monto otorgado de todos los creditos de la cohorte, sin importar su estado actual. ' .
+    'Cobrado = pagos confirmados de esos creditos. Devolucion Articulos = saldo que quedo sin cobrar en ' .
+    'creditos finalizados por retiro de producto. Incobrable = saldo que quedo sin cobrar en creditos ' .
+    'finalizados por declaracion de incobrable, mala reputacion o acuerdo extrajudicial (plata que no se va ' .
+    'a cobrar). Faltante = Valor Total menos Cobrado, Devolucion e Incobrable — lo que sigue activo y ' .
+    'realmente se puede cobrar. Atraso = la porcion de Faltante ya vencida hoy. ' .
+    '% Cobro y % Atraso se calculan sobre el Valor Total' . ($modo_historico ? '.' : ' del periodo.')
 ), 0, 'L');
 $pdf->SetTextColor(0, 0, 0);
 

@@ -63,9 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $upd->execute([$motivo, $id]);
 
-            // Si es retiro de producto, incobrable o mala reputación, cancelar cuotas pendientes
-            // (incluye PARCIAL/CAP_PAGADA: el saldo o mora que quedó sin cobrar se da de baja junto con el crédito)
-            if ($motivo === 'RETIRO_PRODUCTO' || $motivo === 'INCOBRABILIDAD' || $motivo === 'FINALIZADO_CREDITO') {
+            // Si es retiro de producto, incobrable, mala reputación o acuerdo extrajudicial,
+            // cancelar cuotas pendientes (incluye PARCIAL/CAP_PAGADA: el saldo o mora que
+            // quedó sin cobrar se da de baja junto con el crédito)
+            if ($motivo === 'RETIRO_PRODUCTO' || $motivo === 'INCOBRABILIDAD'
+                || $motivo === 'FINALIZADO_CREDITO' || $motivo === 'ACUERDO_EXTRAJUDICIAL') {
                 $pdo->prepare("UPDATE ic_cuotas SET estado = 'CANCELADA' WHERE credito_id = ? AND estado IN ('PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')")
                     ->execute([$id]);
             }
