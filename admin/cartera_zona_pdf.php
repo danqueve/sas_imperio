@@ -51,10 +51,10 @@ $pct_atraso_total = $total_otorgado > 0 ? round($total_atraso  / $total_otorgado
 
 require_once __DIR__ . '/../lib/PDFBase.php';
 
-// Columnas: Zona(35) + Clientes(20) + Importe Total(30) + Atraso(30) + Devolucion(30) + %Cobro(22) + %Atraso(23) = 190
-$COLS   = [35, 20, 30, 30, 30, 22, 23];
-$LABELS = ['Zona', 'Clientes', 'Importe Total', 'Atraso', 'Devol. Articulos', '% Cobro', '% Atraso'];
-$ALIGNS = ['L', 'C', 'R', 'R', 'R', 'R', 'R'];
+// Columnas: Zona(28) + Clientes(15) + Importe Total(26) + Atraso(24) + Devolucion(24) + Cobrado(26) + %Cobro(23) + %Atraso(24) = 190
+$COLS   = [28, 15, 26, 24, 24, 26, 23, 24];
+$LABELS = ['Zona', 'Clientes', 'Importe Total', 'Atraso', 'Devol. Articulos', 'Cobrado', '% Cobro', '% Atraso'];
+$ALIGNS = ['L', 'C', 'R', 'R', 'R', 'R', 'R', 'R'];
 
 class CarteraZonaPDF extends PDFBase
 {
@@ -123,11 +123,12 @@ foreach ($zonas_cob as $zona => $dz) {
     $pdf->Cell($COLS[3], 5.5, lat(fmt($dz['atraso'])), 1, 0, 'R');
     $pdf->SetTextColor(0, 0, 0);
     $pdf->Cell($COLS[4], 5.5, lat(fmt($dz['devolucion'])), 1, 0, 'R');
+    $pdf->Cell($COLS[5], 5.5, lat(fmt($dz['cobrado'])), 1, 0, 'R');
     $pdf->SetFont('Helvetica', 'B', 7);
     $pdf->SetTextColor($color_cobro[0], $color_cobro[1], $color_cobro[2]);
-    $pdf->Cell($COLS[5], 5.5, $dz['pct_cobro'] . '%', 1, 0, 'R');
+    $pdf->Cell($COLS[6], 5.5, $dz['pct_cobro'] . '%', 1, 0, 'R');
     $pdf->SetTextColor($color_atraso[0], $color_atraso[1], $color_atraso[2]);
-    $pdf->Cell($COLS[6], 5.5, $dz['pct_atraso'] . '%', 1, 0, 'R');
+    $pdf->Cell($COLS[7], 5.5, $dz['pct_atraso'] . '%', 1, 0, 'R');
     $pdf->SetTextColor(0, 0, 0);
     $pdf->SetFont('Helvetica', '', 7);
     $pdf->Ln();
@@ -140,8 +141,9 @@ $pdf->Cell($COLS[1], 6, (string)$total_clientes, 1, 0, 'C');
 $pdf->Cell($COLS[2], 6, lat(fmt($total_importe)), 1, 0, 'R');
 $pdf->Cell($COLS[3], 6, lat(fmt($total_atraso)), 1, 0, 'R');
 $pdf->Cell($COLS[4], 6, lat(fmt($total_devolucion)), 1, 0, 'R');
-$pdf->Cell($COLS[5], 6, $pct_cobro_total . '%', 1, 0, 'R');
-$pdf->Cell($COLS[6], 6, $pct_atraso_total . '%', 1, 0, 'R');
+$pdf->Cell($COLS[5], 6, lat(fmt($total_cobrado)), 1, 0, 'R');
+$pdf->Cell($COLS[6], 6, $pct_cobro_total . '%', 1, 0, 'R');
+$pdf->Cell($COLS[7], 6, $pct_atraso_total . '%', 1, 0, 'R');
 $pdf->Ln();
 
 $pdf->Ln(4);
@@ -155,7 +157,8 @@ $pdf->MultiCell(190, 4, lat(
           'actual de esos creditos (no solo lo ocurrido dentro del rango). ') .
     'Importe Total = saldo pendiente de cobro ' .
     'de creditos activos. Atraso = solo la porcion ya vencida hoy. Devolucion Articulos = saldo que faltaba ' .
-    'cobrar en los creditos finalizados por retiro de producto. % Cobro y % Atraso se calculan sobre el monto ' .
+    'cobrar en los creditos finalizados por retiro de producto. Cobrado = pagos confirmados de esos creditos. ' .
+    '% Cobro y % Atraso se calculan sobre el monto ' .
     'total otorgado' . ($modo_historico ? '.' : ' en el periodo.')
 ), 0, 'L');
 $pdf->SetTextColor(0, 0, 0);
