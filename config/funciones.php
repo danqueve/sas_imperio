@@ -1130,6 +1130,9 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
     }
 
     // 5) Cobrado — consulta directa a ic_pagos_confirmados, de la cohorte
+    //    (excluye pagos revertidos vía revertir_rendicion() — no se borran
+    //    fisicamente, quedan con revertido=1; mismo filtro que ya usa
+    //    admin/historial_rendiciones.php)
     $stmt5 = $pdo->prepare("
         SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
                SUM(pc.monto_total) AS cobrado_zona
@@ -1138,6 +1141,7 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
         JOIN ic_creditos cr ON cr.id = cu.credito_id
         JOIN ic_clientes cl ON cl.id = cr.cliente_id
         WHERE cr.cobrador_id = ? $where_fecha
+          AND pc.revertido = 0
         GROUP BY zona
     ");
     $stmt5->execute(array_merge([$cobrador_id], $params_fecha));
@@ -1181,6 +1185,88 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
     // primero volumen" (a diferencia de estadisticas_zona.php)
     uasort($por_zona, fn($a, $b) => $b['pct_atraso'] <=> $a['pct_atraso']);
     return $por_zona;
+}
+
+/**
+ * Detalle por crédito de una zona puntual de un cobrador (drill-down de
+ * obtener_cartera_por_zona()). Un registro por crédito — no por cliente,
+ * para que sumar las filas reproduzca exacto los totales de la zona
+ * (un cliente puede tener 2+ créditos en la misma cohorte).
+ */
+function obtener_creditos_cartera_zona(PDO $pdo, int $cobrador_id, string $zona, ?string $desde, ?string $hasta): array
+{
+    $con_fecha    = ($desde !== null && $hasta !== null);
+    $where_fecha  = $con_fecha ? 'AND cr.fecha_alta BETWEEN ? AND ?' : '';
+    $params_fecha = $con_fecha ? [$desde, $hasta] : [];
+
+    // Mismo criterio de agrupación que obtener_cartera_por_zona():
+    // COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona')
+    if ($zona === 'Sin zona') {
+        $where_zona = "AND (cl.zona IS NULL OR TRIM(cl.zona) = '')";
+        $params_zona = [];
+    } else {
+        $where_zona = 'AND TRIM(cl.zona) = ?';
+        $params_zona = [$zona];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT cr.id AS credito_id, cr.fecha_alta, cr.estado, cr.motivo_finalizacion,
+               cr.monto_total AS monto_otorgado,
+               cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.dni,
+               COALESCE(cr.articulo_desc, a.descripcion, '—') AS articulo,
+               (SELECT COALESCE(SUM(pc.monto_total), 0)
+                FROM ic_pagos_confirmados pc
+                JOIN ic_cuotas cu ON cu.id = pc.cuota_id
+                WHERE cu.credito_id = cr.id AND pc.revertido = 0) AS cobrado,
+               (SELECT COALESCE(SUM(cu.monto_cuota - cu.saldo_pagado), 0)
+                FROM ic_cuotas cu
+                WHERE cu.credito_id = cr.id
+                  AND cu.estado IN ('VENCIDA', 'PENDIENTE') AND cu.fecha_vencimiento < CURDATE()) AS atraso,
+               (SELECT COALESCE(SUM(cu.monto_cuota - cu.saldo_pagado), 0)
+                FROM ic_cuotas cu
+                WHERE cu.credito_id = cr.id AND cu.estado = 'CANCELADA') AS saldo_cancelado
+        FROM ic_creditos cr
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
+        WHERE cr.cobrador_id = ? $where_zona $where_fecha
+        ORDER BY atraso DESC, cl.apellidos, cl.nombres
+    ");
+    $stmt->execute(array_merge([$cobrador_id], $params_zona, $params_fecha));
+
+    $filas = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $monto_otorgado = (float) $r['monto_otorgado'];
+        $cobrado        = (float) $r['cobrado'];
+        $saldo_cancelado = (float) $r['saldo_cancelado'];
+
+        $devolucion = $r['motivo_finalizacion'] === 'RETIRO_PRODUCTO' ? $saldo_cancelado : 0.0;
+        $incobrable = in_array($r['motivo_finalizacion'], ['INCOBRABILIDAD', 'FINALIZADO_CREDITO', 'ACUERDO_EXTRAJUDICIAL'], true)
+            ? $saldo_cancelado : 0.0;
+        // Sin max(0,...) acá a propósito: un crédito puntual puede haber
+        // cobrado de más (mora) y dar "faltante" negativo — se deja así para
+        // que la SUMA de esta columna siempre reconcilie exacto con el total
+        // de la zona (que sí aplica el max(0,...) una sola vez, al final).
+        $faltante = $monto_otorgado - $cobrado - $devolucion - $incobrable;
+
+        $filas[] = [
+            'credito_id'      => (int) $r['credito_id'],
+            'cliente_id'      => (int) $r['cliente_id'],
+            'nombres'         => $r['nombres'],
+            'apellidos'       => $r['apellidos'],
+            'telefono'        => $r['telefono'],
+            'dni'             => $r['dni'],
+            'articulo'        => $r['articulo'],
+            'fecha_alta'      => $r['fecha_alta'],
+            'estado'          => $r['estado'],
+            'monto_otorgado'  => $monto_otorgado,
+            'cobrado'         => $cobrado,
+            'devolucion'      => $devolucion,
+            'incobrable'      => $incobrable,
+            'faltante'        => $faltante,
+            'atraso'          => (float) $r['atraso'],
+        ];
+    }
+    return $filas;
 }
 
 // ── Log de Actividades ────────────────────────────────────────

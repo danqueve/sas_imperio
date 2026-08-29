@@ -316,7 +316,12 @@ $color_hero = color_atraso($pct_atraso_total);
             $cc = color_cobro($dz['pct_cobro']);
             $bg_tint = $dz['pct_atraso'] > 35 ? 'rgba(239,68,68,.05)' : ($dz['pct_atraso'] > 15 ? 'rgba(245,158,11,.05)' : 'transparent');
         ?>
-        <div style="background:<?= $bg_tint ?>;border:1px solid var(--dark-border);border-radius:12px;padding:18px 20px">
+        <a href="cartera_zona_clientes?<?= $qs_export ?>&zona=<?= urlencode($zona) ?>"
+           style="text-decoration:none;color:inherit;display:block;cursor:pointer;
+                  background:<?= $bg_tint ?>;border:1px solid var(--dark-border);border-radius:12px;padding:18px 20px;
+                  transition:border-color .2s"
+           onmouseover="this.style.borderColor='var(--primary)'"
+           onmouseout="this.style.borderColor='var(--dark-border)'">
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
                 <div style="font-weight:700;font-size:1rem"><?= e($zona) ?></div>
                 <div style="font-size:.72rem;color:var(--text-muted)"><?= $dz['clientes'] ?> cliente<?= $dz['clientes'] != 1 ? 's' : '' ?></div>
@@ -375,7 +380,11 @@ $color_hero = color_atraso($pct_atraso_total);
                     <div style="width:<?= min(100, $dz['pct_cobro']) ?>%;height:100%;background:<?= $cc ?>;border-radius:2px"></div>
                 </div>
             </div>
-        </div>
+
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--dark-border);text-align:right;font-size:.72rem;font-weight:700;color:var(--primary)">
+                Ver clientes <i class="fa fa-arrow-right"></i>
+            </div>
+        </a>
         <?php endforeach; ?>
     </div>
 </div>
