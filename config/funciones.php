@@ -1074,11 +1074,11 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
     $where_fecha  = $con_fecha ? 'AND cr.fecha_alta BETWEEN ? AND ?' : '';
     $params_fecha = $con_fecha ? [$desde, $hasta] : [];
 
-    // 1) Clientes + monto otorgado (Valor Total) — todos los créditos de la
-    //    cohorte (o toda la cartera), sin importar su estado actual
+    // 1) Monto otorgado (Valor Total) — todos los créditos de la cohorte
+    //    (o toda la cartera), sin importar su estado actual. Esto decide
+    //    qué zonas entran al reporte.
     $stmt1 = $pdo->prepare("
         SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-               COUNT(DISTINCT cl.id) AS clientes,
                COALESCE(SUM(cr.monto_total), 0) AS monto_otorgado
         FROM ic_creditos cr
         JOIN ic_clientes cl ON cl.id = cr.cliente_id
@@ -1089,8 +1089,29 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
     foreach ($stmt1->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $z = $zona_de($r['zona']);
         $por_zona[$z] = $por_zona[$z] ?? $zInit;
-        $por_zona[$z]['clientes']       = (int) $r['clientes'];
         $por_zona[$z]['monto_otorgado'] = (float) $r['monto_otorgado'];
+    }
+
+    // 1b) Clientes — cartera activa REAL de la zona (credito EN_CURSO/MOROSO
+    //     ahora mismo), sin importar el periodo/cohorte elegido. A
+    //     diferencia de "Valor Total", esto no debe contar clientes cuyo
+    //     unico credito ahi ya esta FINALIZADO hace tiempo. No agrega zonas
+    //     nuevas al reporte — solo pisa el conteo de las que ya entraron
+    //     por tener creditos en la cohorte (punto 1).
+    $stmt1b = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               COUNT(DISTINCT cl.id) AS clientes
+        FROM ic_creditos cr
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE cr.cobrador_id = ? AND cr.estado IN ('EN_CURSO', 'MOROSO')
+        GROUP BY zona
+    ");
+    $stmt1b->execute([$cobrador_id]);
+    foreach ($stmt1b->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $z = $zona_de($r['zona']);
+        if (isset($por_zona[$z])) {
+            $por_zona[$z]['clientes'] = (int) $r['clientes'];
+        }
     }
 
     // 3) Atraso — cuotas vencidas hoy, de la cohorte (mismo criterio que admin/atrasados.php)

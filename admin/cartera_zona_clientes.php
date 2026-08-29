@@ -47,6 +47,8 @@ if (empty($creditos)) {
 }
 
 $total_clientes   = count(array_unique(array_column($creditos, 'cliente_id')));
+$clientes_activos = array_filter($creditos, fn($c) => in_array($c['estado'], ['EN_CURSO', 'MOROSO'], true));
+$total_clientes_activos = count(array_unique(array_column($clientes_activos, 'cliente_id')));
 $total_otorgado   = array_sum(array_column($creditos, 'monto_otorgado'));
 $total_cobrado    = array_sum(array_column($creditos, 'cobrado'));
 $total_devolucion = array_sum(array_column($creditos, 'devolucion'));
@@ -107,7 +109,8 @@ require_once __DIR__ . '/../views/layout.php';
         <div style="font-size:1.1rem;font-weight:800"><?= e($cob_label) ?> · Zona: <?= e($zona) ?></div>
         <div style="font-size:.75rem;color:var(--text-muted)">
             <?= count($creditos) ?> crédito<?= count($creditos) != 1 ? 's' : '' ?> ·
-            <?= $total_clientes ?> cliente<?= $total_clientes != 1 ? 's' : '' ?> ·
+            <?= $total_clientes_activos ?> cliente<?= $total_clientes_activos != 1 ? 's' : '' ?> con crédito activo hoy
+            (<?= $total_clientes ?> distinto<?= $total_clientes != 1 ? 's' : '' ?> en este listado) ·
             <?php if ($modo_historico): ?>
                 Toda la cartera (histórico completo)
             <?php else: ?>
