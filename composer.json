@@ -1,5 +1,13 @@
 {
     "require-dev": {
         "phpunit/phpunit": "10"
+    },
+    "require": {
+        "phpoffice/phpspreadsheet": "3.10.7"
+    },
+    "config": {
+        "platform": {
+            "php": "8.2.29"
+        }
     }
 }
