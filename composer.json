@@ -3,6 +3,11 @@
         "phpunit/phpunit": "^10.5"
     },
     "require": {
-        "phpoffice/phpspreadsheet": "^5.9"
+        "phpoffice/phpspreadsheet": "3.10.7"
+    },
+    "config": {
+        "platform": {
+            "php": "8.2.29"
+        }
     }
 }

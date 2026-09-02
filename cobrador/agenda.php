@@ -495,8 +495,11 @@ require_once __DIR__ . '/../views/layout.php';
                 </label>
             </div>
             <div class="d-flex gap-3">
-                <button type="submit" class="btn-ic btn-primary flex-1" style="justify-content:center">
+                <button type="submit" formaction="agenda_pdf.php" formtarget="_blank" class="btn-ic btn-primary flex-1" style="justify-content:center">
                     <i class="fa fa-file-pdf"></i> Generar PDF
+                </button>
+                <button type="submit" formaction="agenda_excel.php" formtarget="_blank" class="btn-ic btn-success flex-1" style="justify-content:center">
+                    <i class="fa fa-file-excel"></i> Generar Excel
                 </button>
                 <button type="button" onclick="closeModal('modal-agenda-pdf')" class="btn-ic btn-ghost">Cancelar</button>
             </div>
