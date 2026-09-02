@@ -95,6 +95,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <script>
+    // Ver el mismo comentario en views/layout.php — redirect http->https solo
+    // por IP de red local, nunca en el dominio real de produccion.
+    (function () {
+        if (location.protocol === 'http:' && /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(location.hostname)) {
+            location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+        }
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iniciar Sesión — Imperio Comercial</title>

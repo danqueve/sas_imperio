@@ -39,7 +39,7 @@ if (!$cuota_id || $ef < 0 || $tr < 0 || $total <= 0) {
 try {
     // Obtener credito_id e interes_moratorio; validar que pertenece al cobrador logueado
     $stmt = $pdo->prepare("
-        SELECT cu.credito_id, cr.interes_moratorio_pct
+        SELECT cu.credito_id, cr.interes_moratorio_pct, cr.cliente_id
         FROM ic_cuotas cu
         JOIN ic_creditos cr ON cu.credito_id = cr.id
         WHERE cu.id = ? AND cr.cobrador_id = ?
@@ -56,6 +56,7 @@ try {
 
     $credito_id = (int) $row['credito_id'];
     $pct_mora   = (float) $row['interes_moratorio_pct'];
+    $cliente_id = (int) $row['cliente_id'];
 
     // Obtener cuotas pendientes/vencidas/parciales del crédito, de más antigua a más nueva
     $cuotas_stmt = $pdo->prepare("
@@ -75,6 +76,7 @@ try {
     $tr_remaining = $tr;
     $cuotas_ok    = 0;
     $last_pt_id   = null;
+    $pt_ids       = [];
 
     // Fase 2: transacción con FOR UPDATE para bloqueo atómico
     $pdo->beginTransaction();
@@ -141,6 +143,7 @@ try {
             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
         ")->execute([$cuota['id'], $_SESSION['user_id'], $pago_ef, $pago_tr, $pago_en_esta, $mora_en_esta, $mora_frozen, $es_cuota_pura, $fecha_jornada_sel, $obs]);
         $last_pt_id = (int)$pdo->lastInsertId();
+        $pt_ids[]   = $last_pt_id;
 
         registrar_log($pdo, $_SESSION['user_id'], 'PAGO_REGISTRADO', 'cuota', $cuota['id'],
             'Cuota #' . $cuota['numero_cuota'] . ' — Ef: ' . formato_pesos($pago_ef) . ' | Tr: ' . formato_pesos($pago_tr));
@@ -173,6 +176,17 @@ try {
     exit;
 }
 
+// Generar el cupon de pago (fuera de la transaccion — no debe mantener el
+// FOR UPDATE tomado). Si falla, no interrumpe el flujo: el pago ya quedo
+// registrado igual, simplemente no se ofrece el cupon.
+$cupon_id = null;
+try {
+    require_once __DIR__ . '/../lib/CuponPagoPDF.php';
+    $cupon_id = generar_cupon_pago($pdo, $credito_id, $cliente_id, $_SESSION['user_id'], $fecha_jornada_sel, $pt_ids, $total);
+} catch (\Throwable $e) {
+    error_log('Error generando cupon de pago: ' . $e->getMessage());
+}
+
 $msg = $cuotas_ok > 1
     ? "Pago registrado para {$cuotas_ok} cuotas. Pendiente de aprobación."
     : 'Pago registrado correctamente. Pendiente de aprobación del supervisor.';
@@ -183,6 +197,9 @@ if ($remaining > 0.005) {
     $_SESSION['flash'] = ['type' => 'warning', 'msg' => $msg];
 } else {
     $_SESSION['flash'] = ['type' => 'success', 'msg' => $msg];
+}
+if ($cupon_id) {
+    $_SESSION['flash']['cupon_id'] = $cupon_id;
 }
 
 header('Location: agenda');

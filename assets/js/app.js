@@ -26,6 +26,46 @@ window.showToast = function (msg, type = 'info', duration = null) {
   }, duration ?? (isError ? 6000 : 3500));
 };
 
+// ── Compartir Cupón de Pago (Web Share API) ───────────────
+// Comparte el cupon como ARCHIVO (no como link) usando el share nativo del
+// celular — el link a cupon_ver.php exige sesion iniciada, asi que no serviria
+// si se lo mandaramos directo al cliente; compartiendo el archivo ya descargado
+// se evita ese problema por completo. Usado desde cobrador/agenda.php (al
+// registrar un pago) y cobrador/cupones.php (pantalla de consultas).
+window.compartirCuponWhatsApp = async function (cuponUrl) {
+  // El Web Share API con archivos exige contexto seguro (HTTPS, o localhost) —
+  // sobre http:// plano (ej. accediendo por IP de red local) navigator.share
+  // directamente no existe. console.warn deja rastro para diagnosticar a
+  // distancia (F12 -> Console del celular, o remote debugging por USB).
+  if (!window.isSecureContext) {
+    console.warn('compartirCuponWhatsApp: no es contexto seguro (isSecureContext=false). Hace falta HTTPS (o localhost) para que exista navigator.share.');
+    showToast('Para compartir por WhatsApp hace falta acceder al sistema por HTTPS. Abrí "Ver cupón" y compartilo desde el visor de PDF.', 'error');
+    return;
+  }
+  if (!navigator.share) {
+    console.warn('compartirCuponWhatsApp: navigator.share no existe en este navegador.');
+    showToast('Tu navegador no tiene la función nativa de compartir. Abrí "Ver cupón" y compartilo desde el visor de PDF.', 'error');
+    return;
+  }
+  try {
+    const resp = await fetch(cuponUrl, { credentials: 'same-origin' });
+    if (!resp.ok) throw new Error('No se pudo descargar el cupón (' + resp.status + ')');
+    const blob = await resp.blob();
+    const file = new File([blob], 'cupon_pago.pdf', { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Cupón de pago' });
+    } else {
+      console.warn('compartirCuponWhatsApp: navigator.share existe pero no soporta compartir archivos (canShare files = false).');
+      showToast('Tu navegador no permite compartir el archivo directo. Abrí "Ver cupón" y usá el botón compartir del visor de PDF.', 'error');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      console.warn('compartirCuponWhatsApp: error inesperado —', err);
+      showToast('No se pudo compartir el cupón: ' + err.message, 'error');
+    }
+  }
+};
+
 // ── Sidebar Toggle (mobile overlay / desktop collapse) ────
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');

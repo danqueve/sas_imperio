@@ -37,12 +37,6 @@ $stmt->execute($params_recibo);
 $v = $stmt->fetch();
 if (!$v) die('Recibo no encontrado.');
 
-// ── Datos empresa ──────────────────────────────────────────
-define('EMP_RAZON',    'IMPERIO COMERCIAL S.A.S');
-define('EMP_CUIT',     '30-71907246-8');
-define('EMP_IB',       '30719072468');
-define('EMP_INICIO',   '01/08/2025');
-
 // ── Cálculos ───────────────────────────────────────────────
 $precio_unit = (float)$v['precio_venta'];
 $cantidad    = (int)$v['cantidad'];

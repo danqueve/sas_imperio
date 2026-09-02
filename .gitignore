@@ -8,6 +8,9 @@ config/conexion.local.php
 # Archivos subidos por usuarios
 assets/img/uploads/
 
+# Cupones de pago generados (PDF por fecha) — dato generado, no código
+cupones_pago/
+
 # Logs
 *.log
 error_log

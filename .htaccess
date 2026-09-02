@@ -2,7 +2,7 @@ Options -Indexes
 
 # Bloquear acceso directo a carpetas sensibles (dumps de BD, backups, logs)
 RewriteEngine On
-RewriteRule ^(sql|sql_back|backups|logs)(/|$) - [F,L]
+RewriteRule ^(sql|sql_back|backups|logs|cupones_pago)(/|$) - [F,L]
 
 # Bloquear acceso directo a .git (por si el deploy usa git pull dentro del document root)
 RewriteRule ^\.git(/|$) - [F,L]

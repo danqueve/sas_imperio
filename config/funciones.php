@@ -23,6 +23,13 @@ function calcular_semana_lunes(string $fecha_jornada): string
     return $d->format('Y-m-d');
 }
 
+// ── Datos de la empresa (comprobantes: recibos, cupones) ───────
+
+define('EMP_RAZON',    'IMPERIO COMERCIAL S.A.S');
+define('EMP_CUIT',     '30-71907246-8');
+define('EMP_IB',       '30719072468');
+define('EMP_INICIO',   '01/08/2025');
+
 // ── Mora ─────────────────────────────────────────────────────
 
 define('MORA_DIAS_GRACIA',  6);   // días hábiles libres de mora

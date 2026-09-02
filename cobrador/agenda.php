@@ -416,6 +416,21 @@ require_once __DIR__ . '/../views/layout.php';
         const tipo = <?= json_encode($_SESSION['flash']['type']) ?>;
         const toastType = tipo === 'danger' ? 'error' : tipo;
         showToast(<?= json_encode($_SESSION['flash']['msg']) ?>, toastType);
+        <?php if (!empty($_SESSION['flash']['cupon_id'])): ?>
+        const cuponUrl = 'cupon_ver.php?id=' + <?= json_encode((int) $_SESSION['flash']['cupon_id'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        const cuponWin = window.open(cuponUrl, '_blank');
+
+        const barra = document.createElement('div');
+        barra.className = 'alert-ic alert-info';
+        barra.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;align-items:center';
+        barra.innerHTML = '<span>Cupón generado' + (cuponWin ? '' : ' — el navegador bloqueó la ventana') + '.</span>'
+            + '<a href="' + cuponUrl + '" target="_blank" class="btn-ic btn-sm btn-ghost"><i class="fa fa-file-pdf"></i> Ver cupón</a>'
+            + '<button type="button" class="btn-ic btn-sm" style="background:#25d366;color:#fff;border-color:#25d366" id="btn-compartir-cupon"><i class="fa-brands fa-whatsapp"></i> Compartir por WhatsApp</button>';
+        document.querySelector('.alert-ic')?.after(barra);
+        document.getElementById('btn-compartir-cupon').addEventListener('click', function () {
+            compartirCuponWhatsApp(cuponUrl);
+        });
+        <?php endif; ?>
     });
     </script>
     <?php unset($_SESSION['flash']); ?>

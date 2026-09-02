@@ -20,6 +20,18 @@ if ($rol === 'admin') {
 <html lang="es">
 
 <head>
+    <script>
+    // Redirect automatico http -> https SOLO cuando se accede por IP de red
+    // local (ej. 192.168.100.4, para probar en el celular) — nunca afecta al
+    // dominio real de produccion. Necesario porque el Web Share API (compartir
+    // cupon por WhatsApp) exige contexto seguro y es facil terminar en http por
+    // costumbre/bookmark viejo sin darse cuenta.
+    (function () {
+        if (location.protocol === 'http:' && /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(location.hostname)) {
+            location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+        }
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($page_title ?? 'Imperio Comercial') ?> — Imperio Comercial</title>
@@ -85,6 +97,12 @@ if ($rol === 'admin') {
                    data-tooltip="Agenda del Día">
                     <i class="fa fa-calendar-check"></i>
                     <span class="nav-text">Agenda del Día</span>
+                </a>
+                <a class="nav-item <?= ($page_current ?? '') === 'cupones' ? 'active' : '' ?>"
+                   href="<?= BASE_URL ?>cobrador/cupones"
+                   data-tooltip="Cupones de Pago">
+                    <i class="fa fa-receipt"></i>
+                    <span class="nav-text">Cupones de Pago</span>
                 </a>
                 <?php endif; ?>
 
