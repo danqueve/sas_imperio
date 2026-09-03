@@ -33,6 +33,11 @@ Thumbs.db
 # Migraciones de datos (datos reales, no subir)
 sql/migration_cobros.sql
 
+# Dumps de recuperación Nova/Ubuntu (PII completa de clientes) — no subir
+sql/03-09/
+scripts/recuperar_datos_nova.php
+scripts/datos_recuperacion_nova.php
+
 # Composer / PHPUnit
 vendor/
 .phpunit.result.cache
