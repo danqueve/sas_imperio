@@ -3,6 +3,13 @@
 // Sistema Imperio Comercial — Gestión de Sesión y Roles
 // ============================================================
 
+// Fijar explícitamente la zona horaria de la app, sin depender de la
+// config `date.timezone` del php.ini de cada servidor (verificado:
+// tanto WAMP local como, potencialmente, producción pueden tener UTC
+// por default — eso corría las restricciones horarias y cualquier
+// cálculo de fecha/mora 3 horas respecto a la hora real de Argentina).
+date_default_timezone_set('America/Argentina/Buenos_Aires');
+
 if (session_status() === PHP_SESSION_NONE) {
     // Detecta HTTPS directo (Apache termina TLS) o detrás de un proxy
     // inverso que termina TLS y reenvía por HTTP (nginx, balanceador, etc.)
@@ -22,10 +29,12 @@ if (session_status() === PHP_SESSION_NONE) {
 define('ROLES', ['admin', 'supervisor', 'cobrador', 'vendedor']);
 define('SESSION_IDLE_TIMEOUT', 2 * 60 * 60); // 2 horas de inactividad
 
-// ── Restricción horaria para supervisores ────────────────────
+// ── Restricción horaria para supervisores y cobradores ────────
 // date('G') usa el timezone configurado en php.ini (America/Argentina/Buenos_Aires)
 define('SUPERVISOR_HORA_INICIO', 8);   // 08:00
 define('SUPERVISOR_HORA_FIN',   19);   // 19:00
+define('COBRADOR_HORA_INICIO',   8);   // 08:30 (hora + minuto)
+define('COBRADOR_MINUTO_INICIO', 30);  // el corte final es medianoche, sin fin explícito
 
 // ── Timeout por inactividad ──────────────────────────────────
 if (!empty($_SESSION['user_id'])) {
@@ -41,6 +50,23 @@ if (!empty($_SESSION['user_id'])) {
         exit;
     }
     $_SESSION['last_activity'] = $now;
+}
+
+/**
+ * Indica si, a la hora actual, el rol dado tiene acceso normal (sin
+ * necesidad de extensión). Roles sin restricción devuelven siempre true.
+ */
+function dentro_horario_rol(string $rol): bool
+{
+    $hora = (int) date('G');
+    $min  = (int) date('i');
+    if ($rol === 'supervisor') {
+        return ($hora >= SUPERVISOR_HORA_INICIO && $hora < SUPERVISOR_HORA_FIN);
+    }
+    if ($rol === 'cobrador') {
+        return ($hora > COBRADOR_HORA_INICIO || ($hora === COBRADOR_HORA_INICIO && $min >= COBRADOR_MINUTO_INICIO));
+    }
+    return true;
 }
 
 /**
@@ -76,28 +102,24 @@ function verificar_sesion(): void
         // fail-open: no bloquear por error de DB
     }
 
-    // ── Restricción horaria para supervisores ─────────────────
-    if ($_SESSION['rol'] === 'supervisor') {
-        $hora   = (int) date('G');
-        $dentro = ($hora >= SUPERVISOR_HORA_INICIO && $hora < SUPERVISOR_HORA_FIN);
-        if (!$dentro) {
-            $tiene_ext = false;
-            try {
-                $pdo  = obtener_conexion();
-                $stmt = $pdo->prepare(
-                    "SELECT acceso_extendido_hasta FROM ic_usuarios WHERE id=? AND activo=1 LIMIT 1"
-                );
-                $stmt->execute([$_SESSION['user_id']]);
-                $ext = $stmt->fetchColumn();
-                $tiene_ext = ($ext && new DateTime($ext) > new DateTime());
-            } catch (Throwable $e) {
-                error_log('Horario supervisor check: ' . $e->getMessage());
-                $tiene_ext = true; // fail-open: no bloquear por error de DB
-            }
-            if (!$tiene_ext) {
-                header('Location: ' . BASE_URL . 'auth/acceso_restringido');
-                exit;
-            }
+    // ── Restricción horaria para supervisores y cobradores ────
+    if (in_array($_SESSION['rol'], ['supervisor', 'cobrador'], true) && !dentro_horario_rol($_SESSION['rol'])) {
+        $tiene_ext = false;
+        try {
+            $pdo  = obtener_conexion();
+            $stmt = $pdo->prepare(
+                "SELECT acceso_extendido_hasta FROM ic_usuarios WHERE id=? AND activo=1 LIMIT 1"
+            );
+            $stmt->execute([$_SESSION['user_id']]);
+            $ext = $stmt->fetchColumn();
+            $tiene_ext = ($ext && new DateTime($ext) > new DateTime());
+        } catch (Throwable $e) {
+            error_log('Horario de acceso check: ' . $e->getMessage());
+            $tiene_ext = true; // fail-open: no bloquear por error de DB
+        }
+        if (!$tiene_ext) {
+            header('Location: ' . BASE_URL . 'auth/acceso_restringido');
+            exit;
         }
     }
 }
@@ -218,15 +240,14 @@ function verificar_csrf(): void
 }
 
 /**
- * Para supervisores: minutos de acceso restantes (horario normal o extensión).
- * Devuelve null si no aplica (otro rol). Usado por layout.php para el banner de aviso.
+ * Para supervisores y cobradores: minutos de acceso restantes (horario
+ * normal o extensión). Devuelve null si no aplica (otro rol, o sin corte
+ * próximo). Usado por layout.php para el banner de aviso.
  */
-function supervisor_minutos_restantes(): ?int
+function minutos_restantes_acceso(): ?int
 {
-    if (($_SESSION['rol'] ?? '') !== 'supervisor') return null;
-
-    $hora = (int) date('G');
-    $min  = (int) date('i');
+    $rol = $_SESSION['rol'] ?? '';
+    if (!in_array($rol, ['supervisor', 'cobrador'], true)) return null;
 
     try {
         $pdo  = obtener_conexion();
@@ -242,9 +263,10 @@ function supervisor_minutos_restantes(): ?int
         }
     } catch (Throwable $e) { /* silencioso */ }
 
-    if ($hora >= SUPERVISOR_HORA_INICIO && $hora < SUPERVISOR_HORA_FIN) {
-        return (SUPERVISOR_HORA_FIN - $hora) * 60 - $min;
-    }
+    if (!dentro_horario_rol($rol)) return null;
 
-    return null;
+    $hora     = (int) date('G');
+    $min      = (int) date('i');
+    $fin_hora = $rol === 'supervisor' ? SUPERVISOR_HORA_FIN : 24; // cobrador: hasta medianoche
+    return ($fin_hora - $hora) * 60 - $min;
 }

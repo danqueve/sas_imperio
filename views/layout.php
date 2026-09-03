@@ -288,7 +288,7 @@ if ($rol === 'admin') {
         </header>
 
         <?php
-        $_sv_mins = supervisor_minutos_restantes();
+        $_sv_mins = minutos_restantes_acceso();
         if ($_sv_mins !== null && $_sv_mins > 0 && $_sv_mins <= 30):
         $_sv_urgent = $_sv_mins <= 10;
         ?>

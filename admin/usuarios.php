@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tgt  = $pdo->prepare("SELECT rol FROM ic_usuarios WHERE id=? AND activo=1");
         $tgt->execute([$uid]);
         $t = $tgt->fetch();
-        if (!$t || $t['rol'] !== 'supervisor' || $mins <= 0 || $mins > 1440) {
+        if (!$t || !in_array($t['rol'], ['supervisor', 'cobrador'], true) || $mins <= 0 || $mins > 1440) {
             $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Datos inválidos.'];
         } else {
             $hasta = (new DateTime())->modify("+{$mins} minutes")->format('Y-m-d H:i:s');
@@ -138,8 +138,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $usuarios    = $pdo->query("SELECT * FROM ic_usuarios ORDER BY rol, apellido, nombre")->fetchAll();
-$hora_actual = (int) date('G');
-$fuera_horario = ($hora_actual < SUPERVISOR_HORA_INICIO || $hora_actual >= SUPERVISOR_HORA_FIN);
 $page_title = 'Usuarios';
 $page_current = 'usuarios';
 require_once __DIR__ . '/../views/layout.php';
@@ -206,12 +204,13 @@ require_once __DIR__ . '/../views/layout.php';
                                     <span class="badge-ic badge-muted">Inactivo</span>
                                 <?php endif; ?>
                             </td>
-                            <!-- Columna acceso extendido (solo supervisores) -->
+                            <!-- Columna acceso extendido (supervisores y cobradores) -->
                             <td>
-                                <?php if ($usr['rol'] === 'supervisor' && $usr['activo']): ?>
+                                <?php if (in_array($usr['rol'], ['supervisor', 'cobrador'], true) && $usr['activo']): ?>
                                     <?php
-                                    $ext       = $usr['acceso_extendido_hasta'] ?? null;
-                                    $activo_ext = $ext && new DateTime($ext) > new DateTime();
+                                    $ext           = $usr['acceso_extendido_hasta'] ?? null;
+                                    $activo_ext    = $ext && new DateTime($ext) > new DateTime();
+                                    $fuera_horario = !dentro_horario_rol($usr['rol']);
                                     ?>
                                     <?php if ($activo_ext): ?>
                                         <span class="badge-ic badge-warning" title="Vence: <?= e($ext) ?>">

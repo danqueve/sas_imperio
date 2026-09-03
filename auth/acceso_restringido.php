@@ -13,15 +13,20 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 
-// Si no es supervisor → su destino normal
-if (($_SESSION['rol'] ?? '') !== 'supervisor') {
+// Rol sin restricción horaria → su destino normal
+$rol = $_SESSION['rol'] ?? '';
+if (!in_array($rol, ['supervisor', 'cobrador'], true)) {
     header('Location: ' . BASE_URL . 'admin/dashboard');
     exit;
 }
 
-// Si ya tiene acceso (horario normal o extensión válida) → dashboard
-$hora = (int) date('G');
-$dentro = ($hora >= SUPERVISOR_HORA_INICIO && $hora < SUPERVISOR_HORA_FIN);
+$destino_ok = match ($rol) {
+    'cobrador' => BASE_URL . 'cobrador/agenda',
+    default    => BASE_URL . 'admin/dashboard',
+};
+
+// Si ya tiene acceso (horario normal o extensión válida) → su destino
+$dentro = dentro_horario_rol($rol);
 
 if (!$dentro) {
     try {
@@ -32,12 +37,12 @@ if (!$dentro) {
         $stmt->execute([$_SESSION['user_id']]);
         $ext = $stmt->fetchColumn();
         if ($ext && new DateTime($ext) > new DateTime()) {
-            header('Location: ' . BASE_URL . 'admin/dashboard');
+            header('Location: ' . $destino_ok);
             exit;
         }
     } catch (Throwable $e) { /* mostrar la página igualmente */ }
 } else {
-    header('Location: ' . BASE_URL . 'admin/dashboard');
+    header('Location: ' . $destino_ok);
     exit;
 }
 
@@ -52,9 +57,16 @@ try {
     )->fetchAll();
 } catch (Throwable $e) { /* sin contactos */ }
 
-$usuario         = usuario_actual();
-$hora_inicio_fmt = sprintf('%02d:00', SUPERVISOR_HORA_INICIO);
-$hora_fin_fmt    = sprintf('%02d:00', SUPERVISOR_HORA_FIN);
+$usuario = usuario_actual();
+if ($rol === 'cobrador') {
+    $hora_inicio_fmt = sprintf('%02d:%02d', COBRADOR_HORA_INICIO, COBRADOR_MINUTO_INICIO);
+    $hora_fin_fmt    = '00:00';
+    $rol_label       = 'cobradores';
+} else {
+    $hora_inicio_fmt = sprintf('%02d:00', SUPERVISOR_HORA_INICIO);
+    $hora_fin_fmt    = sprintf('%02d:00', SUPERVISOR_HORA_FIN);
+    $rol_label       = 'supervisores';
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -166,7 +178,7 @@ $hora_fin_fmt    = sprintf('%02d:00', SUPERVISOR_HORA_FIN);
     <h2>Acceso fuera de horario</h2>
     <p class="ar-sub">
         Hola, <strong><?= e($usuario['nombre']) ?></strong>.
-        El sistema está disponible para supervisores de
+        El sistema está disponible para <?= $rol_label ?> de
         <strong><?= $hora_inicio_fmt ?></strong> a <strong><?= $hora_fin_fmt ?></strong>.
         En este momento son las <strong><?= date('H:i') ?></strong>.
     </p>
@@ -213,7 +225,7 @@ $hora_fin_fmt    = sprintf('%02d:00', SUPERVISOR_HORA_FIN);
 <script>
 (function poll() {
     setTimeout(function () {
-        fetch('<?= BASE_URL ?>admin/api_acceso_supervisor', { credentials: 'same-origin' })
+        fetch('<?= BASE_URL ?>admin/api_acceso_horario', { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 var el = document.getElementById('ar-status');
@@ -221,7 +233,7 @@ $hora_fin_fmt    = sprintf('%02d:00', SUPERVISOR_HORA_FIN);
                     el.style.color = '#4ade80';
                     el.textContent = 'Acceso concedido. Redirigiendo…';
                     setTimeout(function () {
-                        window.location.href = '<?= BASE_URL ?>admin/dashboard';
+                        window.location.href = '<?= $destino_ok ?>';
                     }, 1500);
                 } else {
                     var t = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
