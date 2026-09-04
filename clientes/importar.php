@@ -12,18 +12,6 @@ $pdo = obtener_conexion();
 $error = '';
 $resumen = [];
 
-// Antepone un apóstrofe a valores que empiecen con =,+,-,@: neutraliza CSV/formula
-// injection en cualquier planilla que más adelante exporte estos campos (varios
-// reportes del sistema hacen fputcsv() sobre nombres/apellidos/direccion/zona).
-function sanear_csv_formula(string $v): string
-{
-    $v = trim($v);
-    if ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) {
-        return "'" . $v;
-    }
-    return $v;
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     verificar_csrf();
     $file = $_FILES['csv_file']['tmp_name'];

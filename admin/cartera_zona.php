@@ -98,7 +98,7 @@ if (($_GET['export'] ?? '') === 'csv' && $cobrador_id > 0 && !empty($zonas_cob))
     fputcsv($out, ['Zona', 'Clientes', 'Valor Total', 'Cobrado', 'Devolucion Articulos', 'Incobrable', 'Faltante', 'Atraso', '% Cobro', '% Atraso'], ';', '"', '\\');
     foreach ($zonas_cob as $zona => $dz) {
         fputcsv($out, [
-            $zona, $dz['clientes'],
+            sanear_csv_formula($zona), $dz['clientes'],
             number_format($dz['monto_otorgado'], 2, ',', '.'),
             number_format($dz['cobrado'], 2, ',', '.'),
             number_format($dz['devolucion'], 2, ',', '.'),

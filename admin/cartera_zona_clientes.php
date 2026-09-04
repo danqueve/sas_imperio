@@ -74,10 +74,10 @@ if (($_GET['export'] ?? '') === 'csv') {
     fputcsv($out, ['Cliente', 'DNI', 'Telefono', 'Articulo', 'Fecha Alta', 'Valor Total', 'Cobrado', 'Devolucion', 'Incobrable', 'Faltante', 'Atraso', 'Estado'], ';', '"', '\\');
     foreach ($creditos as $c) {
         fputcsv($out, [
-            $c['apellidos'] . ', ' . $c['nombres'],
+            sanear_csv_formula($c['apellidos'] . ', ' . $c['nombres']),
             $c['dni'] ?: '',
-            $c['telefono'] ?: '',
-            $c['articulo'],
+            sanear_csv_formula($c['telefono'] ?: ''),
+            sanear_csv_formula($c['articulo']),
             date('d/m/Y', strtotime($c['fecha_alta'])),
             number_format($c['monto_otorgado'], 2, ',', '.'),
             number_format($c['cobrado'], 2, ',', '.'),

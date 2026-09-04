@@ -93,23 +93,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               cobrador_id=?, dia_cobro=?, zona=?, estado=?, tiene_garante=?
             WHERE id=?
         ")->execute([
-                    trim($v['nombres']),
-                    trim($v['apellidos']),
+                    sanear_csv_formula($v['nombres']),
+                    sanear_csv_formula($v['apellidos']),
                     trim($v['dni'] ?? ''),
                     trim($v['cuil'] ?? ''),
-                    trim($v['telefono']),
-                    trim($v['telefono_alt'] ?? ''),
+                    sanear_csv_formula($v['telefono']),
+                    sanear_csv_formula($v['telefono_alt'] ?? ''),
                     $v['fecha_nacimiento'] ?: null,
-                    trim($v['direccion'] ?? ''),
-                    trim($v['localidad'] ?? ''),
-                    trim($v['barrio'] ?? ''),
-                    trim($v['calle1'] ?? ''),
-                    trim($v['calle2'] ?? ''),
-                    trim($v['direccion_laboral'] ?? ''),
+                    sanear_csv_formula($v['direccion'] ?? ''),
+                    sanear_csv_formula($v['localidad'] ?? ''),
+                    sanear_csv_formula($v['barrio'] ?? ''),
+                    sanear_csv_formula($v['calle1'] ?? ''),
+                    sanear_csv_formula($v['calle2'] ?? ''),
+                    sanear_csv_formula($v['direccion_laboral'] ?? ''),
                     trim($v['coordenadas'] ?? ''),
                     ($v['cobrador_id'] ?: null),
                     ($v['dia_cobro'] ?: null),
-                    trim($v['zona'] ?? ''),
+                    sanear_csv_formula($v['zona'] ?? ''),
                     $v['estado'] ?? 'ACTIVO',
                     !empty($v['tiene_garante']) ? 1 : 0,
                     $id,
@@ -125,10 +125,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($v['tiene_garante']) && !empty($v['g_nombres'])) {
             if ($g) {
                 $pdo->prepare("UPDATE ic_garantes SET nombres=?,apellidos=?,dni=?,cuil=?,telefono=?,direccion=?,localidad=?,coordenadas=? WHERE cliente_id=?")
-                    ->execute([trim($v['g_nombres']), trim($v['g_apellidos']), trim($v['g_dni'] ?? ''), trim($v['g_cuil'] ?? ''), trim($v['g_telefono'] ?? ''), trim($v['g_direccion'] ?? ''), trim($v['g_localidad'] ?? ''), trim($v['g_coordenadas'] ?? ''), $id]);
+                    ->execute([sanear_csv_formula($v['g_nombres']), sanear_csv_formula($v['g_apellidos']), trim($v['g_dni'] ?? ''), trim($v['g_cuil'] ?? ''), sanear_csv_formula($v['g_telefono'] ?? ''), sanear_csv_formula($v['g_direccion'] ?? ''), sanear_csv_formula($v['g_localidad'] ?? ''), trim($v['g_coordenadas'] ?? ''), $id]);
             } else {
                 $pdo->prepare("INSERT INTO ic_garantes (cliente_id,nombres,apellidos,dni,cuil,telefono,direccion,localidad,coordenadas) VALUES (?,?,?,?,?,?,?,?,?)")
-                    ->execute([$id, trim($v['g_nombres']), trim($v['g_apellidos']), trim($v['g_dni'] ?? ''), trim($v['g_cuil'] ?? ''), trim($v['g_telefono'] ?? ''), trim($v['g_direccion'] ?? ''), trim($v['g_localidad'] ?? ''), trim($v['g_coordenadas'] ?? '')]);
+                    ->execute([$id, sanear_csv_formula($v['g_nombres']), sanear_csv_formula($v['g_apellidos']), trim($v['g_dni'] ?? ''), trim($v['g_cuil'] ?? ''), sanear_csv_formula($v['g_telefono'] ?? ''), sanear_csv_formula($v['g_direccion'] ?? ''), sanear_csv_formula($v['g_localidad'] ?? ''), trim($v['g_coordenadas'] ?? '')]);
             }
         } elseif ($g) {
             $pdo->prepare("DELETE FROM ic_garantes WHERE cliente_id=?")->execute([$id]);
