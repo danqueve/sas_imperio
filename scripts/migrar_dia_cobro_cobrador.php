@@ -275,7 +275,13 @@ log_msg("Grupo de control (VENCIDA / PARCIAL-vencida, no debe cambiar): $control
 
 // ── 10. Backup a disco (siempre, dry-run incluido) ──────────
 // Fuera del document root a proposito (contiene PII) — nunca dentro de BASE_DIR.
-$backupDir = 'C:/wamp64/backups_creditos';
+// Portable entre entornos: dos niveles arriba de la raiz REAL del proyecto
+// (realpath resuelve el ".." de BASE_DIR antes de contar niveles). En WAMP
+// local: c:/wamp64/www/creditos -> c:/wamp64/backups_creditos (fuera de
+// c:/wamp64/www, que es lo que sirve Apache). En Nova:
+// /home/usuario/public_html/creditos -> /home/usuario/backups_creditos
+// (fuera de public_html, que es el document root ahi).
+$backupDir = dirname(realpath(BASE_DIR), 2) . '/backups_creditos';
 if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
 $ts = date('Ymd_His');
 $jsonPath = "$backupDir/migracion_dia_cobro_{$cobrador_arg}_$ts.json";
