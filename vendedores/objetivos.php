@@ -22,7 +22,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'guard
         if ($val === '') {
             $stmt_clear->execute([(int) $vid]);
         } else {
-            $monto = max(0, (float) str_replace(['.', ','], ['', '.'], $val));
+            // El input es type="number" (HTML5) — siempre serializa el decimal con
+            // punto simple, nunca en formato argentino (miles con punto). Convertir
+            // como si fuera texto en formato AR (como hace admin/metas.php con su
+            // input entero) corrompía cualquier valor con centavos (ej. 1500.50 -> 150050).
+            $monto = max(0, (float) $val);
             $stmt_set->execute([$monto, (int) $vid]);
         }
         $count++;

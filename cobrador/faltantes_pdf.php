@@ -60,12 +60,12 @@ $stmt = $pdo->prepare("
         JOIN ic_cuotas   cu2 ON cu2.id = pt.cuota_id
         JOIN ic_creditos cr2 ON cr2.id = cu2.credito_id
         WHERE cr2.cliente_id = cl.id
-          AND pt.fecha_jornada BETWEEN ? AND ?
+          AND pt.fecha_jornada <= ?
           AND pt.estado IN ('PENDIENTE','APROBADO')
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
 ");
-$stmt->execute([$cobrador_id, $sabado_str, $lunes_str, $sabado_str]);
+$stmt->execute([$cobrador_id, $sabado_str, $sabado_str]);
 $rows = $stmt->fetchAll();
 
 // ── Diario/Quincenal/Mensual: cuotas con vencimiento dentro de la semana ──
@@ -101,12 +101,12 @@ $stmt2 = $pdo->prepare("
         JOIN ic_cuotas   cu2 ON cu2.id = pt.cuota_id
         JOIN ic_creditos cr2 ON cr2.id = cu2.credito_id
         WHERE cr2.cliente_id = cl.id
-          AND pt.fecha_jornada BETWEEN ? AND ?
+          AND pt.fecha_jornada <= ?
           AND pt.estado IN ('PENDIENTE','APROBADO')
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
 ");
-$stmt2->execute([$cobrador_id, $sabado_str, $lunes_str, $sabado_str]);
+$stmt2->execute([$cobrador_id, $sabado_str, $sabado_str]);
 $rows = array_merge($rows, $stmt2->fetchAll());
 
 // ── Clientes excluidos por tener un cobro de esta semana pendiente de aprobar ──

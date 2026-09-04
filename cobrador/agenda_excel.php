@@ -17,6 +17,17 @@ verificar_permiso('ver_agenda');
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
+
+// Convierte "YYYY-MM-DD" (tal como viene de MySQL) al serial de fecha de
+// Excel — necesario para que el NumberFormat 'dd/mm/yyyy' aplicado más abajo
+// tenga efecto (una celda de texto ignora el formato de número silenciosamente).
+function fechaExcel(?string $fecha): string|float
+{
+    if (!$fecha) return '';
+    $serial = Date::stringToExcel($fecha);
+    return $serial !== false ? $serial : $fecha;
+}
 
 $pdo         = obtener_conexion();
 $is_cobrador = es_cobrador();
@@ -38,19 +49,9 @@ if (!$cobrador) die('Cobrador no encontrado.');
 
 if (empty($dias_sel)) die('Seleccioná al menos un día.');
 
-// ── Helper de cálculo — mismo criterio que agenda_pdf.php ──────
-function calcularAjuste(array $r): array
-{
-    $mora_db = (float) $r['monto_mora'];
-    $mora = $mora_db > 0
-        ? $mora_db
-        : calcular_mora((float) $r['monto_cuota'], dias_atraso_habiles($r['fecha_vencimiento']), (float) $r['interes_moratorio_pct']);
-    $saldo_p = (float) ($r['saldo_pagado'] ?? 0);
-    $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA')
-        ? $mora
-        : max(0, (float) $r['monto_cuota'] + $mora - $saldo_p);
-    return ['mora' => $mora, 'saldo_pagado' => $saldo_p, 'total_cobrar' => $total_cobrar];
-}
+// calcularGrupo() ahora vive en config/funciones.php como
+// calcular_grupo_cuotas(), compartida con cobrador/agenda_pdf.php (antes
+// duplicada verbatim en los dos archivos).
 
 // ── Consulta 1: Semanales (idéntica a agenda_pdf.php) ───────────
 $placeholders = implode(',', array_fill(0, count($dias_sel), '?'));
@@ -88,16 +89,20 @@ $stmt = $pdo->prepare("
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-// Un registro por (día, crédito) — la cuota más atrasada, mismo criterio que el PDF
-$por_dia = [];
-foreach ($dias_sel as $d) $por_dia[$d] = [];
-$visto = [];
+// Agrupar por (día, crédito) — TODAS las cuotas del grupo (no solo la más
+// vieja), mismo criterio que agenda_pdf.php, para no subestimar lo adeudado.
+$grupos = [];
 foreach ($rows as $r) {
     $clave = $r['dia_cobro'] . '-' . $r['credito_id'];
-    if (isset($visto[$clave])) continue;
-    $visto[$clave] = true;
-    $por_dia[$r['dia_cobro']][] = $r;
+    if (!isset($grupos[$clave])) {
+        $grupos[$clave] = $r;
+        $grupos[$clave]['_cuotas'] = [];
+    }
+    $grupos[$clave]['_cuotas'][] = $r;
 }
+$por_dia = [];
+foreach ($dias_sel as $d) $por_dia[$d] = [];
+foreach ($grupos as $g) $por_dia[$g['dia_cobro']][] = $g;
 foreach ($dias_sel as $d) {
     usort($por_dia[$d], fn($a, $b) =>
         strcmp(mb_strtoupper(($a['zona'] ?? '') . $a['apellidos']), mb_strtoupper(($b['zona'] ?? '') . $b['apellidos']))
@@ -137,14 +142,17 @@ if ($incluir_qm) {
     $stmt_qm->execute([$cobrador_id]);
     $rows_qm_raw = $stmt_qm->fetchAll();
 
-    // Un registro por cliente y frecuencia — la cuota más atrasada, mismo criterio que el PDF
+    // Agrupar por cliente y frecuencia — TODAS las cuotas del grupo, mismo
+    // criterio que agenda_pdf.php (no solo la más vieja).
     $qm_aux = ['diario' => [], 'quincenal' => [], 'mensual' => []];
     foreach ($rows_qm_raw as $r) {
         $key  = $r['cliente_id'];
         $frec = $r['frecuencia'];
         if (!isset($qm_aux[$frec][$key])) {
             $qm_aux[$frec][$key] = $r;
+            $qm_aux[$frec][$key]['_cuotas'] = [];
         }
+        $qm_aux[$frec][$key]['_cuotas'][] = $r;
     }
     foreach ($qm_aux as $frec => $lista) {
         $lista = array_values($lista);
@@ -223,42 +231,44 @@ $sheet1->setTitle('Semanales');
 
 $headers1 = ['Dia', 'Zona', 'Cliente', 'Telefono', 'Moroso', 'Pago Pendiente Aprobacion',
              'Vencimiento', 'Dias Atraso', 'Direccion', 'Localidad', 'Barrio', 'Articulo',
-             'Cuota', 'Monto Cuota', 'Mora', 'Saldo Pagado', 'Total a Cobrar'];
+             'Cuota', 'Monto Cuota', 'Cuotas Atrasadas', 'Total a Cobrar'];
 $sheet1->fromArray($headers1, null, 'A1');
-estilizarEncabezado($sheet1, 'A1:Q1', $AZUL_CLARO);
+estilizarEncabezado($sheet1, 'A1:P1', $AZUL_CLARO);
 
 $fila = 2;
 foreach ($dias_sel as $d) {
-    foreach ($por_dia[$d] as $r) {
-        $aj = calcularAjuste($r);
+    foreach ($por_dia[$d] as &$r) {
+        $g = calcular_grupo_cuotas($r['_cuotas']);
+        $r['_monto_total_calc'] = $g['monto_total']; // reusado en el Resumen, evita recalcular
         $sheet1->fromArray([
             $nombres_dia[$d],
-            $r['zona'] ?: '',
-            $r['apellidos'] . ', ' . $r['nombres'],
-            $r['telefono'] ?: '',
+            sanear_csv_formula($r['zona'] ?: ''),
+            sanear_csv_formula($r['apellidos'] . ', ' . $r['nombres']),
+            sanear_csv_formula($r['telefono'] ?: ''),
             $r['credito_estado'] === 'MOROSO' ? 'Si' : 'No',
             (int) ($r['pago_pen'] ?? 0) > 0 ? 'Si' : 'No',
-            $r['fecha_vencimiento'],
+            fechaExcel($r['fecha_vencimiento']),
             dias_atraso_habiles($r['fecha_vencimiento']),
-            $r['direccion'] ?: '',
-            $r['localidad'] ?: '',
-            $r['barrio'] ?: '',
-            $r['articulo'] ?: '',
+            sanear_csv_formula($r['direccion'] ?: ''),
+            sanear_csv_formula($r['localidad'] ?: ''),
+            sanear_csv_formula($r['barrio'] ?: ''),
+            sanear_csv_formula($r['articulo'] ?: ''),
             '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'],
             (float) $r['monto_cuota'],
-            $aj['mora'],
-            $aj['saldo_pagado'],
-            $aj['total_cobrar'],
+            $g['cuotas_atrasadas'],
+            $g['monto_total'],
         ], null, 'A' . $fila);
         $fila++;
     }
+    unset($r);
 }
 if ($fila > 2) {
-    $sheet1->getStyle('N2:Q' . ($fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+    $sheet1->getStyle('N2:N' . ($fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+    $sheet1->getStyle('P2:P' . ($fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
     $sheet1->getStyle('G2:G' . ($fila - 1))->getNumberFormat()->setFormatCode('dd/mm/yyyy');
 }
 $sheet1->freezePane('A2');
-autoAjustar($sheet1, 17);
+autoAjustar($sheet1, 16);
 
 // ── Hoja 2: Quincenales/Mensuales (solo si incluir_qm y hay datos) ──
 if ($incluir_qm && !empty($rows_qm)) {
@@ -267,38 +277,40 @@ if ($incluir_qm && !empty($rows_qm)) {
 
     $headers2 = ['Frecuencia', 'Zona', 'Cliente', 'Telefono', 'Moroso', 'Pago Pendiente Aprobacion',
                  'Vencimiento', 'Dias Atraso', 'Direccion', 'Localidad', 'Barrio', 'Articulo',
-                 'Cuota', 'Monto Cuota', 'Mora', 'Saldo Pagado', 'Total a Cobrar'];
+                 'Cuota', 'Monto Cuota', 'Cuotas Atrasadas', 'Total a Cobrar'];
     $sheet2->fromArray($headers2, null, 'A1');
-    estilizarEncabezado($sheet2, 'A1:Q1', $AZUL_CLARO);
+    estilizarEncabezado($sheet2, 'A1:P1', $AZUL_CLARO);
 
     $fila = 2;
-    foreach ($rows_qm as $r) {
-        $aj = calcularAjuste($r);
+    foreach ($rows_qm as &$r) {
+        $g = calcular_grupo_cuotas($r['_cuotas']);
+        $r['_monto_total_calc'] = $g['monto_total']; // reusado en el Resumen, evita recalcular
         $sheet2->fromArray([
             $r['frecuencia_label'],
-            $r['zona'] ?: '',
-            $r['apellidos'] . ', ' . $r['nombres'],
-            $r['telefono'] ?: '',
+            sanear_csv_formula($r['zona'] ?: ''),
+            sanear_csv_formula($r['apellidos'] . ', ' . $r['nombres']),
+            sanear_csv_formula($r['telefono'] ?: ''),
             $r['credito_estado'] === 'MOROSO' ? 'Si' : 'No',
             (int) ($r['pago_pen'] ?? 0) > 0 ? 'Si' : 'No',
-            $r['fecha_vencimiento'],
+            fechaExcel($r['fecha_vencimiento']),
             dias_atraso_habiles($r['fecha_vencimiento']),
-            $r['direccion'] ?: '',
-            $r['localidad'] ?: '',
-            $r['barrio'] ?: '',
-            $r['articulo'] ?: '',
+            sanear_csv_formula($r['direccion'] ?: ''),
+            sanear_csv_formula($r['localidad'] ?: ''),
+            sanear_csv_formula($r['barrio'] ?: ''),
+            sanear_csv_formula($r['articulo'] ?: ''),
             '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'],
             (float) $r['monto_cuota'],
-            $aj['mora'],
-            $aj['saldo_pagado'],
-            $aj['total_cobrar'],
+            $g['cuotas_atrasadas'],
+            $g['monto_total'],
         ], null, 'A' . $fila);
         $fila++;
     }
-    $sheet2->getStyle('N2:Q' . ($fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+    unset($r);
+    $sheet2->getStyle('N2:N' . ($fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+    $sheet2->getStyle('P2:P' . ($fila - 1))->getNumberFormat()->setFormatCode('#,##0.00');
     $sheet2->getStyle('G2:G' . ($fila - 1))->getNumberFormat()->setFormatCode('dd/mm/yyyy');
     $sheet2->freezePane('A2');
-    autoAjustar($sheet2, 17);
+    autoAjustar($sheet2, 16);
 }
 
 // ── Hoja 3: Críticos (solo si hay datos) ──────────────────────
@@ -315,21 +327,18 @@ if (!empty($rows_atr)) {
     $fila = 2;
     foreach ($rows_atr as $r) {
         $sheet3->fromArray([
-            $r['apellidos'] . ', ' . $r['nombres'],
-            $r['telefono'] ?: '',
-            $r['zona'] ?: '',
-            $r['localidad'] ?: '',
-            $r['barrio'] ?: '',
-            $r['articulo'] ?: '',
+            sanear_csv_formula($r['apellidos'] . ', ' . $r['nombres']),
+            sanear_csv_formula($r['telefono'] ?: ''),
+            sanear_csv_formula($r['zona'] ?: ''),
+            sanear_csv_formula($r['localidad'] ?: ''),
+            sanear_csv_formula($r['barrio'] ?: ''),
+            sanear_csv_formula($r['articulo'] ?: ''),
             (int) $r['cuotas_atrasadas'],
             (int) $r['cant_cuotas'],
             (float) $r['valor_cuota'],
-            $r['ultimo_pago'] ?: '',
+            fechaExcel($r['ultimo_pago']),
             (float) $r['monto_base'],
         ], null, 'A' . $fila);
-        if (!empty($r['ultimo_pago'])) {
-            $sheet3->setCellValue('J' . $fila, $r['ultimo_pago']);
-        }
         $fila++;
     }
     if ($fila > 2) {
@@ -364,7 +373,7 @@ foreach ($dias_sel as $d) {
     $cant  = count($por_dia[$d]);
     if ($cant === 0) continue;
     $monto = 0.0;
-    foreach ($por_dia[$d] as $r) $monto += calcularAjuste($r)['total_cobrar'];
+    foreach ($por_dia[$d] as $r) $monto += $r['_monto_total_calc'];
     $sheet4->fromArray([$nombres_dia[$d], $cant, $monto], null, 'A' . $fila);
     $sub_cant_dias  += $cant;
     $sub_monto_dias += $monto;
@@ -388,7 +397,7 @@ if (!empty($rows_qm)) {
     foreach ($rows_qm as $r) {
         $lbl = $r['frecuencia_label'];
         $por_frec_res[$lbl]['cant']  = ($por_frec_res[$lbl]['cant']  ?? 0) + 1;
-        $por_frec_res[$lbl]['monto'] = ($por_frec_res[$lbl]['monto'] ?? 0.0) + calcularAjuste($r)['total_cobrar'];
+        $por_frec_res[$lbl]['monto'] = ($por_frec_res[$lbl]['monto'] ?? 0.0) + $r['_monto_total_calc'];
     }
     $sub_cant_frec  = 0;
     $sub_monto_frec = 0.0;
@@ -409,7 +418,7 @@ $sheet4->fromArray(['TOTAL GENERAL', $total_gral_cant, $total_gral_monto], null,
 estilizarEncabezado($sheet4, 'A' . $fila . ':C' . $fila, $AZUL_CLARO);
 $fila += 2;
 
-$sheet4->setCellValue('A' . $fila, 'Nota: excluye Criticos (5+ atrasadas, ver hoja aparte, sin mora) y toma 1 cuota por cliente (la mas antigua pendiente) - puede diferir del Monto Estimado de la Rendicion.');
+$sheet4->setCellValue('A' . $fila, 'Nota: excluye Criticos (5+ atrasadas, ver hoja aparte) - incluye TODAS las cuotas impagas de cada cliente (columna Cuotas Atrasadas). Puede diferir del Monto Estimado de la Rendicion.');
 $sheet4->getStyle('A' . $fila)->getFont()->setItalic(true)->setSize(9);
 $sheet4->mergeCells('A' . $fila . ':C' . $fila);
 $sheet4->getRowDimension($fila)->setRowHeight(30);

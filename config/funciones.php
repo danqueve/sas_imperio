@@ -90,6 +90,48 @@ function dias_atraso_habiles(string $fecha_vencimiento, ?string $fecha_ref = nul
 }
 
 /**
+ * Agrega las cuotas impagas de un mismo cliente/crédito: TODAS las que ya
+ * están atrasadas ("atraso", con mora) + la PRÓXIMA a vencer que todavía
+ * está en fecha ("fijo", sin mora) — y se corta ahí. Un crédito quincenal/
+ * mensual genera todas sus cuotas por adelantado, así que sin este corte se
+ * sumarían también cuotas de meses futuros que todavía no corresponde
+ * cobrar. $cuotas debe venir ordenada por fecha_vencimiento ASC, así que
+ * todas las atrasadas quedan siempre antes que la primera en fecha.
+ *
+ * Compartida por cobrador/agenda_pdf.php y cobrador/agenda_excel.php (antes
+ * vivía duplicada, verbatim, en los dos archivos).
+ */
+function calcular_grupo_cuotas(array $cuotas): array
+{
+    $cuotas_atrasadas = 0;
+    $monto_fijo   = 0.0;
+    $monto_atraso = 0.0;
+    foreach ($cuotas as $cu) {
+        $saldo_p = (float) ($cu['saldo_pagado'] ?? 0);
+        $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+        if ($dias_atraso > 0) {
+            $cuotas_atrasadas++;
+            $mora_db = (float) $cu['monto_mora'];
+            $mora = $mora_db > 0
+                ? $mora_db
+                : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
+            $monto_atraso += ($cu['cuota_estado'] === 'CAP_PAGADA')
+                ? $mora
+                : max(0, (float) $cu['monto_cuota'] + $mora - $saldo_p);
+        } else {
+            $monto_fijo = max(0, (float) $cu['monto_cuota'] - $saldo_p);
+            break;
+        }
+    }
+    return [
+        'cuotas_atrasadas' => $cuotas_atrasadas,
+        'monto_fijo'       => $monto_fijo,
+        'monto_atraso'     => $monto_atraso,
+        'monto_total'      => $monto_fijo + $monto_atraso,
+    ];
+}
+
+/**
  * Meta semanal automática por cobrador: suma de monto_cuota + mora de créditos
  * EN_CURSO/MOROSO, con criterio distinto según frecuencia:
  * - Semanal: cuotas con vencimiento dentro de la semana en curso (Lun-Sáb). No
@@ -993,6 +1035,20 @@ function e(string $s): string
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }
 
+// Antepone un apóstrofe a valores que empiecen con =,+,-,@: neutraliza CSV/formula
+// injection (Excel/LibreOffice/Sheets interpretan esos caracteres como el inicio
+// de una fórmula) en cualquier export que escriba estos campos a un archivo que
+// se abra en una planilla — fputcsv() o una celda de PhpSpreadsheet por igual,
+// ya que ambos deciden "es fórmula" solo mirando el primer caracter del valor.
+function sanear_csv_formula(string $v): string
+{
+    $v = trim($v);
+    if ($v !== '' && in_array($v[0], ['=', '+', '-', '@'], true)) {
+        return "'" . $v;
+    }
+    return $v;
+}
+
 /**
  * Contraseña débil: menos de 8 caracteres, o sin al menos una letra y un número.
  */
@@ -1121,40 +1177,35 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
         }
     }
 
-    // 3) Atraso — cuotas vencidas hoy, de la cohorte (mismo criterio que admin/atrasados.php)
+    // 3+4+6) Atraso / Devolución / Incobrable — las 3 leen el mismo universo
+    // de filas (cuotas de los créditos de la cohorte) y clasifican cada cuota
+    // en como máximo uno de los 3 baldes (estado no puede ser VENCIDA/PENDIENTE
+    // y CANCELADA a la vez) — se combinan en una sola pasada por la tabla en
+    // vez de 3 idénticas, sin riesgo de fan-out (a diferencia de mezclar esto
+    // con pagos_confirmados o con el conteo de créditos, que si multiplicarían
+    // filas — por eso esas quedan en consultas separadas).
     $stmt3 = $pdo->prepare("
         SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-               SUM(cu.monto_cuota - cu.saldo_pagado) AS atraso_zona
+               SUM(CASE WHEN cu.estado IN ('VENCIDA', 'PENDIENTE') AND cu.fecha_vencimiento < CURDATE()
+                        THEN cu.monto_cuota - cu.saldo_pagado ELSE 0 END) AS atraso_zona,
+               SUM(CASE WHEN cr.motivo_finalizacion = 'RETIRO_PRODUCTO' AND cu.estado = 'CANCELADA'
+                        THEN cu.monto_cuota - cu.saldo_pagado ELSE 0 END) AS devolucion_zona,
+               SUM(CASE WHEN cr.motivo_finalizacion IN ('INCOBRABILIDAD', 'FINALIZADO_CREDITO', 'ACUERDO_EXTRAJUDICIAL')
+                             AND cu.estado = 'CANCELADA'
+                        THEN cu.monto_cuota - cu.saldo_pagado ELSE 0 END) AS incobrable_zona
         FROM ic_cuotas cu
         JOIN ic_creditos cr ON cu.credito_id = cr.id
         JOIN ic_clientes cl ON cl.id = cr.cliente_id
         WHERE cr.cobrador_id = ? $where_fecha
-          AND cu.estado IN ('VENCIDA', 'PENDIENTE') AND cu.fecha_vencimiento < CURDATE()
         GROUP BY zona
     ");
     $stmt3->execute(array_merge([$cobrador_id], $params_fecha));
     foreach ($stmt3->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $z = $zona_de($r['zona']);
         $por_zona[$z] = $por_zona[$z] ?? $zInit;
-        $por_zona[$z]['atraso'] = (float) $r['atraso_zona'];
-    }
-
-    // 4) Devolución de artículos — cuotas CANCELADA por retiro de producto, de la cohorte
-    $stmt4 = $pdo->prepare("
-        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-               SUM(cu.monto_cuota - cu.saldo_pagado) AS devolucion_zona
-        FROM ic_cuotas cu
-        JOIN ic_creditos cr ON cu.credito_id = cr.id
-        JOIN ic_clientes cl ON cl.id = cr.cliente_id
-        WHERE cr.cobrador_id = ? $where_fecha
-          AND cr.motivo_finalizacion = 'RETIRO_PRODUCTO' AND cu.estado = 'CANCELADA'
-        GROUP BY zona
-    ");
-    $stmt4->execute(array_merge([$cobrador_id], $params_fecha));
-    foreach ($stmt4->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $z = $zona_de($r['zona']);
-        $por_zona[$z] = $por_zona[$z] ?? $zInit;
+        $por_zona[$z]['atraso']     = (float) $r['atraso_zona'];
         $por_zona[$z]['devolucion'] = (float) $r['devolucion_zona'];
+        $por_zona[$z]['incobrable'] = (float) $r['incobrable_zona'];
     }
 
     // 5) Cobrado — consulta directa a ic_pagos_confirmados, de la cohorte
@@ -1177,27 +1228,6 @@ function obtener_cartera_por_zona(PDO $pdo, int $cobrador_id, ?string $desde, ?s
         $z = $zona_de($r['zona']);
         $por_zona[$z] = $por_zona[$z] ?? $zInit;
         $por_zona[$z]['cobrado'] = (float) $r['cobrado_zona'];
-    }
-
-    // 6) Incobrable — cuotas CANCELADA por incobrabilidad, mala reputación o
-    //    acuerdo extrajudicial (motivos de baja distintos a Retiro de
-    //    Producto, que ya tiene su propia columna "Devolución")
-    $stmt6 = $pdo->prepare("
-        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-               SUM(cu.monto_cuota - cu.saldo_pagado) AS incobrable_zona
-        FROM ic_cuotas cu
-        JOIN ic_creditos cr ON cu.credito_id = cr.id
-        JOIN ic_clientes cl ON cl.id = cr.cliente_id
-        WHERE cr.cobrador_id = ? $where_fecha
-          AND cr.motivo_finalizacion IN ('INCOBRABILIDAD', 'FINALIZADO_CREDITO', 'ACUERDO_EXTRAJUDICIAL')
-          AND cu.estado = 'CANCELADA'
-        GROUP BY zona
-    ");
-    $stmt6->execute(array_merge([$cobrador_id], $params_fecha));
-    foreach ($stmt6->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $z = $zona_de($r['zona']);
-        $por_zona[$z] = $por_zona[$z] ?? $zInit;
-        $por_zona[$z]['incobrable'] = (float) $r['incobrable_zona'];
     }
 
     // Valor Total = Cobrado + Devolución + Incobrable + Faltante, siempre
@@ -1295,6 +1325,100 @@ function obtener_creditos_cartera_zona(PDO $pdo, int $cobrador_id, string $zona,
         ];
     }
     return $filas;
+}
+
+/**
+ * Cobrado/Estimado/Faltante por zona de un cobrador, en un período —
+ * fuente única para admin/estadisticas_zona.php y su PDF resumen. Antes
+ * esta misma lógica (incluida la regla de qué cuenta como "cobrado_cuota",
+ * donde justamente hubo que corregir un bug de cuotas PARCIAL) vivía
+ * duplicada en los dos archivos; centralizarla evita que vuelvan a divergir.
+ * Devuelve un array indexado por zona (o 'Sin zona'); el caller decide si
+ * lo ordena (pantalla) o si solo necesita una zona puntual (PDF).
+ */
+function obtener_estadisticas_zona(PDO $pdo, int $cobrador_id, string $desde, string $hasta): array
+{
+    $zInit = ['clientes' => 0, 'cuotas_cobradas' => 0, 'cobrado' => 0.0, 'estimado' => 0.0, 'faltante' => 0.0];
+    $zonas_cob = [];
+
+    $stmtCobrado = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               COUNT(DISTINCT cl.id) AS clientes,
+               COUNT(pc.id) AS cuotas_cobradas,
+               COALESCE(SUM(pc.monto_total), 0) AS cobrado
+        FROM ic_pagos_confirmados pc
+        JOIN ic_cuotas cu   ON cu.id = pc.cuota_id
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE pc.cobrador_id = ? AND pc.fecha_jornada BETWEEN ? AND ?
+          AND pc.origen = 'cobrador'
+        GROUP BY zona
+    ");
+    $stmtCobrado->execute([$cobrador_id, $desde, $hasta]);
+    foreach ($stmtCobrado->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $z = $r['zona'];
+        $zonas_cob[$z] = $zonas_cob[$z] ?? $zInit;
+        $zonas_cob[$z]['clientes']        = (int) $r['clientes'];
+        $zonas_cob[$z]['cuotas_cobradas'] = (int) $r['cuotas_cobradas'];
+        $zonas_cob[$z]['cobrado']         = (float) $r['cobrado'];
+    }
+
+    // Estimado/Faltante: cuotas cuyo vencimiento cae dentro de Desde-Hasta,
+    // cuota nominal + mora de las que ya están atrasadas (mismo criterio
+    // que admin/estadisticas_cobranza.php).
+    $stmtEstimado = $pdo->prepare("
+        SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
+               cu.id, cu.estado, cu.monto_cuota, cu.monto_mora, cu.saldo_pagado,
+               cu.fecha_vencimiento, cr.interes_moratorio_pct,
+               EXISTS(
+                   SELECT 1 FROM ic_pagos_temporales pt2
+                   WHERE pt2.cuota_id = cu.id AND pt2.estado IN ('PENDIENTE','APROBADO')
+                     AND pt2.origen = 'cobrador'
+               ) AS tiene_pago
+        FROM ic_cuotas cu
+        JOIN ic_creditos cr ON cu.credito_id = cr.id
+        JOIN ic_clientes cl ON cr.cliente_id = cl.id
+        WHERE cr.cobrador_id = ?
+          AND cr.estado IN ('EN_CURSO','MOROSO')
+          AND cu.estado != 'CANCELADA'
+          AND cu.fecha_vencimiento BETWEEN ? AND ?
+    ");
+    $stmtEstimado->execute([$cobrador_id, $desde, $hasta]);
+
+    foreach ($stmtEstimado->fetchAll(PDO::FETCH_ASSOC) as $cu) {
+        $z = $cu['zona'];
+        $zonas_cob[$z] = $zonas_cob[$z] ?? $zInit;
+
+        $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+        $mora = (float) $cu['monto_mora'] > 0
+            ? (float) $cu['monto_mora']
+            : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
+
+        $zonas_cob[$z]['estimado'] += (float) $cu['monto_cuota'] + $mora;
+
+        // saldo_pagado > 0 no significa resuelta (así queda una cuota
+        // PARCIAL) — lo que importa es si queda saldo pendiente real.
+        $saldo_pendiente = max(0, (float) $cu['monto_cuota'] + $mora - (float) $cu['saldo_pagado']);
+        $cobrado_cuota = ($saldo_pendiente <= 0.005)
+            || in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA'], true)
+            || (bool) $cu['tiene_pago'];
+
+        if (!$cobrado_cuota) {
+            $zonas_cob[$z]['faltante'] += $saldo_pendiente;
+        }
+    }
+
+    // Cobrado (del período) y % Éxito se derivan de Estimado/Faltante
+    // (misma fuente, no una consulta de caja aparte) para que siempre
+    // reconcilien matemáticamente: Cobrado_periodo + Faltante = Estimado,
+    // y el % nunca puede superar el 100%.
+    foreach ($zonas_cob as &$dz) {
+        $dz['cobrado_periodo'] = max(0, $dz['estimado'] - $dz['faltante']);
+        $dz['pct_periodo'] = $dz['estimado'] > 0 ? round($dz['cobrado_periodo'] / $dz['estimado'] * 100) : null;
+    }
+    unset($dz);
+
+    return $zonas_cob;
 }
 
 // ── Log de Actividades ────────────────────────────────────────

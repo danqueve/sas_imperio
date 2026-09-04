@@ -29,70 +29,20 @@ $cob = $cs->fetch();
 if (!$cob) die('Cobrador no encontrado.');
 $cob_label = $cob['apellido'] . ', ' . $cob['nombre'];
 
-// ── Monto cobrado (mismo criterio que estadisticas_zona.php) ────
-$stmtCobrado = $pdo->prepare("
-    SELECT COUNT(DISTINCT cl.id) AS clientes,
-           COUNT(pc.id) AS cuotas_cobradas,
-           COALESCE(SUM(pc.monto_total), 0) AS cobrado
-    FROM ic_pagos_confirmados pc
-    JOIN ic_cuotas cu   ON cu.id = pc.cuota_id
-    JOIN ic_creditos cr ON cr.id = cu.credito_id
-    JOIN ic_clientes cl ON cl.id = cr.cliente_id
-    WHERE pc.cobrador_id = ? AND pc.fecha_jornada BETWEEN ? AND ?
-      AND pc.origen = 'cobrador'
-      AND COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') = ?
-");
-$stmtCobrado->execute([$cobrador_id, $desde, $hasta, $zona]);
-$rowC = $stmtCobrado->fetch(PDO::FETCH_ASSOC) ?: ['clientes' => 0, 'cuotas_cobradas' => 0, 'cobrado' => 0];
-$clientes        = (int)$rowC['clientes'];
-$cuotas_cobradas = (int)$rowC['cuotas_cobradas'];
-$cobrado         = (float)$rowC['cobrado'];
-
-// ── Estimado/Faltante (mismo criterio que estadisticas_zona.php) ──
-$stmtEst = $pdo->prepare("
-    SELECT cu.id, cu.estado, cu.monto_cuota, cu.monto_mora, cu.saldo_pagado,
-           cu.fecha_vencimiento, cr.interes_moratorio_pct,
-           EXISTS(
-               SELECT 1 FROM ic_pagos_temporales pt2
-               WHERE pt2.cuota_id = cu.id AND pt2.estado IN ('PENDIENTE','APROBADO')
-                 AND pt2.origen = 'cobrador'
-           ) AS tiene_pago
-    FROM ic_cuotas cu
-    JOIN ic_creditos cr ON cu.credito_id = cr.id
-    JOIN ic_clientes cl ON cr.cliente_id = cl.id
-    WHERE cr.cobrador_id = ?
-      AND cr.estado IN ('EN_CURSO','MOROSO')
-      AND cu.estado != 'CANCELADA'
-      AND cu.fecha_vencimiento BETWEEN ? AND ?
-      AND COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') = ?
-");
-$stmtEst->execute([$cobrador_id, $desde, $hasta, $zona]);
-
-$estimado = 0.0;
-$faltante = 0.0;
-foreach ($stmtEst->fetchAll(PDO::FETCH_ASSOC) as $cu) {
-    $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
-    $mora = (float)$cu['monto_mora'] > 0
-        ? (float)$cu['monto_mora']
-        : calcular_mora((float)$cu['monto_cuota'], $dias_atraso, (float)$cu['interes_moratorio_pct']);
-
-    $estimado += (float)$cu['monto_cuota'] + $mora;
-
-    $cobrado_cuota = ((float)$cu['saldo_pagado'] > 0)
-        || in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA'], true)
-        || (bool)$cu['tiene_pago'];
-
-    if (!$cobrado_cuota) {
-        $faltante += max(0, (float)$cu['monto_cuota'] + $mora - (float)$cu['saldo_pagado']);
-    }
-}
-// Cobrado (del período) y % Éxito se derivan de Estimado/Faltante (misma
-// fuente, no de la caja real) para que siempre reconcilien matemáticamente:
-// Cobrado_periodo + Faltante = Estimado, y el % nunca supera el 100%.
-// "Cobrado" (caja real del período, puede incluir deuda de otros períodos)
-// se muestra aparte.
-$cobrado_periodo = max(0, $estimado - $faltante);
-$pct_exito = $estimado > 0 ? round($cobrado_periodo / $estimado * 100) : null;
+// Misma fuente que admin/estadisticas_zona.php (obtener_estadisticas_zona()
+// en config/funciones.php) — se pide todo el cobrador y se toma solo la
+// zona pedida, para que pantalla y PDF nunca puedan divergir en la regla
+// de mora/PARCIAL.
+$zonas_cob = obtener_estadisticas_zona($pdo, $cobrador_id, $desde, $hasta);
+$dz = $zonas_cob[$zona] ?? ['clientes' => 0, 'cuotas_cobradas' => 0, 'cobrado' => 0.0,
+                            'estimado' => 0.0, 'faltante' => 0.0, 'cobrado_periodo' => 0.0, 'pct_periodo' => null];
+$clientes         = $dz['clientes'];
+$cuotas_cobradas  = $dz['cuotas_cobradas'];
+$cobrado          = $dz['cobrado'];
+$estimado         = $dz['estimado'];
+$faltante         = $dz['faltante'];
+$cobrado_periodo  = $dz['cobrado_periodo'];
+$pct_exito        = $dz['pct_periodo'];
 
 // ── PDF ──────────────────────────────────────────────────────
 require_once __DIR__ . '/../lib/PDFBase.php';

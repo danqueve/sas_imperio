@@ -63,87 +63,8 @@ if ($cobrador_id > 0) {
     }
 
     if ($nombre_cob !== '') {
-        $zInit = ['clientes' => 0, 'cuotas_cobradas' => 0, 'cobrado' => 0.0, 'estimado' => 0.0, 'faltante' => 0.0];
-
-        // Monto cobrado + cuotas + clientes, por zona, en el período
-        $stmtCobrado = $pdo->prepare("
-            SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-                   COUNT(DISTINCT cl.id) AS clientes,
-                   COUNT(pc.id) AS cuotas_cobradas,
-                   COALESCE(SUM(pc.monto_total), 0) AS cobrado
-            FROM ic_pagos_confirmados pc
-            JOIN ic_cuotas cu   ON cu.id = pc.cuota_id
-            JOIN ic_creditos cr ON cr.id = cu.credito_id
-            JOIN ic_clientes cl ON cl.id = cr.cliente_id
-            WHERE pc.cobrador_id = ? AND pc.fecha_jornada BETWEEN ? AND ?
-              AND pc.origen = 'cobrador'
-            GROUP BY zona
-        ");
-        $stmtCobrado->execute([$cobrador_id, $desde, $hasta]);
-
-        foreach ($stmtCobrado->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $z = $r['zona'];
-            $zonas_cob[$z] = $zonas_cob[$z] ?? $zInit;
-            $zonas_cob[$z]['clientes']        = (int)$r['clientes'];
-            $zonas_cob[$z]['cuotas_cobradas'] = (int)$r['cuotas_cobradas'];
-            $zonas_cob[$z]['cobrado']         = (float)$r['cobrado'];
-        }
-
-        // Estimado/Faltante por zona: cuotas cuyo vencimiento cae dentro de
-        // Desde-Hasta, cuota nominal + mora de las que ya están atrasadas
-        // (mismo criterio que admin/estadisticas_cobranza.php: Estimado =
-        // monto_cuota + mora; Faltante = lo que de eso todavía no se cobró).
-        $stmtEstimado = $pdo->prepare("
-            SELECT COALESCE(NULLIF(TRIM(cl.zona), ''), 'Sin zona') AS zona,
-                   cu.id, cu.estado, cu.monto_cuota, cu.monto_mora, cu.saldo_pagado,
-                   cu.fecha_vencimiento, cr.interes_moratorio_pct,
-                   EXISTS(
-                       SELECT 1 FROM ic_pagos_temporales pt2
-                       WHERE pt2.cuota_id = cu.id AND pt2.estado IN ('PENDIENTE','APROBADO')
-                         AND pt2.origen = 'cobrador'
-                   ) AS tiene_pago
-            FROM ic_cuotas cu
-            JOIN ic_creditos cr ON cu.credito_id = cr.id
-            JOIN ic_clientes cl ON cr.cliente_id = cl.id
-            WHERE cr.cobrador_id = ?
-              AND cr.estado IN ('EN_CURSO','MOROSO')
-              AND cu.estado != 'CANCELADA'
-              AND cu.fecha_vencimiento BETWEEN ? AND ?
-        ");
-        $stmtEstimado->execute([$cobrador_id, $desde, $hasta]);
-
-        foreach ($stmtEstimado->fetchAll(PDO::FETCH_ASSOC) as $cu) {
-            $z = $cu['zona'];
-            $zonas_cob[$z] = $zonas_cob[$z] ?? $zInit;
-
-            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
-            $mora = (float)$cu['monto_mora'] > 0
-                ? (float)$cu['monto_mora']
-                : calcular_mora((float)$cu['monto_cuota'], $dias_atraso, (float)$cu['interes_moratorio_pct']);
-
-            $zonas_cob[$z]['estimado'] += (float)$cu['monto_cuota'] + $mora;
-
-            $cobrado_cuota = ((float)$cu['saldo_pagado'] > 0)
-                || in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA'], true)
-                || (bool)$cu['tiene_pago'];
-
-            if (!$cobrado_cuota) {
-                $zonas_cob[$z]['faltante'] += max(0, (float)$cu['monto_cuota'] + $mora - (float)$cu['saldo_pagado']);
-            }
-        }
-
+        $zonas_cob = obtener_estadisticas_zona($pdo, $cobrador_id, $desde, $hasta);
         uasort($zonas_cob, fn($a, $b) => $b['cobrado'] <=> $a['cobrado']);
-
-        // Cobrado (del período) y % Éxito se derivan de Estimado/Faltante
-        // (misma fuente, no una consulta de caja aparte) para que siempre
-        // reconcilien matemáticamente: Cobrado_periodo + Faltante = Estimado,
-        // y el % nunca puede superar el 100%. "Cobrado" (caja real del
-        // período, puede incluir deuda de otros períodos) queda aparte.
-        foreach ($zonas_cob as $z => &$dz) {
-            $dz['cobrado_periodo'] = max(0, $dz['estimado'] - $dz['faltante']);
-            $dz['pct_periodo'] = $dz['estimado'] > 0 ? round($dz['cobrado_periodo'] / $dz['estimado'] * 100) : null;
-        }
-        unset($dz);
 
         foreach ($zonas_cob as $dz) {
             $total_cobrado_cob  += $dz['cobrado'];

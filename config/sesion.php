@@ -249,6 +249,20 @@ function minutos_restantes_acceso(): ?int
     $rol = $_SESSION['rol'] ?? '';
     if (!in_array($rol, ['supervisor', 'cobrador'], true)) return null;
 
+    // Dentro del horario normal: no hace falta ir a la base — mismo orden de
+    // chequeos que ya usa verificar_sesion() (barato primero, DB solo si hace
+    // falta). Esta función se llama en CADA carga de página de cobrador/
+    // supervisor (el banner de layout.php), así que evitar la query acá
+    // importa: antes se ejecutaba siempre, incluso en horario normal.
+    if (dentro_horario_rol($rol)) {
+        $hora     = (int) date('G');
+        $min      = (int) date('i');
+        $fin_hora = $rol === 'supervisor' ? SUPERVISOR_HORA_FIN : 24; // cobrador: hasta medianoche
+        return ($fin_hora - $hora) * 60 - $min;
+    }
+
+    // Fuera de horario: el banner solo tiene sentido si tiene una extensión
+    // activa (sin extensión ya está bloqueado, lo maneja acceso_restringido.php).
     try {
         $pdo  = obtener_conexion();
         $stmt = $pdo->prepare("SELECT acceso_extendido_hasta FROM ic_usuarios WHERE id=? LIMIT 1");
@@ -263,10 +277,5 @@ function minutos_restantes_acceso(): ?int
         }
     } catch (Throwable $e) { /* silencioso */ }
 
-    if (!dentro_horario_rol($rol)) return null;
-
-    $hora     = (int) date('G');
-    $min      = (int) date('i');
-    $fin_hora = $rol === 'supervisor' ? SUPERVISOR_HORA_FIN : 24; // cobrador: hasta medianoche
-    return ($fin_hora - $hora) * 60 - $min;
+    return null;
 }

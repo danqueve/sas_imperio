@@ -112,43 +112,9 @@ function fmt(float $v): string {
     return '$ ' . number_format($v, 2, ',', '.');
 }
 
-// Agrega las cuotas impagas de un mismo cliente/crédito: TODAS las que
-// ya están atrasadas ("atraso", con mora) + la PRÓXIMA a vencer que
-// todavía está en fecha ("fijo", sin mora) — y se corta ahí. Un crédito
-// quincenal/mensual genera todas sus cuotas por adelantado, así que sin
-// este corte se sumarían también cuotas de meses futuros que todavía no
-// corresponde cobrar. $cuotas ya viene ordenada por fecha_vencimiento
-// ASC (mismo ORDER BY de las 2 queries que alimentan esta función), así
-// que todas las atrasadas quedan siempre antes que la primera en fecha.
-function calcularGrupo(array $cuotas): array
-{
-    $cuotas_atrasadas = 0;
-    $monto_fijo   = 0.0;
-    $monto_atraso = 0.0;
-    foreach ($cuotas as $cu) {
-        $saldo_p = (float) ($cu['saldo_pagado'] ?? 0);
-        $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
-        if ($dias_atraso > 0) {
-            $cuotas_atrasadas++;
-            $mora_db = (float) $cu['monto_mora'];
-            $mora = $mora_db > 0
-                ? $mora_db
-                : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
-            $monto_atraso += ($cu['cuota_estado'] === 'CAP_PAGADA')
-                ? $mora
-                : max(0, (float) $cu['monto_cuota'] + $mora - $saldo_p);
-        } else {
-            $monto_fijo = max(0, (float) $cu['monto_cuota'] - $saldo_p);
-            break;
-        }
-    }
-    return [
-        'cuotas_atrasadas' => $cuotas_atrasadas,
-        'monto_fijo'       => $monto_fijo,
-        'monto_atraso'     => $monto_atraso,
-        'monto_total'      => $monto_fijo + $monto_atraso,
-    ];
-}
+// calcularGrupo() — agrupa cuotas impagas de un mismo cliente/crédito —
+// ahora vive en config/funciones.php como calcular_grupo_cuotas(), compartida
+// con cobrador/agenda_excel.php (antes duplicada verbatim en los dos archivos).
 
 require_once __DIR__ . '/../lib/PDFBase.php';
 
@@ -353,11 +319,15 @@ function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array 
 {
     if (empty($clientes)) return;
 
+    // Calcular una sola vez por cliente — antes se llamaba 2 veces (acá para
+    // el subtotal del bloque, y de nuevo más abajo al dibujar cada fila),
+    // cada una recorriendo todas las cuotas del grupo y recalculando mora.
+    $grupos_calc = array_map(fn($r) => calcular_grupo_cuotas($r['_cuotas']), $clientes);
+
     // Pre-calcular total del bloque, separado en fijo (en fecha) y atraso
     $total_fijo   = 0.0;
     $total_atraso = 0.0;
-    foreach ($clientes as $r) {
-        $g = calcularGrupo($r['_cuotas']);
+    foreach ($grupos_calc as $g) {
         $total_fijo   += $g['monto_fijo'];
         $total_atraso += $g['monto_atraso'];
     }
@@ -376,7 +346,7 @@ function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array 
     $num            = 0;
     $reprint_zona   = false;
 
-    foreach ($clientes as $r) {
+    foreach ($clientes as $i => $r) {
         // Salto de página si hace falta (zona header ~5mm + fila de 6mm)
         if ($pdf->GetY() + 13 > $pdf->GetPageHeight() - 18) {
             $pdf->AddPage();
@@ -410,7 +380,7 @@ function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array 
         $cuota_label = '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'];
         $venc = date('d/m', strtotime($r['fecha_vencimiento']));
 
-        $g = calcularGrupo($r['_cuotas']);
+        $g = $grupos_calc[$i];
         $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $g['cuotas_atrasadas'], $g['monto_total'], $num);
     }
 
@@ -536,10 +506,12 @@ if (!empty($rows_qm)) {
 
         $titulo = match($frec) { 'diario' => 'Diarios', 'quincenal' => 'Quincenales', default => 'Mensuales' };
 
+        // Calcular una sola vez por cliente (subtotal + dibujo de fila reusan esto).
+        $grupos_calc = array_map(fn($r) => calcular_grupo_cuotas($r['_cuotas']), $lista);
+
         $total_frec_fijo   = 0.0;
         $total_frec_atraso = 0.0;
-        foreach ($lista as $r) {
-            $g = calcularGrupo($r['_cuotas']);
+        foreach ($grupos_calc as $g) {
             $total_frec_fijo   += $g['monto_fijo'];
             $total_frec_atraso += $g['monto_atraso'];
         }
@@ -557,7 +529,7 @@ if (!empty($rows_qm)) {
         $num          = 0;
         $reprint_zona = false;
 
-        foreach ($lista as $r) {
+        foreach ($lista as $i => $r) {
             if ($pdf->GetY() + 13 > $pdf->GetPageHeight() - 18) {
                 $pdf->AddPage();
                 $pdf->SetFont('Helvetica', 'B', 9);
@@ -589,7 +561,7 @@ if (!empty($rows_qm)) {
             $cuota_label = '#' . $r['numero_cuota'] . '/' . $r['cant_cuotas'];
             $venc = date('d/m/y', strtotime($r['fecha_vencimiento']));
 
-            $g = calcularGrupo($r['_cuotas']);
+            $g = $grupos_calc[$i];
             $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $g['cuotas_atrasadas'], $g['monto_total'], $num);
         }
 

@@ -8,12 +8,6 @@
 
 require_once __DIR__ . '/PDFBase.php';
 
-if (!function_exists('fmt_monto')) {
-    function fmt_monto(float $v): string {
-        return '$ ' . number_format($v, 2, ',', '.');
-    }
-}
-
 class CuponPagoPDF extends PDFBase
 {
     // Ticket angosto (80mm, ancho típico de impresora térmica portátil) —
@@ -57,6 +51,7 @@ function generar_cupon_pago(
     $placeholders = implode(',', array_fill(0, count($pt_ids), '?'));
     $stmt = $pdo->prepare("
         SELECT pt.id AS pt_id, pt.monto_efectivo, pt.monto_transferencia, pt.monto_total AS pt_monto,
+               pt.monto_sobrante,
                cu.numero_cuota, cu.monto_cuota,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
                cl.nombres, cl.apellidos,
@@ -104,7 +99,13 @@ function generar_cupon_pago(
 
     $total_ef  = array_sum(array_column($rows, 'monto_efectivo'));
     $total_tr  = array_sum(array_column($rows, 'monto_transferencia'));
-    $total_pt  = array_sum(array_column($rows, 'pt_monto'));
+    // $monto_total (parámetro) es el monto real entregado por el cliente — puede
+    // ser mayor que la suma de los pt.monto_total si sobró efectivo/transferencia
+    // sin aplicar a ninguna cuota (queda registrado aparte en monto_sobrante, sin
+    // reflejarse en ningún pt.monto_total individual). Usar $monto_total para el
+    // TOTAL impreso, no la suma de las cuotas, para que el ticket coincida con lo
+    // que el cliente realmente entregó y con lo que muestra cobrador/cupones.php.
+    $total_sobrante = array_sum(array_column($rows, 'monto_sobrante'));
 
     // Ticket angosto de 80mm (ancho estándar de impresora térmica portátil),
     // con alto calculado según la cantidad de cuotas para que no sobre ni
@@ -160,7 +161,7 @@ function generar_cupon_pago(
     foreach ($rows as $r) {
         $pdf->SetFont('Helvetica', 'B', 7.5);
         $pdf->Cell($W * 0.5, 4, lat('Cuota #' . $r['numero_cuota']), 0, 0, 'L');
-        $pdf->Cell($W * 0.5, 4, lat(fmt_monto((float) $r['pt_monto'])), 0, 1, 'R');
+        $pdf->Cell($W * 0.5, 4, lat(fmt((float) $r['pt_monto'], 2)), 0, 1, 'R');
         $pdf->SetFont('Helvetica', 'I', 6.5);
         $pdf->SetTextColor(80, 80, 80);
         $pdf->Cell($W, 3.3, $pdf->fitText($r['articulo'] ?? '-', $W), 0, 1, 'L');
@@ -175,15 +176,18 @@ function generar_cupon_pago(
     // Total
     $pdf->SetFont('Helvetica', 'B', 10);
     $pdf->Cell($W * 0.5, 5, lat('TOTAL'), 0, 0, 'L');
-    $pdf->Cell($W * 0.5, 5, lat(fmt_monto($total_pt)), 0, 1, 'R');
+    $pdf->Cell($W * 0.5, 5, lat(fmt($monto_total, 2)), 0, 1, 'R');
     $pdf->Ln(1.5);
     $pdf->dashedLine($X, $X + $W);
     $pdf->Ln(2);
 
     // Forma de pago
     $pdf->SetFont('Helvetica', '', 7);
-    $pdf->Cell($W, 4, lat('Efectivo: ' . fmt_monto($total_ef)), 0, 1, 'L');
-    $pdf->Cell($W, 4, lat('Transferencia: ' . fmt_monto($total_tr)), 0, 1, 'L');
+    $pdf->Cell($W, 4, lat('Efectivo: ' . fmt($total_ef, 2)), 0, 1, 'L');
+    $pdf->Cell($W, 4, lat('Transferencia: ' . fmt($total_tr, 2)), 0, 1, 'L');
+    if ($total_sobrante > 0.5) {
+        $pdf->Cell($W, 4, lat('Sobrante: ' . fmt($total_sobrante, 2)), 0, 1, 'L');
+    }
     $pdf->Ln(2);
     $pdf->dashedLine($X, $X + $W);
     $pdf->Ln(2);

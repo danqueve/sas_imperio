@@ -9,8 +9,8 @@ if (!function_exists('lat')) {
 }
 
 if (!function_exists('fmt')) {
-    function fmt(float $v): string {
-        return '$ ' . number_format($v, 0, ',', '.');
+    function fmt(float $v, int $decimales = 0): string {
+        return '$ ' . number_format($v, $decimales, ',', '.');
     }
 }
 
