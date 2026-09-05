@@ -128,11 +128,17 @@ if ($vendedor_id !== 0) {
     $params_vend = $vendedor_id === -1 ? [] : [$vendedor_id];
 
     // ── KPIs principales ────────────────────────────────────
+    // Los creditos creados por una refinanciacion (credito_origen_id no nulo)
+    // no son una venta nueva -- son la misma deuda reestructurada -- por eso
+    // se excluyen de "vendido"/"creditos_venta" con un CASE, sin tocar el resto
+    // de las metricas (creditos/clientes/cobrado/atrasados/etc siguen contando
+    // TODOS los creditos activos de este vendedor, refinanciados o no).
     $kpi_sql = "
         SELECT
             COUNT(cr.id)                                                 AS total_creditos,
             COUNT(DISTINCT cr.cliente_id)                                AS total_clientes,
-            COALESCE(SUM(cr.monto_total), 0)                             AS monto_vendido,
+            COALESCE(SUM(CASE WHEN cr.credito_origen_id IS NULL THEN cr.monto_total ELSE 0 END), 0) AS monto_vendido,
+            SUM(CASE WHEN cr.credito_origen_id IS NULL THEN 1 ELSE 0 END) AS creditos_venta,
             COALESCE(SUM(COALESCE(pag.cobrado, 0)), 0)                   AS total_cobrado,
             SUM(CASE WHEN cr.estado IN ('EN_CURSO','MOROSO')
                       AND COALESCE(aging.max_dias, 0) = 0 THEN 1 ELSE 0 END) AS al_dia,
@@ -165,7 +171,7 @@ if ($vendedor_id !== 0) {
     $k['recurrentes'] = (int) $rec_stmt->fetchColumn();
 
     // Métricas derivadas
-    $ticket_prom  = $k['total_creditos'] > 0 ? $k['monto_vendido'] / $k['total_creditos'] : 0;
+    $ticket_prom  = $k['creditos_venta'] > 0 ? $k['monto_vendido'] / $k['creditos_venta'] : 0;
     $pct_cobrado  = $k['monto_vendido']  > 0 ? round($k['total_cobrado'] / $k['monto_vendido'] * 100, 1) : 0;
     $tasa_retiro  = $k['total_creditos'] > 0 ? round($k['retirados'] / $k['total_creditos'] * 100, 1) : 0;
 
@@ -600,12 +606,15 @@ if ($vendedor_id !== 0) {
     $params_ranking = $tiene_filtro ? [$f_desde, $f_hasta] : [];
     $params_ranking = array_merge($params_ranking, $zonas_sel);
 
+    // credito_origen_id no nulo = resultado de una refinanciacion, no una venta
+    // nueva (misma deuda reestructurada) -- se excluye solo de "vendido" con un
+    // CASE, sin afectar creditos/clientes/cobrado/atrasados/etc de este mismo JOIN.
     $rank_sql = "
         SELECT
             v.id, v.nombre, v.apellido, v.telefono, v.activo,
             COUNT(cr.id)                                                      AS total_creditos,
             COUNT(DISTINCT cr.cliente_id)                                     AS total_clientes,
-            COALESCE(SUM(cr.monto_total), 0)                                  AS monto_vendido,
+            COALESCE(SUM(CASE WHEN cr.credito_origen_id IS NULL THEN cr.monto_total ELSE 0 END), 0) AS monto_vendido,
             COALESCE(SUM(COALESCE(pag.cobrado, 0)), 0)                        AS total_cobrado,
             SUM(CASE WHEN cr.estado IN ('EN_CURSO','MOROSO')
                       AND COALESCE(aging.max_dias, 0) = 0 THEN 1 ELSE 0 END) AS al_dia,
@@ -636,7 +645,7 @@ if ($vendedor_id !== 0) {
         SELECT
             COUNT(cr.id)                                                      AS total_creditos,
             COUNT(DISTINCT cr.cliente_id)                                     AS total_clientes,
-            COALESCE(SUM(cr.monto_total), 0)                                  AS monto_vendido,
+            COALESCE(SUM(CASE WHEN cr.credito_origen_id IS NULL THEN cr.monto_total ELSE 0 END), 0) AS monto_vendido,
             COALESCE(SUM(COALESCE(pag.cobrado, 0)), 0)                        AS total_cobrado,
             SUM(CASE WHEN cr.estado IN ('EN_CURSO','MOROSO')
                       AND COALESCE(aging.max_dias, 0) = 0 THEN 1 ELSE 0 END) AS al_dia,

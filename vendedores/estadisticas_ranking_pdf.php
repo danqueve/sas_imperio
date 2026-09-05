@@ -59,12 +59,14 @@ if (!empty($zonas)) {
 $params_ranking = $tiene_filtro ? [$f_desde, $f_hasta] : [];
 $params_ranking = array_merge($params_ranking, $zonas);
 
+// credito_origen_id no nulo = resultado de una refinanciacion, no una venta
+// nueva (misma deuda reestructurada) -- se excluye solo de "vendido".
 $rank_sql = "
     SELECT
         v.nombre, v.apellido,
         COUNT(cr.id)                               AS total_creditos,
         COUNT(DISTINCT cr.cliente_id)               AS total_clientes,
-        COALESCE(SUM(cr.monto_total), 0)            AS monto_vendido,
+        COALESCE(SUM(CASE WHEN cr.credito_origen_id IS NULL THEN cr.monto_total ELSE 0 END), 0) AS monto_vendido,
         COALESCE(SUM(COALESCE(pag.cobrado, 0)), 0)  AS total_cobrado
     FROM ic_vendedores v
     LEFT JOIN ic_creditos cr
@@ -87,7 +89,7 @@ $sv_sql = "
     SELECT
         COUNT(cr.id)                               AS total_creditos,
         COUNT(DISTINCT cr.cliente_id)               AS total_clientes,
-        COALESCE(SUM(cr.monto_total), 0)            AS monto_vendido,
+        COALESCE(SUM(CASE WHEN cr.credito_origen_id IS NULL THEN cr.monto_total ELSE 0 END), 0) AS monto_vendido,
         COALESCE(SUM(COALESCE(pag.cobrado, 0)), 0)  AS total_cobrado
     FROM ic_creditos cr
     LEFT JOIN (
@@ -232,8 +234,9 @@ $pdf->SetX(10);
 $pdf->MultiCell(190, 4, lat(
     'Vendido = suma de monto_total de creditos con fecha de alta en el periodo elegido, del vendedor ' .
     'correspondiente, cuyo cliente esta en alguna de las zonas seleccionadas (si se eligio mas de una, ' .
-    'se suman todas juntas). Cobrado = pagos confirmados de esos mismos creditos. Solo se listan ' .
-    'vendedores con ventas en el periodo y zonas elegidos.'
+    'se suman todas juntas). No incluye creditos generados por una refinanciacion (no son una venta ' .
+    'nueva, es la misma deuda reestructurada). Cobrado = pagos confirmados de esos mismos creditos. ' .
+    'Solo se listan vendedores con ventas en el periodo y zonas elegidos.'
 ), 0, 'L');
 $pdf->SetTextColor(0, 0, 0);
 

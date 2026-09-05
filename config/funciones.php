@@ -1087,9 +1087,13 @@ function obtener_objetivos_vendedores(PDO $pdo, ?string $f_desde, ?string $f_has
 {
     if (!$f_desde || !$f_hasta) return [];
 
+    // Los creditos creados por una refinanciacion (credito_origen_id no nulo)
+    // no son una venta nueva -- son la misma deuda reestructurada -- por eso
+    // se excluyen de "vendido" con un CASE en vez de filtrarlos del JOIN (asi
+    // no afecta ninguna otra metrica que dependa de este mismo LEFT JOIN).
     $stmt = $pdo->prepare("
         SELECT v.nombre, v.apellido, v.objetivo_mensual,
-               COALESCE(SUM(cr.monto_total), 0) AS monto_vendido
+               COALESCE(SUM(CASE WHEN cr.credito_origen_id IS NULL THEN cr.monto_total ELSE 0 END), 0) AS monto_vendido
         FROM ic_vendedores v
         LEFT JOIN ic_creditos cr ON cr.vendedor_id = v.id AND cr.fecha_alta BETWEEN ? AND ?
         WHERE v.objetivo_mensual IS NOT NULL
