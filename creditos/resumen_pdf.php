@@ -233,9 +233,9 @@ if (!empty($historial_pagos)) {
         $pdf->SetFillColor($fill ? 250 : 255, $fill ? 250 : 255, $fill ? 250 : 255);
         $pdf->Cell(12, 6, '#' . $h['numero_cuota'], 1, 0, 'C', $fill);
         $pdf->Cell(25, 6, date('d/m/Y', strtotime($h['fecha_jornada'])), 1, 0, 'C', $fill);
-        $pdf->Cell(28, 6, $h['monto_efectivo'] > 0 ? pesos($h['monto_efectivo']) : '—', 1, 0, 'R', $fill);
-        $pdf->Cell(28, 6, $h['monto_transferencia'] > 0 ? pesos($h['monto_transferencia']) : '—', 1, 0, 'R', $fill);
-        $pdf->Cell(24, 6, $h['monto_mora_cobrada'] > 0 ? pesos($h['monto_mora_cobrada']) : '—', 1, 0, 'R', $fill);
+        $pdf->Cell(28, 6, $h['monto_efectivo'] > 0 ? pesos($h['monto_efectivo']) : '-', 1, 0, 'R', $fill);
+        $pdf->Cell(28, 6, $h['monto_transferencia'] > 0 ? pesos($h['monto_transferencia']) : '-', 1, 0, 'R', $fill);
+        $pdf->Cell(24, 6, $h['monto_mora_cobrada'] > 0 ? pesos($h['monto_mora_cobrada']) : '-', 1, 0, 'R', $fill);
         $pdf->Cell(28, 6, pesos($h['monto_total']), 1, 0, 'R', $fill);
         $pdf->Cell(45, 6, lat(mb_substr($h['cobrador_nombre'], 0, 20)), 1, 1, 'L', $fill);
         $fill = !$fill;
@@ -247,7 +247,7 @@ if (!empty($historial_pagos)) {
     $pdf->Cell(12 + 25, 6, 'TOTAL', 1, 0, 'R', true);
     $pdf->Cell(28, 6, pesos($hist_total_ef), 1, 0, 'R', true);
     $pdf->Cell(28, 6, pesos($hist_total_tr), 1, 0, 'R', true);
-    $pdf->Cell(24, 6, $hist_total_mora > 0 ? pesos($hist_total_mora) : '—', 1, 0, 'R', true);
+    $pdf->Cell(24, 6, $hist_total_mora > 0 ? pesos($hist_total_mora) : '-', 1, 0, 'R', true);
     $pdf->Cell(28, 6, pesos($hist_total), 1, 0, 'R', true);
     $pdf->Cell(45, 6, '', 1, 1, 'L', true);
     $pdf->Ln(5);
@@ -287,5 +287,5 @@ $pdf->Cell(0, 5, lat('Generado el ') . date('d/m/Y H:i') . lat(' — Imperio Com
 $pdf->Cell(0, 5, lat('Pagina ') . $pdf->PageNo(), 0, 0, 'C');
 
 $nombre_archivo = 'resumen_credito_' . $id . '_' . str_replace(' ', '_', $cr['apellidos']) . '.pdf';
-$pdf->Output('D', lat($nombre_archivo));
+$pdf->Output('I', lat($nombre_archivo));
 exit;
