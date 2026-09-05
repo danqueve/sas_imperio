@@ -25,7 +25,18 @@
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' vista=clientes)",
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' export=csv)",
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe 'C:\\\\Users\\\\Usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-creditos\\\\72cdde1f-d1db-49f9-95c9-87cec0dd48a4\\\\scratchpad\\\\test_atrasados.php' cobrador_id=5)",
-      "Bash(git restore *)"
+      "Bash(git restore *)",
+      "Bash('C:\\\\Python314\\\\python.exe' -c ' *)",
+      "Bash(curl -s -b \"PHPSESSID=af0c7922430c3cd2539a10f122cb4bd2\" \"http://localhost/creditos/admin/atrasados?page=28\" -o \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/atrasados_p28.html\")",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l cobrador/registrar_pago.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l admin/rendiciones.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/forge_sc.php\")",
+      "Bash(\"C:\\\\Python314\\\\python.exe\" \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/check_sincodigo.py\" 4d72aad52943248071c2d5a5b23c288c)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l admin/rendicion_pdf.php)",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/forge_admin2.php\")",
+      "Bash(curl -s -b \"PHPSESSID=0825e7baef7451f862d6cbb5025b6422\" \"http://localhost/creditos/admin/rendicion_pdf?cobrador_id=44&fecha=2026-08-13\" -o \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/rendicion_test.pdf\" -D \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/headers2.txt\")",
+      "Bash(/c/wamp64/bin/php/php8.4.15/php.exe -l \"c:/wamp64/www/creditos/cobrador/faltantes_pdf.php\")",
+      "Bash(/c/wamp64/bin/mysql/mysql8.4.7/bin/mysql.exe -u root c2881399_credit -e \"SELECT id, usuario, nombre, apellido, rol, activo FROM ic_usuarios WHERE id=6;\")"
     ]
   }
 }

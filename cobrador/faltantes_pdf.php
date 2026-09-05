@@ -60,12 +60,12 @@ $stmt = $pdo->prepare("
         JOIN ic_cuotas   cu2 ON cu2.id = pt.cuota_id
         JOIN ic_creditos cr2 ON cr2.id = cu2.credito_id
         WHERE cr2.cliente_id = cl.id
-          AND pt.fecha_jornada <= ?
+          AND pt.fecha_jornada BETWEEN ? AND ?
           AND pt.estado IN ('PENDIENTE','APROBADO')
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
 ");
-$stmt->execute([$cobrador_id, $sabado_str, $sabado_str]);
+$stmt->execute([$cobrador_id, $sabado_str, $lunes_str, $sabado_str]);
 $rows = $stmt->fetchAll();
 
 // ── Diario/Quincenal/Mensual: cuotas con vencimiento dentro de la semana ──
@@ -101,12 +101,12 @@ $stmt2 = $pdo->prepare("
         JOIN ic_cuotas   cu2 ON cu2.id = pt.cuota_id
         JOIN ic_creditos cr2 ON cr2.id = cu2.credito_id
         WHERE cr2.cliente_id = cl.id
-          AND pt.fecha_jornada <= ?
+          AND pt.fecha_jornada BETWEEN ? AND ?
           AND pt.estado IN ('PENDIENTE','APROBADO')
     )
     ORDER BY COALESCE(cl.zona,''), cl.apellidos, cl.nombres, cu.fecha_vencimiento ASC
 ");
-$stmt2->execute([$cobrador_id, $sabado_str, $sabado_str]);
+$stmt2->execute([$cobrador_id, $sabado_str, $lunes_str, $sabado_str]);
 $rows = array_merge($rows, $stmt2->fetchAll());
 
 // ── Clientes excluidos por tener un cobro de esta semana pendiente de aprobar ──
@@ -131,13 +131,18 @@ $rows_pendientes = $stmt_pend->fetchAll();
 
 if (empty($rows) && empty($rows_pendientes)) die('No hay clientes faltantes para esta semana.');
 
-// ── Una fila por crédito (evita duplicar el mismo cliente si tiene varias cuotas atrasadas) ──
-$visto      = [];
-$rows_dedup = [];
+// ── Una fila por crédito, sumando TODAS sus cuotas impagas (evita duplicar el
+// mismo cliente si tiene varias cuotas atrasadas, y evita subestimar el monto
+// adeudado mostrando solo la cuota más vieja) ──
+$grupos = [];
 foreach ($rows as $r) {
-    if (isset($visto[$r['credito_id']])) continue;
-    $visto[$r['credito_id']] = true;
-    $rows_dedup[] = $r;
+    $grupos[$r['credito_id']][] = $r;
+}
+$rows_dedup = [];
+foreach ($grupos as $cuotas_grupo) {
+    $rep = $cuotas_grupo[0]; // la más vieja — el ORDER BY de ambas queries ya lo garantiza
+    $rep['monto_total_grupo'] = calcular_grupo_cuotas($cuotas_grupo)['monto_total'];
+    $rows_dedup[] = $rep;
 }
 $rows = $rows_dedup;
 $hay_atraso_previo = false;
@@ -252,12 +257,7 @@ foreach ($por_zona as $zona => $lista) {
         $has_phone  = !empty(trim($r['telefono'] ?? ''));
         $row_h      = $has_phone ? 9 : 6;
 
-        $dias_atraso  = dias_atraso_habiles($r['fecha_vencimiento']);
-        $mora = (float) $r['monto_mora'] > 0
-            ? (float) $r['monto_mora']
-            : calcular_mora((float) $r['monto_cuota'], $dias_atraso, (float) $r['interes_moratorio_pct']);
-        $saldo_p      = (float) ($r['saldo_pagado'] ?? 0);
-        $total_cobrar = ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float) $r['monto_cuota'] + $mora - $saldo_p);
+        $total_cobrar = (float) $r['monto_total_grupo'];
         $total_zona  += $total_cobrar;
 
         $ult_pago_txt = !empty($r['ultimo_pago'])
@@ -354,12 +354,7 @@ foreach ($por_zona as $zona => $lista) {
 if (!empty($rows)) {
     $total_gral = 0.0;
     foreach ($rows as $r) {
-        $dias_atraso  = dias_atraso_habiles($r['fecha_vencimiento']);
-        $mora = (float) $r['monto_mora'] > 0
-            ? (float) $r['monto_mora']
-            : calcular_mora((float) $r['monto_cuota'], $dias_atraso, (float) $r['interes_moratorio_pct']);
-        $saldo_p     = (float) ($r['saldo_pagado'] ?? 0);
-        $total_gral += ($r['cuota_estado'] === 'CAP_PAGADA') ? $mora : max(0, (float) $r['monto_cuota'] + $mora - $saldo_p);
+        $total_gral += (float) $r['monto_total_grupo'];
     }
     $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->Cell($CA[0] + $CA[1] + $CA[2] + $CA[3], 7, lat('TOTAL GENERAL — ' . count($rows) . ' cliente(s)'), 1, 0, 'R');
