@@ -571,6 +571,17 @@ if ($vendedor_id !== 0) {
 // ═══════════════════════════════════════════════════════════
 } else {
 
+    // ── Filtro de zona (multi-select — combina varias zonas en una sola consulta) ──
+    $zonas_sel = array_values(array_filter(array_map('trim', (array) ($_GET['zonas'] ?? []))));
+    $zonas     = $pdo->query(
+        "SELECT DISTINCT zona FROM ic_clientes WHERE zona IS NOT NULL AND zona <> '' ORDER BY zona"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $zona_on = '';
+    if (!empty($zonas_sel)) {
+        $zona_on = "AND cr.cliente_id IN (SELECT id FROM ic_clientes WHERE zona IN (" .
+            implode(',', array_fill(0, count($zonas_sel), '?')) . "))";
+    }
+
     $orden_opts = [
         'mayor_venta'    => ['label' => 'Mayor venta',         'sql' => 'monto_vendido DESC'],
         'mayor_cobrado'  => ['label' => 'Mayor cobrado',       'sql' => 'total_cobrado DESC'],
@@ -585,8 +596,9 @@ if ($vendedor_id !== 0) {
     $orden     = isset($_GET['orden'], $orden_opts[$_GET['orden']]) ? $_GET['orden'] : 'mayor_venta';
     $order_sql = $orden_opts[$orden]['sql'];
 
-    // Parámetros para la query del ranking (fecha va en el ON del LEFT JOIN)
+    // Parámetros para la query del ranking (fecha y zona van en el ON del LEFT JOIN)
     $params_ranking = $tiene_filtro ? [$f_desde, $f_hasta] : [];
+    $params_ranking = array_merge($params_ranking, $zonas_sel);
 
     $rank_sql = "
         SELECT
@@ -603,7 +615,7 @@ if ($vendedor_id !== 0) {
             SUM(CASE WHEN cr.motivo_finalizacion = 'RETIRO_PRODUCTO'  THEN 1 ELSE 0 END) AS retirados
         FROM ic_vendedores v
         LEFT JOIN ic_creditos cr
-            ON cr.vendedor_id = v.id " . ($tiene_filtro ? "AND cr.fecha_alta BETWEEN ? AND ?" : "") . "
+            ON cr.vendedor_id = v.id " . ($tiene_filtro ? "AND cr.fecha_alta BETWEEN ? AND ?" : "") . " $zona_on
         LEFT JOIN (
             SELECT cu.credito_id, SUM(pc.monto_total) AS cobrado
             FROM ic_pagos_confirmados pc
@@ -640,10 +652,10 @@ if ($vendedor_id !== 0) {
             GROUP BY cu.credito_id
         ) pag ON pag.credito_id = cr.id
         LEFT JOIN $aging_subq aging ON aging.credito_id = cr.id
-        WHERE cr.vendedor_id IS NULL $sv_where
+        WHERE cr.vendedor_id IS NULL $sv_where $zona_on
     ";
     $sv_stmt = $pdo->prepare($sv_sql);
-    $sv_stmt->execute($params_fecha);
+    $sv_stmt->execute(array_merge($params_fecha, $zonas_sel));
     $sin_vendedor = $sv_stmt->fetch();
 
     // ── Export CSV — tabla Objetivos de Venta ────────────────
@@ -673,13 +685,61 @@ if ($vendedor_id !== 0) {
     require_once __DIR__ . '/../views/layout.php';
     ?>
 
-    <!-- Filtro temporal -->
+    <!-- Filtro de período + zona, combinados (afecta Objetivos de Venta, Rendimiento por Vendedor y su PDF) -->
     <div class="card-ic mb-4">
         <div class="card-ic-header">
-            <span class="card-title"><i class="fa fa-calendar-days"></i> <?= e($label_periodo) ?></span>
-            <?= filtro_periodo_html($preset, $f_desde, $f_hasta, 0, $presets_labels) ?>
+            <span class="card-title"><i class="fa fa-filter"></i> Filtrar Rendimiento por Vendedor</span>
+            <span class="text-muted" style="font-size:.8rem">
+                <?= e($label_periodo) ?><?= empty($zonas_sel) ? ' · Todas las zonas' : ' · ' . count($zonas_sel) . ' zona(s)' ?>
+            </span>
         </div>
+        <form method="GET" style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+            <input type="hidden" name="orden" value="<?= e($orden) ?>">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <span style="font-size:.78rem;color:var(--text-muted);min-width:52px">Período:</span>
+                <select name="periodo" onchange="toggleCustomFechaZona(this.value)"
+                        style="background:var(--dark-card);border:1px solid var(--dark-border);
+                               color:var(--text-main);border-radius:6px;padding:5px 10px;
+                               font-size:.8rem;cursor:pointer">
+                    <?php foreach ($presets_labels as $k => $lbl): ?>
+                        <option value="<?= $k ?>" <?= $preset === $k ? 'selected' : '' ?>><?= $lbl ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div id="custom-range-fecha-zona" style="display:<?= $preset === 'custom' ? 'flex' : 'none' ?>;gap:6px;align-items:center">
+                    <input type="date" name="desde" value="<?= e($f_desde ?? '') ?>"
+                           style="background:var(--dark-card);border:1px solid var(--dark-border);
+                                  color:var(--text-main);border-radius:6px;padding:4px 8px;font-size:.8rem">
+                    <span style="color:var(--text-muted)">—</span>
+                    <input type="date" name="hasta" value="<?= e($f_hasta ?? '') ?>"
+                           style="background:var(--dark-card);border:1px solid var(--dark-border);
+                                  color:var(--text-main);border-radius:6px;padding:4px 8px;font-size:.8rem">
+                </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                <span style="font-size:.78rem;color:var(--text-muted);min-width:52px">Zona:</span>
+                <?php foreach ($zonas as $z): ?>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:.8rem;
+                                  background:var(--dark-card);border:1px solid var(--dark-border);
+                                  border-radius:6px;padding:4px 10px;cursor:pointer">
+                        <input type="checkbox" name="zonas[]" value="<?= e($z) ?>"
+                               <?= in_array($z, $zonas_sel, true) ? 'checked' : '' ?>>
+                        <?= e($z) ?>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button type="submit" class="btn-ic btn-primary btn-sm"><i class="fa fa-filter"></i> Aplicar filtros</button>
+                <?php if ($tiene_filtro || !empty($zonas_sel)): ?>
+                    <a href="estadisticas?orden=<?= e($orden) ?>" class="btn-ic btn-ghost btn-sm">Limpiar</a>
+                <?php endif; ?>
+            </div>
+        </form>
     </div>
+    <script>
+    function toggleCustomFechaZona(v) {
+        document.getElementById('custom-range-fecha-zona').style.display = v === 'custom' ? 'flex' : 'none';
+    }
+    </script>
 
     <!-- Objetivos de Venta -->
     <?php $filas_objetivos = obtener_objetivos_vendedores($pdo, $f_desde, $f_hasta); ?>
@@ -764,6 +824,9 @@ if ($vendedor_id !== 0) {
                             <input type="hidden" name="hasta" value="<?= e($f_hasta) ?>">
                         <?php endif; ?>
                     <?php endif; ?>
+                    <?php foreach ($zonas_sel as $z): ?>
+                        <input type="hidden" name="zonas[]" value="<?= e($z) ?>">
+                    <?php endforeach; ?>
                     <select name="orden" onchange="this.form.submit()"
                             style="background:var(--dark-card);border:1px solid var(--dark-border);
                                    color:var(--text-main);border-radius:6px;padding:5px 10px;
@@ -775,6 +838,17 @@ if ($vendedor_id !== 0) {
                         <?php endforeach; ?>
                     </select>
                 </form>
+                <?php
+                $qs_pdf_ranking = http_build_query(array_filter([
+                    'periodo' => $preset,
+                    'desde'   => $preset === 'custom' ? $f_desde : null,
+                    'hasta'   => $preset === 'custom' ? $f_hasta : null,
+                    'zonas'   => $zonas_sel,
+                ]));
+                ?>
+                <a href="estadisticas_ranking_pdf?<?= $qs_pdf_ranking ?>" target="_blank" class="btn-ic btn-danger btn-sm">
+                    <i class="fa fa-file-pdf"></i> PDF
+                </a>
                 <a href="index" class="btn-ic btn-ghost btn-sm"><i class="fa fa-arrow-left"></i> Volver</a>
             </div>
         </div>
