@@ -1,12 +1,15 @@
 <?php
 // cobrador/estado_cuenta.php — Devuelve JSON con cronograma de cuotas de un crédito
+// Content-Type ANTES de sesion.php: si la sesión expiró/está fuera de horario,
+// verificar_sesion() responde JSON de error en vez de un redirect que le rompe
+// el .json() al fetch() de agenda.php (ver es_respuesta_json() en sesion.php).
+header('Content-Type: application/json; charset=utf-8');
+
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('ver_agenda');
-
-header('Content-Type: application/json; charset=utf-8');
 
 $pdo        = obtener_conexion();
 $credito_id = (int) ($_GET['credito_id'] ?? 0);

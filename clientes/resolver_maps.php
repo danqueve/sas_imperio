@@ -1,10 +1,11 @@
 <?php
 // clientes/resolver_maps.php — Resuelve una URL corta de Google Maps y extrae lat,lng
+// Content-Type ANTES de sesion.php: ver nota en cobrador/estado_cuenta.php.
+header('Content-Type: application/json; charset=utf-8');
+
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 verificar_sesion();
-
-header('Content-Type: application/json; charset=utf-8');
 
 $url = trim($_GET['url'] ?? '');
 

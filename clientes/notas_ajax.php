@@ -1,11 +1,13 @@
 <?php
 // clientes/notas_ajax.php — AJAX endpoint para notas internas de clientes
+// Content-Type ANTES de sesion.php: ver nota en cobrador/estado_cuenta.php.
+header('Content-Type: application/json');
+
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 
-header('Content-Type: application/json');
 $pdo        = obtener_conexion();
 $method     = $_SERVER['REQUEST_METHOD'];
 $cliente_id = (int)($_GET['cliente_id'] ?? $_POST['cliente_id'] ?? 0);

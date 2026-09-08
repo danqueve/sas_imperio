@@ -36,6 +36,38 @@ define('SUPERVISOR_HORA_FIN',   19);   // 19:00
 define('COBRADOR_HORA_INICIO',   8);   // 08:30 (hora + minuto)
 define('COBRADOR_MINUTO_INICIO', 30);  // el corte final es medianoche, sin fin explícito
 
+/**
+ * true si esta respuesta ya es JSON (Content-Type ya emitido por el script
+ * que llamó, o el request llegó con X-Requested-With: XMLHttpRequest) — así
+ * un redirect de sesión no le rompe el .json() a un fetch() del front.
+ */
+function es_respuesta_json(): bool
+{
+    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])
+        && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+        return true;
+    }
+    foreach (headers_list() as $h) {
+        if (stripos($h, 'application/json') !== false) return true;
+    }
+    return false;
+}
+
+/**
+ * Redirige (navegación normal) o responde con un JSON de error (endpoints
+ * AJAX detectados vía es_respuesta_json()) — siempre termina la ejecución.
+ */
+function redirigir_o_json(string $url, int $http_code, string $mensaje): void
+{
+    if (es_respuesta_json()) {
+        http_response_code($http_code);
+        echo json_encode(['error' => $mensaje]);
+        exit;
+    }
+    header('Location: ' . $url);
+    exit;
+}
+
 // ── Timeout por inactividad ──────────────────────────────────
 if (!empty($_SESSION['user_id'])) {
     $now = time();
@@ -46,8 +78,7 @@ if (!empty($_SESSION['user_id'])) {
         // Forzar nueva sesión vacía con flash
         session_start();
         $_SESSION['flash_login'] = 'Tu sesión expiró por inactividad.';
-        header('Location: ' . BASE_URL . 'auth/login');
-        exit;
+        redirigir_o_json(BASE_URL . 'auth/login', 401, 'Tu sesión expiró por inactividad.');
     }
     $_SESSION['last_activity'] = $now;
 }
@@ -79,8 +110,7 @@ function verificar_sesion(): void
     if (empty($_SESSION['user_id']) || !isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ROLES, true)) {
         session_unset();
         session_destroy();
-        header('Location: ' . BASE_URL . 'auth/login');
-        exit;
+        redirigir_o_json(BASE_URL . 'auth/login', 401, 'Sesión inválida o expirada.');
     }
 
     // ── Usuario desactivado: invalidar sesión activa (todos los roles) ──
@@ -94,8 +124,7 @@ function verificar_sesion(): void
             session_destroy();
             session_start();
             $_SESSION['flash_login'] = 'Tu usuario fue desactivado. Contactá a un administrador.';
-            header('Location: ' . BASE_URL . 'auth/login');
-            exit;
+            redirigir_o_json(BASE_URL . 'auth/login', 401, 'Tu usuario fue desactivado.');
         }
     } catch (Throwable $e) {
         error_log('Chequeo activo de usuario: ' . $e->getMessage());
@@ -118,8 +147,7 @@ function verificar_sesion(): void
             $tiene_ext = true; // fail-open: no bloquear por error de DB
         }
         if (!$tiene_ext) {
-            header('Location: ' . BASE_URL . 'auth/acceso_restringido');
-            exit;
+            redirigir_o_json(BASE_URL . 'auth/acceso_restringido', 403, 'Fuera del horario de acceso permitido.');
         }
     }
 }
@@ -163,6 +191,11 @@ function verificar_permiso(string $accion): void
     verificar_sesion(); // ya garantiza que $_SESSION['rol'] es válido
     $rol = $_SESSION['rol'];
     if (!isset($permisos[$accion]) || !in_array($rol, $permisos[$accion], true)) {
+        if (es_respuesta_json()) {
+            http_response_code(403);
+            echo json_encode(['error' => 'No tenés permiso para realizar esta acción.']);
+            exit;
+        }
         http_response_code(403);
         echo '<div style="font-family:sans-serif;text-align:center;padding:60px">
                 <h2>⛔ Acceso denegado</h2>

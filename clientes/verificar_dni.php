@@ -1,11 +1,12 @@
 <?php
 // clientes/verificar_dni.php — Verificar si un DNI ya existe (AJAX)
+// Content-Type ANTES de sesion.php: ver nota en cobrador/estado_cuenta.php.
+header('Content-Type: application/json');
+
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 verificar_sesion();
 verificar_permiso('editar_clientes');
-
-header('Content-Type: application/json');
 
 $dni = trim($_GET['dni'] ?? '');
 if ($dni === '') {

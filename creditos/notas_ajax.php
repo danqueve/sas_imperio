@@ -3,12 +3,14 @@
 // creditos/notas_ajax.php — AJAX: listar y crear notas internas
 // Requiere: rol admin o supervisor
 // ============================================================
+// Content-Type ANTES de sesion.php: ver nota en cobrador/estado_cuenta.php.
+header('Content-Type: application/json; charset=utf-8');
+
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 
-header('Content-Type: application/json; charset=utf-8');
 $pdo       = obtener_conexion();
 $metodo    = $_SERVER['REQUEST_METHOD'];
 $credito_id = (int)($_GET['credito_id'] ?? $_POST['credito_id'] ?? 0);

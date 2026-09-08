@@ -1,11 +1,13 @@
 <?php
 // cobrador/registrar_intento.php — Registrar intento de cobro fallido
+// Content-Type ANTES de sesion.php: ver nota en cobrador/estado_cuenta.php.
+header('Content-Type: application/json');
+
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
 verificar_permiso('ver_agenda');
-header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['ok' => false, 'error' => 'Método inválido']); exit;
