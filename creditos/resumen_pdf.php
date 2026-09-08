@@ -61,19 +61,35 @@ foreach ($lista_cuotas as &$cuota) {
 unset($cuota);
 
 // ── Historial de pagos confirmados ────────────────────────────
+// "Cargado por" = quien realmente cargo el pago: si es manual (origen='manual',
+// tipeado directo por un admin/supervisor via pagar_cuota.php) es el aprobador;
+// si vino de la calle es el cobrador. Mismo criterio ya usado en creditos/ver.php.
 $hist_stmt = $pdo->prepare("
-    SELECT cu.numero_cuota, pt.fecha_jornada, pt.monto_efectivo,
+    SELECT cu.numero_cuota, cu.fecha_vencimiento, pt.fecha_jornada, pt.monto_efectivo,
            pt.monto_transferencia, pt.monto_mora_cobrada, pt.monto_total,
-           CONCAT(u.nombre, ' ', u.apellido) AS cobrador_nombre
+           IFNULL(pt.origen, 'cobrador') AS origen,
+           CONCAT(u.nombre, ' ', u.apellido)   AS cobrador_nombre,
+           CONCAT(ua.nombre, ' ', ua.apellido) AS aprobador_nombre
     FROM ic_pagos_confirmados pc
     JOIN ic_pagos_temporales pt ON pt.id = pc.pago_temp_id
     JOIN ic_cuotas cu           ON cu.id = pc.cuota_id
     JOIN ic_usuarios u          ON u.id  = pt.cobrador_id
+    JOIN ic_usuarios ua         ON ua.id = pc.aprobador_id
     WHERE cu.credito_id = ?
     ORDER BY pt.fecha_jornada ASC, pc.id ASC
 ");
 $hist_stmt->execute([$id]);
 $historial_pagos = $hist_stmt->fetchAll();
+foreach ($historial_pagos as &$hp) {
+    $hp['cargado_por'] = $hp['origen'] === 'manual'
+        ? $hp['aprobador_nombre'] . ' (Manual)'
+        : $hp['cobrador_nombre'];
+    // Dias de atraso de la cuota al momento de ESTE pago puntual (no a hoy)
+    $hp['dias_atraso'] = (!empty($hp['fecha_vencimiento']) && !empty($hp['fecha_jornada']))
+        ? dias_atraso_habiles($hp['fecha_vencimiento'], $hp['fecha_jornada'])
+        : 0;
+}
+unset($hp);
 
 // Totales
 $pagadas          = count(array_filter($lista_cuotas, fn($c) => $c['estado'] === 'PAGADA'));
@@ -220,8 +236,8 @@ if (!empty($historial_pagos)) {
     $pdf->Cell(0, 7, 'HISTORIAL DE PAGOS CONFIRMADOS', 0, 1, 'L', true);
 
     $pdf->SetFont('Arial', 'B', 7.5);
-    // Cols: Cuota12, Fecha25, Efectivo30, Transfer30, Mora28, Total30, Cobrador35
-    $hcols = ['Cuota' => 12, 'Fecha' => 25, 'Efectivo' => 28, 'Transf.' => 28, 'Mora' => 24, 'Total' => 28, 'Cobrador' => 45];
+    // Cols: Cuota12, Fecha22, Efectivo26, Transfer26, Mora32, Total28, Cargado por44
+    $hcols = ['Cuota' => 12, 'Fecha' => 22, 'Efectivo' => 26, 'Transf.' => 26, 'Mora' => 32, 'Total' => 28, 'Cargado por' => 44];
     foreach ($hcols as $h => $w) {
         $pdf->Cell($w, 7, lat($h), 1, 0, 'C', true);
     }
@@ -232,24 +248,32 @@ if (!empty($historial_pagos)) {
     foreach ($historial_pagos as $h) {
         $pdf->SetFillColor($fill ? 250 : 255, $fill ? 250 : 255, $fill ? 250 : 255);
         $pdf->Cell(12, 6, '#' . $h['numero_cuota'], 1, 0, 'C', $fill);
-        $pdf->Cell(25, 6, date('d/m/Y', strtotime($h['fecha_jornada'])), 1, 0, 'C', $fill);
-        $pdf->Cell(28, 6, $h['monto_efectivo'] > 0 ? pesos($h['monto_efectivo']) : '-', 1, 0, 'R', $fill);
-        $pdf->Cell(28, 6, $h['monto_transferencia'] > 0 ? pesos($h['monto_transferencia']) : '-', 1, 0, 'R', $fill);
-        $pdf->Cell(24, 6, $h['monto_mora_cobrada'] > 0 ? pesos($h['monto_mora_cobrada']) : '-', 1, 0, 'R', $fill);
+        $pdf->Cell(22, 6, date('d/m/Y', strtotime($h['fecha_jornada'])), 1, 0, 'C', $fill);
+        $pdf->Cell(26, 6, $h['monto_efectivo'] > 0 ? pesos($h['monto_efectivo']) : '-', 1, 0, 'R', $fill);
+        $pdf->Cell(26, 6, $h['monto_transferencia'] > 0 ? pesos($h['monto_transferencia']) : '-', 1, 0, 'R', $fill);
+        // Mora: dias de atraso (al momento de este pago) + el monto cobrado, si hubo
+        if ($h['monto_mora_cobrada'] > 0) {
+            $mora_txt = $h['dias_atraso'] . 'd | ' . pesos($h['monto_mora_cobrada']);
+        } elseif ($h['dias_atraso'] > 0) {
+            $mora_txt = $h['dias_atraso'] . 'd';
+        } else {
+            $mora_txt = '-';
+        }
+        $pdf->Cell(32, 6, $mora_txt, 1, 0, 'R', $fill);
         $pdf->Cell(28, 6, pesos($h['monto_total']), 1, 0, 'R', $fill);
-        $pdf->Cell(45, 6, lat(mb_substr($h['cobrador_nombre'], 0, 20)), 1, 1, 'L', $fill);
+        $pdf->Cell(44, 6, lat(mb_substr($h['cargado_por'], 0, 24)), 1, 1, 'L', $fill);
         $fill = !$fill;
     }
 
     // Totales historial
     $pdf->SetFont('Arial', 'B', 7.5);
     $pdf->SetFillColor(230, 230, 230);
-    $pdf->Cell(12 + 25, 6, 'TOTAL', 1, 0, 'R', true);
-    $pdf->Cell(28, 6, pesos($hist_total_ef), 1, 0, 'R', true);
-    $pdf->Cell(28, 6, pesos($hist_total_tr), 1, 0, 'R', true);
-    $pdf->Cell(24, 6, $hist_total_mora > 0 ? pesos($hist_total_mora) : '-', 1, 0, 'R', true);
+    $pdf->Cell(12 + 22, 6, 'TOTAL', 1, 0, 'R', true);
+    $pdf->Cell(26, 6, pesos($hist_total_ef), 1, 0, 'R', true);
+    $pdf->Cell(26, 6, pesos($hist_total_tr), 1, 0, 'R', true);
+    $pdf->Cell(32, 6, $hist_total_mora > 0 ? pesos($hist_total_mora) : '-', 1, 0, 'R', true);
     $pdf->Cell(28, 6, pesos($hist_total), 1, 0, 'R', true);
-    $pdf->Cell(45, 6, '', 1, 1, 'L', true);
+    $pdf->Cell(44, 6, '', 1, 1, 'L', true);
     $pdf->Ln(5);
 }
 
