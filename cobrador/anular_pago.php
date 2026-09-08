@@ -54,15 +54,24 @@ if (!$row) {
     exit;
 }
 
-$pdo->prepare("
-    DELETE FROM ic_pagos_temporales
-    WHERE id = ? AND estado = 'PENDIENTE'
-")->execute([$pt_id]);
-
-registrar_log($pdo, $uid, 'PAGO_ANULADO', 'pago_temporal', $pt_id,
-    'Cuota #' . $row['numero_cuota'] . ' — pago anulado por ' . $rol
-    . ' — Cliente: ' . $row['apellidos'] . ', ' . $row['nombres'] . ' — DNI: ' . ($row['dni'] ?: '—'));
-
-$_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago de cuota #' . $row['numero_cuota'] . ' anulado correctamente.'];
+if (es_super_admin()) {
+    try {
+        $res = ejecutar_anulacion_pago_temporal($pdo, $pt_id, $uid);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago de cuota #' . $res['numero_cuota'] . ' anulado correctamente.'];
+    } catch (Exception $e) {
+        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al anular el pago.'];
+    }
+} else {
+    $motivo = trim($_POST['motivo'] ?? '');
+    if (!$motivo) {
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Completá el motivo de la solicitud.'];
+    } else {
+        $sol_id = crear_solicitud_autorizacion($pdo, 'anular_pago_temporal', 'pago_temporal', $pt_id, [], $motivo, $uid);
+        registrar_log($pdo, $uid, 'SOLICITUD_AUTORIZACION_CREADA', 'pago_temporal', $pt_id,
+            'Solicitud #' . $sol_id . ' para anular pago — Cuota #' . $row['numero_cuota']
+            . ' — Cliente: ' . $row['apellidos'] . ', ' . $row['nombres'] . ' — Motivo: ' . $motivo);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Solicitud enviada. Un super admin la va a revisar.'];
+    }
+}
 header('Location: ' . BASE_URL . 'cobrador/agenda');
 exit;

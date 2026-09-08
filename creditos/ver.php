@@ -77,6 +77,24 @@ if (es_admin() || es_supervisor()) {
     }
 }
 
+// Mapa pago_confirmado_id → solicitud de autorización PENDIENTE (admin regular
+// pidiendo revertir un pago) — solo hace falta para admin, que es el único rol
+// que ve el botón de revertir directo/solicitar autorización.
+$sol_autorizacion_pc_ids = [];
+if (es_admin()) {
+    $pc_ids_credito = array_column($conf_map, 'pc_id');
+    if ($pc_ids_credito) {
+        $placeholders_sa = implode(',', array_fill(0, count($pc_ids_credito), '?'));
+        $sa_stmt = $pdo->prepare("
+            SELECT entidad_id FROM ic_solicitudes_autorizacion
+            WHERE tipo_accion = 'revertir_pago_confirmado' AND estado = 'PENDIENTE'
+              AND entidad_id IN ($placeholders_sa)
+        ");
+        $sa_stmt->execute($pc_ids_credito);
+        $sol_autorizacion_pc_ids = array_map('intval', $sa_stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+}
+
 // ── Historial completo de pagos confirmados del crédito ──────
 $hist_stmt = $pdo->prepare("
     SELECT
@@ -683,6 +701,7 @@ require_once __DIR__ . '/../views/layout.php';
                         $pc_id      = $pc_info ? (int) $pc_info['pc_id'] : 0;
                         $sol_baja   = $pc_info ? (int) $pc_info['solicitud_baja'] : 0;
                         $mot_baja   = $pc_info ? $pc_info['motivo_baja'] : '';
+                        $tiene_sol_auth = $pc_id && in_array($pc_id, $sol_autorizacion_pc_ids, true);
                         $rowStyle   = '';
                         if ($sol_baja && $q['estado'] === 'PAGADA')
                             $rowStyle = 'background:rgba(245,158,11,.07);border-left:3px solid var(--warning)';
@@ -823,13 +842,25 @@ require_once __DIR__ . '/../views/layout.php';
                                 <?php endif; ?>
 
                                 <?php if (in_array($q['estado'], ['PAGADA', 'PARCIAL']) && $pc_id): ?>
-                                    <?php if (es_admin()): ?>
+                                    <?php if (es_super_admin()): ?>
                                         <button
                                             onclick="abrirRevertir(<?= $pc_id ?>, <?= $q['numero_cuota'] ?>, <?= $sol_baja ?>)"
                                             class="btn-ic btn-sm <?= $sol_baja ? 'btn-warning' : 'btn-danger' ?>"
                                             title="<?= $sol_baja ? 'Reversa solicitada — Revertir' : 'Revertir último pago' ?>">
                                             <i class="fa fa-undo"></i>
                                         </button>
+                                    <?php elseif (es_admin()): ?>
+                                        <?php if (!$tiene_sol_auth): ?>
+                                            <button
+                                                onclick="abrirSolAutorizacionRevertir(<?= $pc_id ?>, <?= $q['numero_cuota'] ?>)"
+                                                class="btn-ic btn-warning btn-sm" title="Solicitar autorización para revertir">
+                                                <i class="fa fa-shield-halved"></i>
+                                            </button>
+                                        <?php else: ?>
+                                            <span class="text-warning" style="font-size:.75rem" title="Solicitud de autorización enviada — pendiente de super admin">
+                                                <i class="fa fa-clock"></i>
+                                            </span>
+                                        <?php endif; ?>
                                     <?php elseif (es_supervisor()): ?>
                                         <?php if (!$sol_baja): ?>
                                             <button
@@ -998,8 +1029,8 @@ require_once __DIR__ . '/../views/layout.php';
 </div>
 <?php endif; ?>
 
-<?php if (es_admin()): ?>
-<!-- MODAL REVERTIR PAGO (admin) -->
+<?php if (es_super_admin()): ?>
+<!-- MODAL REVERTIR PAGO (super admin) -->
 <div class="modal-overlay" id="modal-revertir">
     <div class="modal-box" style="max-width:440px">
         <div class="modal-header">
@@ -1018,6 +1049,36 @@ require_once __DIR__ . '/../views/layout.php';
                     <i class="fa fa-undo"></i> Confirmar Reversa
                 </button>
                 <button type="button" onclick="closeModal('modal-revertir')" class="btn-ic btn-ghost">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php elseif (es_admin()): ?>
+<!-- MODAL SOLICITAR AUTORIZACIÓN: revertir pago (admin regular) -->
+<div class="modal-overlay" id="modal-sol-autorizacion-revertir">
+    <div class="modal-box" style="max-width:440px">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fa fa-shield-halved"></i> Solicitar Autorización</div>
+            <button class="modal-close" onclick="closeModal('modal-sol-autorizacion-revertir')">✕</button>
+        </div>
+        <div id="info-sol-autorizacion-revertir"
+            style="background:rgba(0,0,0,.3);border-radius:8px;padding:12px;margin-bottom:14px;font-size:.875rem"></div>
+        <form method="POST" action="gestionar_pago" class="form-ic">
+            <?php csrf_input(); ?>
+            <input type="hidden" name="accion" value="solicitar_autorizacion_revertir">
+            <input type="hidden" name="pago_conf_id" id="auth_rev_pc_id">
+            <input type="hidden" name="credito_id" value="<?= $id ?>">
+            <div class="form-group mb-4">
+                <label>Motivo *</label>
+                <textarea name="motivo" rows="3" required
+                    placeholder="Ej: Pago duplicado, error de importe, cliente equivocado..."
+                    style="resize:vertical"></textarea>
+            </div>
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn-ic btn-warning w-100" style="justify-content:center">
+                    <i class="fa fa-paper-plane"></i> Enviar Solicitud
+                </button>
+                <button type="button" onclick="closeModal('modal-sol-autorizacion-revertir')" class="btn-ic btn-ghost">Cancelar</button>
             </div>
         </form>
     </div>
@@ -1260,7 +1321,7 @@ function dirTotal() {
     document.getElementById('dir_total').textContent = formatPesos(ef + tr);
 }
 
-// Admin: revertir pago confirmado
+// Super admin: revertir pago confirmado directo
 function abrirRevertir(pc_id, num_cuota, sol_baja) {
     document.getElementById('rev_pc_id').value = pc_id;
     document.getElementById('info-revertir').innerHTML =
@@ -1268,6 +1329,15 @@ function abrirRevertir(pc_id, num_cuota, sol_baja) {
         (sol_baja ? '<br><span style="color:var(--warning)"><i class="fa fa-flag"></i> Hay una solicitud de reversa del supervisor.</span>' : '') +
         '<br><span style="color:var(--danger);font-size:.82rem">La cuota volverá a PENDIENTE o VENCIDA y el pago quedará anulado.</span>';
     openModal('modal-revertir');
+}
+
+// Admin regular: solicitar autorización de un super admin para revertir
+function abrirSolAutorizacionRevertir(pc_id, num_cuota) {
+    document.getElementById('auth_rev_pc_id').value = pc_id;
+    document.getElementById('info-sol-autorizacion-revertir').innerHTML =
+        'Solicitar autorización para revertir el pago de la <strong>Cuota #' + num_cuota + '</strong>.<br>' +
+        '<span style="font-size:.82rem;color:var(--text-muted)">Un super admin va a revisar la solicitud y decidir si revierte el pago.</span>';
+    openModal('modal-sol-autorizacion-revertir');
 }
 
 // Admin/supervisor: condonar mora congelada (CAP_PAGADA)

@@ -17,7 +17,7 @@ $credito_id = (int) ($_POST['credito_id'] ?? 0);
 $uid        = (int) $_SESSION['user_id'];
 $back       = 'ver?id=' . $credito_id;
 
-// ── Admin: revertir pago confirmado ──────────────────────────
+// ── Admin: revertir pago confirmado (directo si es super admin) ──
 if ($accion === 'revertir_confirmado') {
     if (!es_admin()) {
         $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Solo los administradores pueden revertir pagos.'];
@@ -32,104 +32,70 @@ if ($accion === 'revertir_confirmado') {
         exit;
     }
 
-    // Obtener datos del pago confirmado
-    $stmt = $pdo->prepare("SELECT * FROM ic_pagos_confirmados WHERE id = ?");
-    $stmt->execute([$pc_id]);
-    $pc = $stmt->fetch();
+    if (!es_super_admin()) {
+        // Admin regular: no ejecuta directo, esto se maneja en la acción
+        // 'solicitar_autorizacion_revertir' (ver más abajo) — no debería
+        // llegar acá porque el modal correspondiente ya postea a esa acción,
+        // pero por si alguien fuerza el POST viejo, no lo dejamos ejecutar.
+        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Necesitás autorización de un super admin para revertir un pago. Usá "Solicitar Autorización".'];
+        header('Location: ' . $back);
+        exit;
+    }
 
-    if (!$pc) {
+    // Verificar que el pago existe antes de mostrar el mensaje de éxito
+    $chk = $pdo->prepare("SELECT id FROM ic_pagos_confirmados WHERE id = ?");
+    $chk->execute([$pc_id]);
+    if (!$chk->fetchColumn()) {
         $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Pago no encontrado.'];
         header('Location: ' . $back);
         exit;
     }
 
     try {
-        $pdo->beginTransaction();
-
-        $cuota_id_rev = (int) $pc['cuota_id'];
-
-        // 1. Marcar pago temporal como RECHAZADO (reversal)
-        $pdo->prepare("UPDATE ic_pagos_temporales SET estado='RECHAZADO', observaciones='Revertido por admin' WHERE id=?")
-            ->execute([$pc['pago_temp_id']]);
-
-        // 2. Eliminar pago confirmado
-        $pdo->prepare("DELETE FROM ic_pagos_confirmados WHERE id=?")
-            ->execute([$pc_id]);
-
-        // 3. Recalcular saldo_pagado real sumando los pagos confirmados que quedan para esta cuota
-        $saldo_stmt = $pdo->prepare("SELECT COALESCE(SUM(monto_total), 0) FROM ic_pagos_confirmados WHERE cuota_id = ?");
-        $saldo_stmt->execute([$cuota_id_rev]);
-        $saldo_restante = (float) $saldo_stmt->fetchColumn();
-
-        // 4. Obtener datos de la cuota para determinar nuevo estado
-        $venc = $pdo->prepare("SELECT fecha_vencimiento, monto_cuota, monto_mora FROM ic_cuotas WHERE id = ?");
-        $venc->execute([$cuota_id_rev]);
-        $cuota_row = $venc->fetch();
-
-        $monto_base_rev = (float) $cuota_row['monto_cuota'];
-        $mora_actual_rev = (float) $cuota_row['monto_mora'];
-
-        if ($saldo_restante >= ($monto_base_rev + $mora_actual_rev - 0.005)) {
-            // Aún cubre capital + mora: sigue PAGADA (no debería ocurrir normalmente)
-            $nuevo_estado_cuota = 'PAGADA';
-        } elseif ($saldo_restante >= ($monto_base_rev - 0.005)) {
-            // Cubre el capital pero la mora vuelve a quedar pendiente de cobro
-            $nuevo_estado_cuota = 'CAP_PAGADA';
-        } elseif ($saldo_restante > 0.005) {
-            // Pago parcial restante
-            $nuevo_estado_cuota = 'PARCIAL';
-        } else {
-            // Sin saldo: PENDIENTE o VENCIDA según fecha
-            $saldo_restante = 0.0;
-            $nuevo_estado_cuota = (new DateTime($cuota_row['fecha_vencimiento'])) < new DateTime('today')
-                ? 'VENCIDA' : 'PENDIENTE';
-        }
-
-        // Fase 5: Mantener mora congelada si hay saldo parcial; recalcular si queda sin pago
-        $mora_guardar = ($nuevo_estado_cuota === 'PAGADA')
-            ? (float) $cuota_row['monto_mora']                  // mantener congelada
-            : ($saldo_restante > 0 ? (float) $cuota_row['monto_mora'] : 0.0); // parcial: mantener; sin saldo: reset
-
-        // 5. Actualizar cuota con el saldo real recalculado
-        $fecha_pago_v = ($nuevo_estado_cuota === 'PAGADA') ? date('Y-m-d') : null;
-        $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
-            ->execute([$nuevo_estado_cuota, $saldo_restante, $mora_guardar, $fecha_pago_v, $cuota_id_rev]);
-
-        // 6. Recalcular estado del crédito (puede pasar FINALIZADO→EN_CURSO/MOROSO, o EN_CURSO→MOROSO)
-        $cr_stmt = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");
-        $cr_stmt->execute([$credito_id]);
-        $estado_cr_actual = $cr_stmt->fetchColumn();
-        if ($estado_cr_actual !== 'CANCELADO') {
-            $venc_check = $pdo->prepare("SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=? AND estado='VENCIDA'");
-            $venc_check->execute([$credito_id]);
-            $tiene_vencidas = (int) $venc_check->fetchColumn() > 0;
-            $nuevo_cr = $tiene_vencidas ? 'MOROSO' : 'EN_CURSO';
-            $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")
-                ->execute([$nuevo_cr, $credito_id]);
-        }
-
-        $pdo->commit();
-
-        $cliente_stmt = $pdo->prepare("
-            SELECT cl.apellidos, cl.nombres, cl.dni
-            FROM ic_clientes cl
-            JOIN ic_creditos cr ON cr.cliente_id = cl.id
-            WHERE cr.id = ?
-        ");
-        $cliente_stmt->execute([$credito_id]);
-        $cliente_rev = $cliente_stmt->fetch();
-
-        registrar_log($pdo, $uid, 'PAGO_REVERTIDO', 'pago_confirmado', $pc_id,
-            'Cuota #' . $pc['cuota_id'] . ' — Crédito #' . $credito_id
-            . ' — Cliente: ' . $cliente_rev['apellidos'] . ', ' . $cliente_rev['nombres']
-            . ' — DNI: ' . ($cliente_rev['dni'] ?: '—'));
+        $nuevo_estado_cuota = ejecutar_reversion_pago_confirmado($pdo, $pc_id, $credito_id, $uid);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Pago revertido. La cuota volvió a estado ' . $nuevo_estado_cuota . '.'];
-
     } catch (Exception $e) {
-        $pdo->rollBack();
         $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al revertir el pago.'];
     }
 
+    header('Location: ' . $back);
+    exit;
+}
+
+// ── Admin regular: solicitar autorización de un super admin ─────
+if ($accion === 'solicitar_autorizacion_revertir') {
+    if (!es_admin() || es_super_admin()) {
+        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Acceso denegado.'];
+        header('Location: ' . $back);
+        exit;
+    }
+
+    $pc_id  = (int) ($_POST['pago_conf_id'] ?? 0);
+    $motivo = trim($_POST['motivo'] ?? '');
+
+    if (!$pc_id || !$credito_id || !$motivo) {
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Completá el motivo de la solicitud.'];
+        header('Location: ' . $back);
+        exit;
+    }
+
+    $chk = $pdo->prepare("SELECT cuota_id FROM ic_pagos_confirmados WHERE id = ?");
+    $chk->execute([$pc_id]);
+    $cuota_id_chk = $chk->fetchColumn();
+    if (!$cuota_id_chk) {
+        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Pago no encontrado.'];
+        header('Location: ' . $back);
+        exit;
+    }
+
+    $sol_id = crear_solicitud_autorizacion(
+        $pdo, 'revertir_pago_confirmado', 'pago_confirmado', $pc_id,
+        ['credito_id' => $credito_id], $motivo, $uid
+    );
+    registrar_log($pdo, $uid, 'SOLICITUD_AUTORIZACION_CREADA', 'pago_confirmado', $pc_id,
+        'Solicitud #' . $sol_id . ' para revertir pago — Crédito #' . $credito_id . ' — Motivo: ' . $motivo);
+
+    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Solicitud enviada. Un super admin la va a revisar.'];
     header('Location: ' . $back);
     exit;
 }

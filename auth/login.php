@@ -64,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['nombre']        = $user['nombre'];
                 $_SESSION['apellido']      = $user['apellido'];
                 $_SESSION['rol']           = $user['rol'];
+                $_SESSION['super_admin']   = (int) ($user['super_admin'] ?? 0);
                 $_SESSION['last_activity'] = time();
 
                 // Limpiar intentos fallidos de esta IP tras un login exitoso

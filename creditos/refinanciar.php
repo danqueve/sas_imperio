@@ -147,142 +147,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'La cantidad de nuevas cuotas debe estar entre 1 y 520.';
     } elseif (empty($f['primer_vencimiento'])) {
         $error = 'Ingresá la fecha del primer nuevo vencimiento.';
+    } elseif (!es_super_admin() && $f['observaciones'] === '') {
+        $error = 'Como admin, tenés que indicar el motivo en "Observaciones" para enviar la refinanciación a autorizar.';
     } else {
-        $monto_fin = $deuda_capital + ($f['capitalizar_mora'] ? $total_mora : 0);
+        // Solo para mostrar un preview / validar que el monto no sea cero o
+        // negativo — el monto REAL con el que se ejecuta se recalcula desde
+        // cero en ejecutar_refinanciacion(), tanto si es directo (super admin)
+        // como si se aprueba más tarde una solicitud (evita usar un cálculo
+        // viejo si la deuda cambió mientras estaba pendiente).
+        $monto_fin_preview = $deuda_capital + ($f['capitalizar_mora'] ? $total_mora : 0);
         if ($f['interes_adicional'] > 0) {
-            $monto_fin *= (1 + $f['interes_adicional'] / 100);
+            $monto_fin_preview *= (1 + $f['interes_adicional'] / 100);
         }
-        $nuevo_valor_cuota  = floor($monto_fin / $f['nuevas_cuotas'] * 100) / 100;
-        $monto_ultima_cuota = round($monto_fin - ($f['nuevas_cuotas'] - 1) * $nuevo_valor_cuota, 2);
 
-        if ($monto_fin <= 0) {
+        if ($monto_fin_preview <= 0) {
             $error = 'El saldo a refinanciar es cero o negativo. No hay deuda pendiente.';
-        } else {
+        } elseif (es_super_admin()) {
             try {
-                $pdo->beginTransaction();
-
-                // Re-chequear el estado con lock: evita que un doble submit/doble clic
-                // refinancie el mismo crédito dos veces (crea dos créditos nuevos duplicados).
-                $lock = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id = ? FOR UPDATE");
-                $lock->execute([$id]);
-                $estado_actual = $lock->fetchColumn();
-                if (!in_array($estado_actual, ['EN_CURSO', 'MOROSO'], true)) {
-                    $pdo->rollBack();
-                    $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Este crédito ya fue refinanciado (probablemente por un envío duplicado).'];
-                    header("Location: ver?id=$id");
-                    exit;
-                }
-
-                // 1. Eliminar cuotas PENDIENTE y VENCIDA del crédito original.
-                //    Primero borrar pagos_temporales RECHAZADOS que referencian esas cuotas
-                //    (los PENDIENTES ya están bloqueados por $tiene_pagos_pendientes arriba).
-                //    CAP_PAGADA se mantiene (tiene FK en ic_pagos_confirmados),
-                //    pero si capitalizamos mora, la condonamos en ellas (#12).
-                $pdo->prepare("
-                    DELETE pt FROM ic_pagos_temporales pt
-                    JOIN ic_cuotas c ON c.id = pt.cuota_id
-                    WHERE c.credito_id = ? AND c.estado IN ('PENDIENTE','VENCIDA') AND pt.estado = 'RECHAZADO'
-                ")->execute([$id]);
-
-                $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA')")
-                    ->execute([$id]);
-
-                // Condonar mora en cuotas CAP_PAGADA si se capitalizó (#12)
-                if ($f['capitalizar_mora'] && $mora_cap_pagada > 0) {
-                    $pdo->prepare("UPDATE ic_cuotas SET monto_mora = 0 WHERE credito_id = ? AND estado = 'CAP_PAGADA'")
-                        ->execute([$id]);
-                }
-
-                // 2. Cerrar crédito original como FINALIZADO por REFINANCIACION
-                $pdo->prepare("
-                    UPDATE ic_creditos SET
-                        estado              = 'FINALIZADO',
-                        motivo_finalizacion = 'REFINANCIACION',
-                        fecha_finalizacion  = CURDATE(),
-                        veces_refinanciado          = COALESCE(veces_refinanciado, 0) + 1,
-                        fecha_ultima_refinanciacion = CURDATE()
-                    WHERE id = ?
-                ")->execute([$id]);
-
-                // 3. Crear nuevo crédito vinculado al original
-                $obs = $f['observaciones'] !== '' ? $f['observaciones'] : ($cr['observaciones'] ?? '');
-                $pdo->prepare("
-                    INSERT INTO ic_creditos
-                        (cliente_id, articulo_id, articulo_desc, cobrador_id, vendedor_id,
-                         fecha_alta, precio_articulo, monto_total, interes_pct, interes_moratorio_pct,
-                         frecuencia, cant_cuotas, monto_cuota, dia_cobro, primer_vencimiento,
-                         credito_origen_id, observaciones, created_by)
-                    VALUES (?, ?, ?, ?, ?, CURDATE(), ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ")->execute([
-                    $cr['cliente_id'],
-                    $cr['articulo_id'],
-                    $cr['articulo_desc'],
-                    $f['cobrador_id'],
-                    $cr['vendedor_id'],
-                    $monto_fin,
-                    $monto_fin,
-                    $cr['interes_moratorio_pct'],
-                    $f['frecuencia'],
-                    $f['nuevas_cuotas'],
-                    $nuevo_valor_cuota,
-                    $cr['dia_cobro'],
-                    $f['primer_vencimiento'],
-                    $id,
-                    $obs ?: null,
-                    $_SESSION['user_id'],
-                ]);
-                $nuevo_id = (int) $pdo->lastInsertId();
-
-                // 4. Generar cuotas del nuevo crédito
-                generar_cuotas($nuevo_id, [
-                    'primer_vencimiento' => $f['primer_vencimiento'],
-                    'cant_cuotas'        => $f['nuevas_cuotas'],
-                    'frecuencia'         => $f['frecuencia'],
-                    'monto_cuota'        => $nuevo_valor_cuota,
-                    'monto_ultima_cuota' => $monto_ultima_cuota,
-                ], $pdo);
-
-                // 5. Registrar en historial de refinanciaciones
-                $pdo->prepare("
-                    INSERT INTO ic_historial_refinanciaciones
-                        (credito_id, credito_nuevo_id, usuario_id,
-                         cuotas_anteriores, monto_cuota_anterior,
-                         cuotas_nuevas, monto_cuota_nueva, deuda_capital, frecuencia_nueva, observaciones)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ")->execute([
-                    $id,
-                    $nuevo_id,
-                    $_SESSION['user_id'],
-                    $cant_pendientes + count($cuotas_cap_pagada),
-                    $cr['monto_cuota'],
-                    $f['nuevas_cuotas'],
-                    $nuevo_valor_cuota,
-                    $deuda_capital,
-                    $f['frecuencia'],
-                    $f['observaciones'] ?: null,
-                ]);
-
-                $pdo->commit();
-
-                $det = 'Ref.#' . ($veces_ref + 1)
-                    . ' | Crédito original #' . $id . ' cerrado → Nuevo crédito #' . $nuevo_id
-                    . ' | ' . $f['nuevas_cuotas'] . ' cuotas de ' . formato_pesos($nuevo_valor_cuota)
-                    . ($f['capitalizar_mora'] && $total_mora > 0 ? ' | Mora capitalizada: ' . formato_pesos($total_mora) : '');
-                registrar_log($pdo, $_SESSION['user_id'], 'CREDITO_REFINANCIADO', 'credito', $id, $det);
-
+                $nuevo_id = ejecutar_refinanciacion($pdo, $id, $f, $_SESSION['user_id']);
+                $nuevo_cr_stmt = $pdo->prepare("SELECT cant_cuotas, monto_cuota FROM ic_creditos WHERE id = ?");
+                $nuevo_cr_stmt->execute([$nuevo_id]);
+                $nuevo_cr = $nuevo_cr_stmt->fetch();
                 $_SESSION['flash'] = [
                     'type' => 'success',
                     'msg'  => 'Refinanciación aplicada. Se creó el Crédito #' . $nuevo_id
-                            . ' con ' . $f['nuevas_cuotas'] . ' cuotas de ' . formato_pesos($nuevo_valor_cuota) . '.',
+                            . ' con ' . $nuevo_cr['cant_cuotas'] . ' cuotas de ' . formato_pesos($nuevo_cr['monto_cuota']) . '.',
                 ];
                 header("Location: ver?id=$nuevo_id");
                 exit;
-
             } catch (Exception $e) {
-                $pdo->rollBack();
                 error_log('creditos/refinanciar error: ' . $e->getMessage());
                 $error = 'Error al procesar la refinanciación. Intente nuevamente.';
             }
+        } else {
+            $sol_id = crear_solicitud_autorizacion($pdo, 'refinanciar_credito', 'credito', $id, $f, $f['observaciones'], $_SESSION['user_id']);
+            registrar_log($pdo, $_SESSION['user_id'], 'SOLICITUD_AUTORIZACION_CREADA', 'credito', $id,
+                'Solicitud #' . $sol_id . ' para refinanciar — Motivo: ' . $f['observaciones']);
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Solicitud de refinanciación enviada. Un super admin la va a revisar.'];
+            header("Location: ver?id=$id");
+            exit;
         }
     }
 }
@@ -416,9 +319,12 @@ require_once __DIR__ . '/../views/layout.php';
                 </div>
 
                 <div class="form-group" style="grid-column:span 2">
-                    <label>Motivo / Observaciones de la refinanciación</label>
-                    <textarea name="observaciones" rows="2"
+                    <label>Motivo / Observaciones de la refinanciación<?= es_super_admin() ? '' : ' *' ?></label>
+                    <textarea name="observaciones" rows="2" <?= es_super_admin() ? '' : 'required' ?>
                               placeholder="Ej: Cliente solicitó extensión de plazo, acordado el <?= date('d/m/Y') ?>..."><?= e($f['observaciones']) ?></textarea>
+                    <?php if (!es_super_admin()): ?>
+                        <small class="text-muted">Obligatorio: esta refinanciación va a quedar pendiente de autorización de un super admin, con este motivo.</small>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -465,7 +371,8 @@ require_once __DIR__ . '/../views/layout.php';
             <button type="button" class="btn-ic btn-primary"
                     <?= $tiene_pagos_pendientes ? 'disabled' : '' ?>
                     onclick="abrirModalConfirmar()">
-                <i class="fa fa-sync-alt"></i> Confirmar Refinanciación
+                <i class="fa fa-<?= es_super_admin() ? 'sync-alt' : 'paper-plane' ?>"></i>
+                <?= es_super_admin() ? 'Confirmar Refinanciación' : 'Enviar Solicitud de Autorización' ?>
             </button>
             <a href="ver?id=<?= $id ?>" class="btn-ic btn-ghost">Cancelar</a>
         </div>
@@ -488,12 +395,21 @@ require_once __DIR__ . '/../views/layout.php';
             <i class="fa fa-triangle-exclamation" style="font-size:1.8rem;color:#f59e0b"></i>
         </div>
 
+        <?php if (es_super_admin()): ?>
         <div style="font-size:1.15rem;font-weight:800;margin-bottom:8px">¿Confirmar refinanciación?</div>
         <div style="font-size:.875rem;color:var(--text-muted,#94a3b8);margin-bottom:24px;line-height:1.5">
             El crédito actual será <strong>cerrado</strong> y se abrirá un nuevo crédito
             con las condiciones indicadas.<br>
             <strong>No se puede deshacer.</strong>
         </div>
+        <?php else: ?>
+        <div style="font-size:1.15rem;font-weight:800;margin-bottom:8px">¿Enviar solicitud de autorización?</div>
+        <div style="font-size:.875rem;color:var(--text-muted,#94a3b8);margin-bottom:24px;line-height:1.5">
+            Se va a enviar tu pedido a un super admin con el motivo indicado.
+            <strong>No se aplica nada todavía</strong> — el crédito sigue igual
+            hasta que se apruebe.
+        </div>
+        <?php endif; ?>
 
         <!-- Cuenta regresiva -->
         <div id="modal-countdown-wrap" style="margin-bottom:20px">

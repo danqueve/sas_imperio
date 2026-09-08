@@ -15,6 +15,14 @@ $hoy = $hoy_dt->format('Y-m-d');
 $user_id = $_SESSION['user_id'];
 $is_cobrador = es_cobrador();
 
+// Pagos temporales con una solicitud de anulación ya PENDIENTE — se calcula
+// una sola vez acá y se lee vía `global` dentro de render_tabla_cuotas(),
+// que se llama varias veces más abajo con distintos subconjuntos de cuotas.
+$pt_ids_con_solicitud_anular = array_map('intval', $pdo->query("
+    SELECT entidad_id FROM ic_solicitudes_autorizacion
+    WHERE tipo_accion = 'anular_pago_temporal' AND estado = 'PENDIENTE'
+")->fetchAll(PDO::FETCH_COLUMN));
+
 // Si es domingo (7) no hay agenda
 $dia_laboral = $dia_semana !== 7;
 
@@ -789,6 +797,7 @@ function label_fecha(string $fecha_str): string {
 // pestañas solo oculten con CSS, así que sin prefijo se duplicaban ids.
 function render_tabla_cuotas(array $cuotas, string $titulo, string $color, string $prefix): string
 {
+    global $pt_ids_con_solicitud_anular;
     if (empty($cuotas))
         return "<p class='text-muted text-center' style='padding:20px'>Sin cuotas en esta sección.</p>";
     ob_start();
@@ -891,12 +900,23 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
                             <span style="color:var(--warning);font-weight:700;font-size:.9rem">
                                 <i class="fa fa-clock"></i> Pago Registrado
                             </span>
-                            <?php if (!empty($c['pt_id'])): ?>
+                            <?php if (!empty($c['pt_id']) && es_super_admin()): ?>
                             <button type="button"
                                 onclick='anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'
                                 class="btn-ic btn-ghost" title="Anular pago y corregir"
                                 style="font-size:.78rem;padding:5px 10px;height:auto;color:var(--danger);border-color:rgba(220,53,69,.3);gap:5px">
                                 <i class="fa fa-xmark"></i> Anular
+                            </button>
+                            <?php elseif (!empty($c['pt_id']) && in_array((int)$c['pt_id'], $pt_ids_con_solicitud_anular, true)): ?>
+                            <span style="font-size:.76rem;color:var(--text-muted);display:flex;align-items:center;gap:5px;white-space:nowrap">
+                                <i class="fa fa-clock"></i> Pendiente de super admin
+                            </span>
+                            <?php elseif (!empty($c['pt_id'])): ?>
+                            <button type="button"
+                                onclick='anularPago(<?= (int)$c['pt_id'] ?>, <?= json_encode($c['apellidos'].' '.$c['nombres'], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'
+                                class="btn-ic btn-ghost" title="Solicitar autorización para anular"
+                                style="font-size:.78rem;padding:5px 10px;height:auto;color:var(--danger);border-color:rgba(220,53,69,.3);gap:5px">
+                                <i class="fa fa-shield-halved"></i> Solicitar Anulación
                             </button>
                             <?php endif; ?>
                         </div>
@@ -1173,21 +1193,41 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
 <div class="modal-overlay" id="modal-anular">
     <div class="modal-box" style="max-width:400px">
         <div class="modal-header">
-            <div class="modal-title" style="color:var(--danger)"><i class="fa fa-triangle-exclamation"></i> Anular Pago</div>
+            <div class="modal-title" style="color:var(--danger)">
+                <i class="fa fa-triangle-exclamation"></i>
+                <?= es_super_admin() ? 'Anular Pago' : 'Solicitar Autorización para Anular' ?>
+            </div>
             <button type="button" class="modal-close" onclick="closeModal('modal-anular')">&#10005;</button>
         </div>
         <div style="padding:4px 0 18px;font-size:.9rem;color:var(--text);line-height:1.5">
-            Se anulará el pago de <strong id="anular-nombre"></strong>.<br>
-            <span style="color:var(--text-muted);font-size:.82rem">El cobro volverá a la agenda para registrarlo nuevamente.</span>
+            <?php if (es_super_admin()): ?>
+                Se anulará el pago de <strong id="anular-nombre"></strong>.<br>
+                <span style="color:var(--text-muted);font-size:.82rem">El cobro volverá a la agenda para registrarlo nuevamente.</span>
+            <?php else: ?>
+                Se va a enviar una solicitud para anular el pago de <strong id="anular-nombre"></strong> a un super admin.<br>
+                <span style="color:var(--text-muted);font-size:.82rem">No se anula nada todavía — recién cuando se apruebe.</span>
+            <?php endif; ?>
         </div>
         <form method="POST" action="anular_pago">
             <?php csrf_input(); ?>
             <input type="hidden" name="pt_id" id="anular-pt-id" value="">
+            <?php if (!es_super_admin()): ?>
+            <div class="form-group mb-3">
+                <label>Motivo *</label>
+                <textarea name="motivo" rows="3" required placeholder="Ej: Error de tipeo en el monto..." style="resize:vertical;width:100%"></textarea>
+            </div>
+            <?php endif; ?>
             <div style="display:flex;gap:10px;justify-content:flex-end">
                 <button type="button" class="btn-ic btn-ghost" onclick="closeModal('modal-anular')" style="padding:8px 18px">Cancelar</button>
+                <?php if (es_super_admin()): ?>
                 <button type="submit" class="btn-ic" style="padding:8px 18px;background:var(--danger);color:#fff;border-color:var(--danger);gap:6px">
                     <i class="fa fa-xmark"></i> Sí, anular
                 </button>
+                <?php else: ?>
+                <button type="submit" class="btn-ic" style="padding:8px 18px;background:var(--danger);color:#fff;border-color:var(--danger);gap:6px">
+                    <i class="fa fa-paper-plane"></i> Enviar Solicitud
+                </button>
+                <?php endif; ?>
             </div>
         </form>
     </div>

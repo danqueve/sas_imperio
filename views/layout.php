@@ -15,6 +15,15 @@ if ($rol === 'admin') {
           (SELECT COUNT(*) FROM ic_pagos_confirmados WHERE solicitud_baja = 1)
     ")->fetchColumn();
 }
+
+// Solicitudes de autorización pendientes (badge sidebar — solo super admin)
+$n_sol_autorizacion = 0;
+if (es_super_admin()) {
+    $_pdo_lay ??= obtener_conexion();
+    $n_sol_autorizacion = (int) $_pdo_lay->query("
+        SELECT COUNT(*) FROM ic_solicitudes_autorizacion WHERE estado = 'PENDIENTE'
+    ")->fetchColumn();
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -126,6 +135,21 @@ if ($rol === 'admin') {
                             </span>
                         <?php endif; ?>
                     </a>
+                <?php endif; ?>
+                <?php if (es_super_admin()): ?>
+                    <a class="nav-item <?= ($page_current ?? '') === 'solicitudes_autorizacion' ? 'active' : '' ?>"
+                       href="<?= BASE_URL ?>admin/solicitudes_autorizacion"
+                       data-tooltip="Solicitudes de Autorización">
+                        <i class="fa fa-shield-halved"></i>
+                        <span class="nav-text">Autorizaciones</span>
+                        <?php if ($n_sol_autorizacion > 0): ?>
+                            <span class="nav-badge" title="<?= $n_sol_autorizacion ?> solicitud<?= $n_sol_autorizacion !== 1 ? 'es' : '' ?> de autorización pendiente<?= $n_sol_autorizacion !== 1 ? 's' : '' ?>">
+                                <?= $n_sol_autorizacion ?>
+                            </span>
+                        <?php endif; ?>
+                    </a>
+                <?php endif; ?>
+                <?php if ($rol === 'admin'): ?>
                     <a class="nav-item <?= ($page_current ?? '') === 'estadisticas' ? 'active' : '' ?>"
                        href="<?= BASE_URL ?>admin/estadisticas_cobranza"
                        data-tooltip="Estadísticas de Cobranza">

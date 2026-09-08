@@ -1633,3 +1633,367 @@ function badge_riesgo(int $nivel): string
          . '<i class="fa ' . $icon . '"></i> ' . $label . '</span>';
 }
 
+// ── Autorización de super admin (acciones grandes: revertir pago, refinanciar) ──
+
+/**
+ * Crea una solicitud de autorización pendiente. $payload debe traer todo
+ * lo necesario para ejecutar la acción más tarde (ver
+ * ejecutar_reversion_pago_confirmado()/ejecutar_refinanciacion()).
+ */
+function crear_solicitud_autorizacion(
+    PDO $pdo, string $tipo_accion, string $entidad, int $entidad_id,
+    array $payload, string $motivo, int $solicitante_id
+): int {
+    $stmt = $pdo->prepare("
+        INSERT INTO ic_solicitudes_autorizacion (tipo_accion, entidad, entidad_id, payload, motivo, solicitante_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([$tipo_accion, $entidad, $entidad_id, json_encode($payload), $motivo, $solicitante_id]);
+    return (int) $pdo->lastInsertId();
+}
+
+/**
+ * Revierte un pago confirmado: pago_temporal -> RECHAZADO, borra el
+ * confirmado, recalcula saldo/estado real de la cuota y del crédito.
+ * Relee todo fresco al momento de ejecutar (no confía en nada calculado
+ * antes) — la usa tanto un super admin directo como la aprobación de una
+ * solicitud de un admin regular. Devuelve el nuevo estado de la cuota.
+ *
+ * @throws Exception si el pago ya no existe (alguien lo revirtió por otra vía)
+ */
+function ejecutar_reversion_pago_confirmado(PDO $pdo, int $pc_id, int $credito_id, int $ejecutado_por): string
+{
+    $stmt = $pdo->prepare("SELECT * FROM ic_pagos_confirmados WHERE id = ?");
+    $stmt->execute([$pc_id]);
+    $pc = $stmt->fetch();
+    if (!$pc) {
+        throw new Exception('El pago ya no existe (puede haber sido revertido por otra vía).');
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $cuota_id_rev = (int) $pc['cuota_id'];
+
+        $pdo->prepare("UPDATE ic_pagos_temporales SET estado='RECHAZADO', observaciones='Revertido por admin' WHERE id=?")
+            ->execute([$pc['pago_temp_id']]);
+
+        $pdo->prepare("DELETE FROM ic_pagos_confirmados WHERE id=?")
+            ->execute([$pc_id]);
+
+        $saldo_stmt = $pdo->prepare("SELECT COALESCE(SUM(monto_total), 0) FROM ic_pagos_confirmados WHERE cuota_id = ?");
+        $saldo_stmt->execute([$cuota_id_rev]);
+        $saldo_restante = (float) $saldo_stmt->fetchColumn();
+
+        $venc = $pdo->prepare("SELECT fecha_vencimiento, monto_cuota, monto_mora FROM ic_cuotas WHERE id = ?");
+        $venc->execute([$cuota_id_rev]);
+        $cuota_row = $venc->fetch();
+
+        $monto_base_rev  = (float) $cuota_row['monto_cuota'];
+        $mora_actual_rev = (float) $cuota_row['monto_mora'];
+
+        if ($saldo_restante >= ($monto_base_rev + $mora_actual_rev - 0.005)) {
+            $nuevo_estado_cuota = 'PAGADA';
+        } elseif ($saldo_restante >= ($monto_base_rev - 0.005)) {
+            $nuevo_estado_cuota = 'CAP_PAGADA';
+        } elseif ($saldo_restante > 0.005) {
+            $nuevo_estado_cuota = 'PARCIAL';
+        } else {
+            $saldo_restante     = 0.0;
+            $nuevo_estado_cuota = (new DateTime($cuota_row['fecha_vencimiento'])) < new DateTime('today')
+                ? 'VENCIDA' : 'PENDIENTE';
+        }
+
+        $mora_guardar = ($nuevo_estado_cuota === 'PAGADA')
+            ? (float) $cuota_row['monto_mora']
+            : ($saldo_restante > 0 ? (float) $cuota_row['monto_mora'] : 0.0);
+
+        $fecha_pago_v = ($nuevo_estado_cuota === 'PAGADA') ? date('Y-m-d') : null;
+        $pdo->prepare("UPDATE ic_cuotas SET estado=?, saldo_pagado=?, monto_mora=?, fecha_pago=? WHERE id=?")
+            ->execute([$nuevo_estado_cuota, $saldo_restante, $mora_guardar, $fecha_pago_v, $cuota_id_rev]);
+
+        $cr_stmt = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id=?");
+        $cr_stmt->execute([$credito_id]);
+        $estado_cr_actual = $cr_stmt->fetchColumn();
+        if ($estado_cr_actual !== 'CANCELADO') {
+            $venc_check = $pdo->prepare("SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=? AND estado='VENCIDA'");
+            $venc_check->execute([$credito_id]);
+            $tiene_vencidas = (int) $venc_check->fetchColumn() > 0;
+            $nuevo_cr = $tiene_vencidas ? 'MOROSO' : 'EN_CURSO';
+            $pdo->prepare("UPDATE ic_creditos SET estado=? WHERE id=?")
+                ->execute([$nuevo_cr, $credito_id]);
+        }
+
+        $pdo->commit();
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+
+    $cliente_stmt = $pdo->prepare("
+        SELECT cl.apellidos, cl.nombres, cl.dni
+        FROM ic_clientes cl
+        JOIN ic_creditos cr ON cr.cliente_id = cl.id
+        WHERE cr.id = ?
+    ");
+    $cliente_stmt->execute([$credito_id]);
+    $cliente_rev = $cliente_stmt->fetch();
+
+    registrar_log($pdo, $ejecutado_por, 'PAGO_REVERTIDO', 'pago_confirmado', $pc_id,
+        'Cuota #' . $pc['cuota_id'] . ' — Crédito #' . $credito_id
+        . ' — Cliente: ' . $cliente_rev['apellidos'] . ', ' . $cliente_rev['nombres']
+        . ' — DNI: ' . ($cliente_rev['dni'] ?: '—'));
+
+    return $nuevo_estado_cuota;
+}
+
+/**
+ * Refinancia un crédito: cierra el viejo (FINALIZADO/REFINANCIACION) y
+ * crea uno nuevo con las cuotas pendientes reestructuradas. Recalcula
+ * deuda_capital/mora/cuotas pendientes DESDE CERO contra el estado actual
+ * de la base al momento de llamarla — nunca confía en un cálculo viejo
+ * (clave para el caso de aprobación diferida: el crédito puede haber
+ * cambiado mientras la solicitud estaba pendiente). $params:
+ * nuevas_cuotas, frecuencia, primer_vencimiento, capitalizar_mora,
+ * interes_adicional, cobrador_id, observaciones. Devuelve el id del
+ * crédito nuevo.
+ *
+ * @throws Exception si el crédito ya no es elegible (no está EN_CURSO/
+ *         MOROSO, tiene pagos pendientes de aprobar, o los datos del
+ *         pedido ya no dan un monto válido)
+ */
+function ejecutar_refinanciacion(PDO $pdo, int $credito_id, array $params, int $ejecutado_por): int
+{
+    $stmt = $pdo->prepare("SELECT * FROM ic_creditos WHERE id = ?");
+    $stmt->execute([$credito_id]);
+    $cr = $stmt->fetch();
+    if (!$cr) {
+        throw new Exception('El crédito ya no existe.');
+    }
+
+    $pt_stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM ic_pagos_temporales pt
+        JOIN ic_cuotas c ON pt.cuota_id = c.id
+        WHERE c.credito_id = ? AND pt.estado = 'PENDIENTE' AND c.estado != 'PAGADA'
+    ");
+    $pt_stmt->execute([$credito_id]);
+    if ((int) $pt_stmt->fetchColumn() > 0) {
+        throw new Exception('Hay cobros pendientes de aprobación en la rendición. Aprobá o rechazá esas entradas antes de refinanciar.');
+    }
+
+    // Cuotas pendientes/vencidas/parciales — deuda de capital + mora, fresco
+    $pend_stmt = $pdo->prepare("
+        SELECT * FROM ic_cuotas
+        WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA','PARCIAL')
+        ORDER BY numero_cuota
+    ");
+    $pend_stmt->execute([$credito_id]);
+    $cuotas_pendientes = $pend_stmt->fetchAll();
+
+    $deuda_capital = 0.0;
+    $total_mora    = 0.0;
+    foreach ($cuotas_pendientes as $cp) {
+        $saldo_restante = ($cp['estado'] === 'PARCIAL')
+            ? max(0.0, (float) $cp['monto_cuota'] - (float) $cp['saldo_pagado'])
+            : (float) $cp['monto_cuota'];
+        $deuda_capital += $saldo_restante;
+        $dias = dias_atraso_habiles($cp['fecha_vencimiento']);
+        if ($dias > 0) {
+            $total_mora += calcular_mora($saldo_restante, $dias, $cr['interes_moratorio_pct']);
+        }
+    }
+
+    // Cuotas CAP_PAGADA: capital ya cobrado, mora pendiente
+    $cap_stmt = $pdo->prepare("
+        SELECT id, monto_mora, monto_cuota, fecha_vencimiento
+        FROM ic_cuotas WHERE credito_id = ? AND estado = 'CAP_PAGADA'
+    ");
+    $cap_stmt->execute([$credito_id]);
+    $cuotas_cap_pagada = $cap_stmt->fetchAll();
+    $mora_cap_pagada   = 0.0;
+    foreach ($cuotas_cap_pagada as $cp) {
+        if ((float) $cp['monto_mora'] > 0) {
+            $mora_cap_pagada += (float) $cp['monto_mora'];
+        } else {
+            $dias = dias_atraso_habiles($cp['fecha_vencimiento']);
+            if ($dias > 0) {
+                $mora_cap_pagada += calcular_mora($cp['monto_cuota'], $dias, $cr['interes_moratorio_pct']);
+            }
+        }
+    }
+    $total_mora += $mora_cap_pagada;
+
+    if ($mora_cap_pagada > 0 && !$params['capitalizar_mora']) {
+        throw new Exception('Hay ' . formato_pesos($mora_cap_pagada) . ' de mora en cuotas con capital ya pagado. '
+            . 'Hace falta capitalizar la mora para poder refinanciar (o condonarla antes, aparte).');
+    }
+
+    $nuevas_cuotas = (int) $params['nuevas_cuotas'];
+    if ($nuevas_cuotas < 1 || $nuevas_cuotas > 520) {
+        throw new Exception('La cantidad de nuevas cuotas debe estar entre 1 y 520.');
+    }
+
+    // Si la fecha elegida al pedir la autorización ya quedó en el pasado
+    // (la solicitud tardó en aprobarse), se recalcula con el mismo criterio
+    // que usa el formulario para su valor por defecto.
+    $primer_vencimiento = $params['primer_vencimiento'];
+    if (empty($primer_vencimiento) || $primer_vencimiento < date('Y-m-d')) {
+        $lp_stmt = $pdo->prepare("
+            SELECT fecha_vencimiento FROM ic_cuotas
+            WHERE credito_id = ? AND estado = 'PAGADA'
+            ORDER BY numero_cuota DESC LIMIT 1
+        ");
+        $lp_stmt->execute([$credito_id]);
+        $last_paid_date      = $lp_stmt->fetchColumn() ?: $cr['primer_vencimiento'];
+        $primer_vencimiento  = calcular_siguiente_vencimiento($last_paid_date, $params['frecuencia']);
+    }
+
+    $monto_fin = $deuda_capital + ($params['capitalizar_mora'] ? $total_mora : 0);
+    if ((float) $params['interes_adicional'] > 0) {
+        $monto_fin *= (1 + (float) $params['interes_adicional'] / 100);
+    }
+    if ($monto_fin <= 0) {
+        throw new Exception('El saldo a refinanciar es cero o negativo. No hay deuda pendiente.');
+    }
+    $nuevo_valor_cuota  = floor($monto_fin / $nuevas_cuotas * 100) / 100;
+    $monto_ultima_cuota = round($monto_fin - ($nuevas_cuotas - 1) * $nuevo_valor_cuota, 2);
+
+    $pdo->beginTransaction();
+    try {
+        // Re-chequear el estado con lock: evita refinanciar dos veces el mismo
+        // crédito (doble aprobación, o ya se resolvió por otra vía mientras
+        // la solicitud estaba pendiente).
+        $lock = $pdo->prepare("SELECT estado FROM ic_creditos WHERE id = ? FOR UPDATE");
+        $lock->execute([$credito_id]);
+        $estado_actual = $lock->fetchColumn();
+        if (!in_array($estado_actual, ['EN_CURSO', 'MOROSO'], true)) {
+            $pdo->rollBack();
+            throw new Exception('El crédito ya no está activo (estado actual: ' . $estado_actual . ') — probablemente ya se resolvió por otra vía.');
+        }
+
+        $pdo->prepare("
+            DELETE pt FROM ic_pagos_temporales pt
+            JOIN ic_cuotas c ON c.id = pt.cuota_id
+            WHERE c.credito_id = ? AND c.estado IN ('PENDIENTE','VENCIDA') AND pt.estado = 'RECHAZADO'
+        ")->execute([$credito_id]);
+
+        $pdo->prepare("DELETE FROM ic_cuotas WHERE credito_id = ? AND estado IN ('PENDIENTE','VENCIDA')")
+            ->execute([$credito_id]);
+
+        if ($params['capitalizar_mora'] && $mora_cap_pagada > 0) {
+            $pdo->prepare("UPDATE ic_cuotas SET monto_mora = 0 WHERE credito_id = ? AND estado = 'CAP_PAGADA'")
+                ->execute([$credito_id]);
+        }
+
+        $pdo->prepare("
+            UPDATE ic_creditos SET
+                estado              = 'FINALIZADO',
+                motivo_finalizacion = 'REFINANCIACION',
+                fecha_finalizacion  = CURDATE(),
+                veces_refinanciado          = COALESCE(veces_refinanciado, 0) + 1,
+                fecha_ultima_refinanciacion = CURDATE()
+            WHERE id = ?
+        ")->execute([$credito_id]);
+
+        $obs = $params['observaciones'] !== '' ? $params['observaciones'] : ($cr['observaciones'] ?? '');
+        $pdo->prepare("
+            INSERT INTO ic_creditos
+                (cliente_id, articulo_id, articulo_desc, cobrador_id, vendedor_id,
+                 fecha_alta, precio_articulo, monto_total, interes_pct, interes_moratorio_pct,
+                 frecuencia, cant_cuotas, monto_cuota, dia_cobro, primer_vencimiento,
+                 credito_origen_id, observaciones, created_by)
+            VALUES (?, ?, ?, ?, ?, CURDATE(), ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ")->execute([
+            $cr['cliente_id'],
+            $cr['articulo_id'],
+            $cr['articulo_desc'],
+            (int) $params['cobrador_id'],
+            $cr['vendedor_id'],
+            $monto_fin,
+            $monto_fin,
+            $cr['interes_moratorio_pct'],
+            $params['frecuencia'],
+            $nuevas_cuotas,
+            $nuevo_valor_cuota,
+            $cr['dia_cobro'],
+            $primer_vencimiento,
+            $credito_id,
+            $obs ?: null,
+            $ejecutado_por,
+        ]);
+        $nuevo_id = (int) $pdo->lastInsertId();
+
+        generar_cuotas($nuevo_id, [
+            'primer_vencimiento' => $primer_vencimiento,
+            'cant_cuotas'        => $nuevas_cuotas,
+            'frecuencia'         => $params['frecuencia'],
+            'monto_cuota'        => $nuevo_valor_cuota,
+            'monto_ultima_cuota' => $monto_ultima_cuota,
+        ], $pdo);
+
+        $pdo->prepare("
+            INSERT INTO ic_historial_refinanciaciones
+                (credito_id, credito_nuevo_id, usuario_id,
+                 cuotas_anteriores, monto_cuota_anterior,
+                 cuotas_nuevas, monto_cuota_nueva, deuda_capital, frecuencia_nueva, observaciones)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ")->execute([
+            $credito_id,
+            $nuevo_id,
+            $ejecutado_por,
+            count($cuotas_pendientes) + count($cuotas_cap_pagada),
+            $cr['monto_cuota'],
+            $nuevas_cuotas,
+            $nuevo_valor_cuota,
+            $deuda_capital,
+            $params['frecuencia'],
+            $params['observaciones'] ?: null,
+        ]);
+
+        $pdo->commit();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+
+    $det = 'Crédito original #' . $credito_id . ' cerrado → Nuevo crédito #' . $nuevo_id
+        . ' | ' . $nuevas_cuotas . ' cuotas de ' . formato_pesos($nuevo_valor_cuota)
+        . ($params['capitalizar_mora'] && $total_mora > 0 ? ' | Mora capitalizada: ' . formato_pesos($total_mora) : '');
+    registrar_log($pdo, $ejecutado_por, 'CREDITO_REFINANCIADO', 'credito', $credito_id, $det);
+
+    return $nuevo_id;
+}
+
+/**
+ * Anula un pago temporal (PENDIENTE, sin confirmar todavía) — borra la
+ * fila. Re-lee el pago al momento de ejecutar (no confía en nada de
+ * cuando se pidió la autorización). Devuelve los datos de la cuota/
+ * cliente para el mensaje de éxito.
+ *
+ * @throws Exception si el pago ya no existe (fue aprobado o anulado por otra vía)
+ */
+function ejecutar_anulacion_pago_temporal(PDO $pdo, int $pt_id, int $ejecutado_por): array
+{
+    $stmt = $pdo->prepare("
+        SELECT pt.id, pt.cobrador_id, cu.numero_cuota, cl.apellidos, cl.nombres, cl.dni
+        FROM ic_pagos_temporales pt
+        JOIN ic_cuotas cu ON pt.cuota_id = cu.id
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        WHERE pt.id = ? AND pt.estado = 'PENDIENTE'
+    ");
+    $stmt->execute([$pt_id]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        throw new Exception('El pago ya no existe (puede haber sido aprobado o anulado por otra vía).');
+    }
+
+    $pdo->prepare("DELETE FROM ic_pagos_temporales WHERE id = ? AND estado = 'PENDIENTE'")
+        ->execute([$pt_id]);
+
+    registrar_log($pdo, $ejecutado_por, 'PAGO_ANULADO', 'pago_temporal', $pt_id,
+        'Cuota #' . $row['numero_cuota'] . ' — pago anulado — Cliente: '
+        . $row['apellidos'] . ', ' . $row['nombres'] . ' — DNI: ' . ($row['dni'] ?: '—'));
+
+    return $row;
+}
+

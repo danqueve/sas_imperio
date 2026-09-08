@@ -211,6 +211,18 @@ function es_admin(): bool
     return isset($_SESSION['rol']) && $_SESSION['rol'] === 'admin';
 }
 
+/**
+ * Nivel dentro del rol admin: solo los usuarios marcados super_admin en
+ * ic_usuarios (setear por SQL directo, nunca desde la interfaz — ver
+ * sql/migration_autorizacion_super_admin.sql) pueden ejecutar acciones
+ * grandes (revertir pago confirmado, refinanciar credito) directo; el
+ * resto de los admins tiene que pedir autorizacion.
+ */
+function es_super_admin(): bool
+{
+    return isset($_SESSION['rol']) && $_SESSION['rol'] === 'admin' && !empty($_SESSION['super_admin']);
+}
+
 function es_supervisor(): bool
 {
     return isset($_SESSION['rol']) && $_SESSION['rol'] === 'supervisor';
