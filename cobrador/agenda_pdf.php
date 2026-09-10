@@ -778,15 +778,18 @@ if (!empty($rows_atr)) {
     $pdf->Cell($CA[8], 6, lat(fmt($total_atr)), 1, 1, 'R');
 }
 
-// ── Resumen general al final ─────────────────────────────────────
+// ── Resumen general — en hoja aparte ─────────────────────────────
 if (!empty($resumen)) {
-    $pdf->Ln(2);
-    $pdf->SetLineWidth(0.4);
-    $pdf->Line(10, $pdf->GetY(), 287, $pdf->GetY());
-    $pdf->Ln(4);
+    $pdf->AddPage();
 
-    $pdf->SetFont('Helvetica', 'B', 10);
+    $pdf->SetFont('Helvetica', 'B', 13);
     $pdf->Cell(277, 7, lat('Resumen General'), 0, 1, 'L');
+    $pdf->SetFont('Helvetica', '', 8);
+    $pdf->Cell(138.5, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
+    $pdf->Cell(138.5, 5, lat('Emision: ' . date('d/m/Y')), 0, 1, 'R');
+    $pdf->SetLineWidth(0.4);
+    $pdf->Line(10, $pdf->GetY() + 1, 287, $pdf->GetY() + 1);
+    $pdf->Ln(5);
 
     $dias_res = array_values(array_filter($resumen, fn($r) => $r['tipo'] === 'dia'));
     $frec_res = array_values(array_filter($resumen, fn($r) => $r['tipo'] === 'frec'));
