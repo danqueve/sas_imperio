@@ -310,12 +310,16 @@ $pdf->Ln(5);
 
 // Mejora 5: coleccionar datos para resumen
 $resumen = [];
+// Total combinado (semanal + quincenal/mensual/diario) por zona — usado
+// por la tabla "Resumen por Zona" al final, solo si el cobrador cubre
+// mas de 1 zona.
+$resumen_zona = [];
 
 // ── Renderiza un bloque de clientes (un día, o la Agenda General combinada) ──
 // Header + total, tabla, agrupado por zona con paginación, fila TOTAL, y un
 // registro en $resumen. Se llama una vez por día (comportamiento de siempre)
 // o una sola vez con todos los clientes juntos (Agenda General, ver abajo).
-function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array $clientes, array &$resumen, bool &$hay_pago_pendiente): void
+function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array $clientes, array &$resumen, bool &$hay_pago_pendiente, array &$resumen_zona): void
 {
     if (empty($clientes)) return;
 
@@ -381,6 +385,13 @@ function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array 
         $venc = date('d/m', strtotime($r['fecha_vencimiento']));
 
         $g = $grupos_calc[$i];
+
+        $zona_key = mb_strtoupper(trim($r['zona'] ?? '')) ?: 'SIN ZONA';
+        if (!isset($resumen_zona[$zona_key])) $resumen_zona[$zona_key] = ['cant' => 0, 'fijo' => 0.0, 'atraso' => 0.0];
+        $resumen_zona[$zona_key]['cant']++;
+        $resumen_zona[$zona_key]['fijo']   += $g['monto_fijo'];
+        $resumen_zona[$zona_key]['atraso'] += $g['monto_atraso'];
+
         $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $g['cuotas_atrasadas'], $g['monto_total'], $num);
     }
 
@@ -418,11 +429,11 @@ if ($es_agenda_general) {
             mb_strtoupper(($b['zona'] ?? '') . $b['apellidos'])
         )
     );
-    renderBloqueSemanal($pdf, $COLS, 'Agenda General', $clientes_general, $resumen, $hay_pago_pendiente);
+    renderBloqueSemanal($pdf, $COLS, 'Agenda General', $clientes_general, $resumen, $hay_pago_pendiente, $resumen_zona);
 } else {
     foreach ($dias_sel as $dia) {
         $nombre_dia = [1=>'Lunes',2=>'Martes',3=>'Miercoles',4=>'Jueves',5=>'Viernes',6=>'Sabado'][$dia];
-        renderBloqueSemanal($pdf, $COLS, $nombre_dia, $por_dia[$dia] ?? [], $resumen, $hay_pago_pendiente);
+        renderBloqueSemanal($pdf, $COLS, $nombre_dia, $por_dia[$dia] ?? [], $resumen, $hay_pago_pendiente, $resumen_zona);
     }
 }
 
@@ -562,6 +573,13 @@ if (!empty($rows_qm)) {
             $venc = date('d/m/y', strtotime($r['fecha_vencimiento']));
 
             $g = $grupos_calc[$i];
+
+            $zona_key = mb_strtoupper(trim($r['zona'] ?? '')) ?: 'SIN ZONA';
+            if (!isset($resumen_zona[$zona_key])) $resumen_zona[$zona_key] = ['cant' => 0, 'fijo' => 0.0, 'atraso' => 0.0];
+            $resumen_zona[$zona_key]['cant']++;
+            $resumen_zona[$zona_key]['fijo']   += $g['monto_fijo'];
+            $resumen_zona[$zona_key]['atraso'] += $g['monto_atraso'];
+
             $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $g['cuotas_atrasadas'], $g['monto_total'], $num);
         }
 
@@ -862,6 +880,47 @@ if (!empty($resumen)) {
         $total_gral_cant   += $sub_cant_frec;
         $total_gral_fijo   += $sub_fijo_frec;
         $total_gral_atraso += $sub_atraso_frec;
+    }
+
+    // ── Resumen por Zona (solo si el cobrador cubre mas de 1 zona) ──
+    // Combina Semanales + Quincenales/Mensuales/Diarios por zona — mismo
+    // total que TOTAL GENERAL, solo reagrupado. Si el cobrador tiene una
+    // sola zona (o ninguna), no aporta nada nuevo y no se imprime.
+    if (count($resumen_zona) > 1) {
+        $zonas_ord = $resumen_zona;
+        uasort($zonas_ord, fn($a, $b) => ($b['fijo'] + $b['atraso']) <=> ($a['fijo'] + $a['atraso']));
+
+        $pdf->Ln(2);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->SetFillColor(240, 240, 240);
+        $pdf->Cell(277, 6, lat('  Resumen por Zona'), 1, 1, 'L', true);
+        $pdf->SetFillColor(255, 255, 255);
+
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->Cell($RCOLS[0], 5, lat('Zona'), 1, 0, 'L');
+        $pdf->Cell($RCOLS[1], 5, lat('Clientes'), 1, 0, 'C');
+        $pdf->Cell($RCOLS[2], 5, lat('Cuotas Fijas'), 1, 0, 'R');
+        $pdf->Cell($RCOLS[3], 5, lat('Cuotas con Atraso'), 1, 0, 'R');
+        $pdf->Cell($RCOLS[4], 5, lat('Total'), 1, 1, 'R');
+
+        $pdf->SetFont('Helvetica', '', 7);
+        $tz_cant = 0; $tz_fijo = 0.0; $tz_atraso = 0.0;
+        foreach ($zonas_ord as $zona => $z) {
+            $pdf->Cell($RCOLS[0], 5, lat($zona), 1, 0, 'L');
+            $pdf->Cell($RCOLS[1], 5, (string) $z['cant'], 1, 0, 'C');
+            $pdf->Cell($RCOLS[2], 5, fmt($z['fijo']), 1, 0, 'R');
+            $pdf->Cell($RCOLS[3], 5, fmt($z['atraso']), 1, 0, 'R');
+            $pdf->Cell($RCOLS[4], 5, fmt($z['fijo'] + $z['atraso']), 1, 1, 'R');
+            $tz_cant   += $z['cant'];
+            $tz_fijo   += $z['fijo'];
+            $tz_atraso += $z['atraso'];
+        }
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->Cell($RCOLS[0], 5, lat('TOTAL'), 1, 0, 'R');
+        $pdf->Cell($RCOLS[1], 5, (string) $tz_cant, 1, 0, 'C');
+        $pdf->Cell($RCOLS[2], 5, fmt($tz_fijo), 1, 0, 'R');
+        $pdf->Cell($RCOLS[3], 5, fmt($tz_atraso), 1, 0, 'R');
+        $pdf->Cell($RCOLS[4], 5, fmt($tz_fijo + $tz_atraso), 1, 1, 'R');
     }
 
     // ── Total General ───────────────────────────────────────────
