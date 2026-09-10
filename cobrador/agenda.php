@@ -73,6 +73,25 @@ $del_dia = [];
 $vencidas = [];
 $cobradores = $pdo->query("SELECT id,nombre,apellido FROM ic_usuarios WHERE rol='cobrador' AND activo=1 ORDER BY nombre")->fetchAll();
 
+// Mapa cobrador_id -> [zonas] para el filtro de zona del modal "Exportar
+// Ficha Semanal" (agenda_pdf.php) — se resuelve en JS sin ir al servidor
+// cada vez que se cambia de cobrador en el modal. Solo se necesita para
+// admin/supervisor (el cobrador no ve ese modal).
+$cobrador_zonas_map = [];
+if (!$is_cobrador) {
+    $zstmt = $pdo->query("
+        SELECT cobrador_id, TRIM(zona) AS zona
+        FROM ic_clientes
+        WHERE cobrador_id IN (SELECT id FROM ic_usuarios WHERE rol='cobrador' AND activo=1)
+          AND zona IS NOT NULL AND TRIM(zona) <> ''
+        GROUP BY cobrador_id, TRIM(zona)
+        ORDER BY cobrador_id, zona
+    ");
+    foreach ($zstmt->fetchAll() as $zr) {
+        $cobrador_zonas_map[(int) $zr['cobrador_id']][] = $zr['zona'];
+    }
+}
+
 foreach ($todas as $c) {
     $dias_atraso = dias_atraso_habiles($c['fecha_vencimiento']);
     // Usar mora congelada si existe (CAP_PAGADA, PARCIAL con pago previo aprobado).
@@ -509,6 +528,12 @@ require_once __DIR__ . '/../views/layout.php';
                     <?php endforeach; ?>
                 </div>
             </div>
+            <div class="form-group mb-3" id="wrap-pdf-zonas" style="display:none">
+                <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:8px">
+                    Zonas a incluir <span style="font-size:.75rem">(este cobrador tiene más de una)</span>
+                </label>
+                <div id="pdf-zonas-checks" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px"></div>
+            </div>
             <div class="form-group mb-4">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.9rem;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:8px;border:1px solid rgba(255,255,255,.1)">
                     <input type="hidden" name="incluir_qm" value="0">
@@ -529,6 +554,36 @@ require_once __DIR__ . '/../views/layout.php';
         </form>
     </div>
 </div>
+<script>
+const cobradorZonasMap = <?= json_encode($cobrador_zonas_map, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+function actualizarZonasPdf() {
+    const zonas = cobradorZonasMap[document.getElementById('pdf-agenda-cobrador').value] || [];
+    const wrap  = document.getElementById('wrap-pdf-zonas');
+    const cont  = document.getElementById('pdf-zonas-checks');
+    cont.innerHTML = '';
+    if (zonas.length <= 1) {
+        wrap.style.display = 'none';
+        return;
+    }
+    zonas.forEach(function (zona) {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.9rem';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.name = 'zonas[]';
+        input.value = zona;
+        input.checked = true;
+        input.style.cssText = 'width:16px;height:16px;cursor:pointer';
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(zona));
+        cont.appendChild(label);
+    });
+    wrap.style.display = '';
+}
+document.getElementById('pdf-agenda-cobrador').addEventListener('change', actualizarZonasPdf);
+actualizarZonasPdf();
+</script>
 <?php endif; ?>
 
 <?php if (!$is_cobrador): ?>

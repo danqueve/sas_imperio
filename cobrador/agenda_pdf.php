@@ -19,6 +19,16 @@ $dias_sel    = array_map('intval', (array)($_GET['dias'] ?? [1,2,3,4,5,6]));
 $dias_sel    = array_filter($dias_sel, fn($d) => $d >= 1 && $d <= 6);
 sort($dias_sel);
 
+// Filtro opcional de zona (solo si el cobrador tiene mas de 1 zona, ver
+// cobrador/agenda.php) — vacio = todas las zonas, mismo comportamiento
+// que siempre tuvo el reporte.
+$zonas_sel = array_values(array_filter(array_map('trim', (array)($_GET['zonas'] ?? []))));
+$zona_where  = '';
+if (!empty($zonas_sel)) {
+    $zona_ph    = implode(',', array_fill(0, count($zonas_sel), '?'));
+    $zona_where = "AND cl.zona IN ($zona_ph)";
+}
+
 if (!$cobrador_id) die('Seleccioná un cobrador.');
 
 $cob_stmt = $pdo->prepare("SELECT nombre, apellido, usuario FROM ic_usuarios WHERE id = ?");
@@ -71,9 +81,10 @@ $stmt = $pdo->prepare("
     ) filtro ON filtro.credito_id = cr.id
     WHERE cr.dia_cobro IN ($placeholders)
       AND filtro.credito_id IS NULL
+      $zona_where
     ORDER BY cr.dia_cobro ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
-$stmt->execute($params);
+$stmt->execute(array_merge($params, $zonas_sel));
 $rows = $stmt->fetchAll();
 
 // Agrupar por dia_cobro + crédito — TODAS las cuotas impagas de cada
@@ -304,6 +315,11 @@ $pdf->SetFont('Helvetica', '', 8);
 $pdf->Cell(138.5, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
 $dias_label = implode(', ', array_map(fn($d) => [1=>'Lun',2=>'Mar',3=>'Mie',4=>'Jue',5=>'Vie',6=>'Sab'][$d], $dias_sel));
 $pdf->Cell(138.5, 5, lat('Dias: ' . $dias_label . '   |   Emision: ' . date('d/m/Y')), 0, 1, 'R');
+if (!empty($zonas_sel)) {
+    $pdf->SetFont('Helvetica', 'I', 8);
+    $pdf->Cell(277, 5, lat('Zonas filtradas: ' . implode(', ', $zonas_sel)), 0, 1, 'L');
+    $pdf->SetFont('Helvetica', '', 8);
+}
 $pdf->SetLineWidth(0.4);
 $pdf->Line(10, $pdf->GetY() + 1, 287, $pdf->GetY() + 1);
 $pdf->Ln(5);
@@ -475,9 +491,10 @@ $stmt_qm = $pdo->prepare("
       AND cr.frecuencia IN ('diario', 'quincenal', 'mensual')
       AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
       AND filtro.credito_id IS NULL
+      $zona_where
     ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
-$stmt_qm->execute([$cobrador_id]);
+$stmt_qm->execute(array_merge([$cobrador_id], $zonas_sel));
 $rows_qm = $stmt_qm->fetchAll();
 
 if (!empty($rows_qm)) {
@@ -618,12 +635,13 @@ $stmt_atr = $pdo->prepare("
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
     WHERE cr.cobrador_id = ?
       AND cr.estado IN ('EN_CURSO','MOROSO')
+      $zona_where
     GROUP BY cr.id, cl.id, cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.localidad, cl.barrio,
              cr.cant_cuotas, cr.frecuencia, cr.estado, cr.interes_moratorio_pct, articulo
     HAVING COUNT(cu.id) >= 5
     ORDER BY COALESCE(cl.zona,'') ASC, cl.apellidos ASC
 ");
-$stmt_atr->execute([$cobrador_id]);
+$stmt_atr->execute(array_merge([$cobrador_id], $zonas_sel));
 $rows_atr = $stmt_atr->fetchAll();
 
 if (!empty($rows_atr)) {
@@ -642,6 +660,11 @@ if (!empty($rows_atr)) {
     $pdf->SetFont('Helvetica', '', 8);
     $pdf->Cell(138.5, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
     $pdf->Cell(138.5, 5, lat('Emision: ' . date('d/m/Y')), 0, 1, 'R');
+    if (!empty($zonas_sel)) {
+        $pdf->SetFont('Helvetica', 'I', 8);
+        $pdf->Cell(277, 5, lat('Zonas filtradas: ' . implode(', ', $zonas_sel)), 0, 1, 'L');
+        $pdf->SetFont('Helvetica', '', 8);
+    }
     $pdf->SetLineWidth(0.4);
     $pdf->Line(10, $pdf->GetY() + 1, 287, $pdf->GetY() + 1);
     $pdf->Ln(5);
@@ -787,6 +810,11 @@ if (!empty($resumen)) {
     $pdf->SetFont('Helvetica', '', 8);
     $pdf->Cell(138.5, 5, lat('Cobrador: ' . $cobrador['nombre'] . ' ' . $cobrador['apellido']), 0, 0, 'L');
     $pdf->Cell(138.5, 5, lat('Emision: ' . date('d/m/Y')), 0, 1, 'R');
+    if (!empty($zonas_sel)) {
+        $pdf->SetFont('Helvetica', 'I', 8);
+        $pdf->Cell(277, 5, lat('Zonas filtradas: ' . implode(', ', $zonas_sel)), 0, 1, 'L');
+        $pdf->SetFont('Helvetica', '', 8);
+    }
     $pdf->SetLineWidth(0.4);
     $pdf->Line(10, $pdf->GetY() + 1, 287, $pdf->GetY() + 1);
     $pdf->Ln(5);
