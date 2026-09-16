@@ -80,17 +80,12 @@ $creditos = [];
 if ($verificado) {
     $cr_stmt = $pdo->prepare("
         SELECT cr.id, cr.fecha_alta, cr.monto_total, cr.monto_cuota, cr.cant_cuotas,
-               cr.frecuencia, cr.estado,
+               cr.frecuencia, cr.estado, cr.interes_moratorio_pct,
                COALESCE(cr.articulo_desc, a.descripcion, 'Crédito') AS articulo,
                (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id AND estado='PAGADA') AS cuotas_pagadas,
                (SELECT COUNT(*) FROM ic_cuotas WHERE credito_id=cr.id) AS total_cuotas,
                (SELECT MIN(fecha_vencimiento) FROM ic_cuotas
                   WHERE credito_id=cr.id AND estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')) AS prox_venc,
-               (SELECT monto_cuota FROM ic_cuotas
-                  WHERE credito_id=cr.id AND estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
-                  ORDER BY fecha_vencimiento ASC LIMIT 1) AS prox_monto,
-               (SELECT COALESCE(SUM(monto_cuota), 0) FROM ic_cuotas
-                  WHERE credito_id=cr.id AND estado IN ('PENDIENTE','VENCIDA','PARCIAL')) AS saldo_pendiente,
                (SELECT COALESCE(SUM(pc.monto_total), 0)
                   FROM ic_pagos_confirmados pc
                   JOIN ic_cuotas cu2 ON pc.cuota_id = cu2.id
@@ -105,7 +100,7 @@ if ($verificado) {
 
     foreach ($creditos_raw as $cr) {
         $cu_stmt = $pdo->prepare("
-            SELECT numero_cuota, fecha_vencimiento, monto_cuota, estado
+            SELECT numero_cuota, fecha_vencimiento, monto_cuota, estado, monto_mora, saldo_pagado
             FROM ic_cuotas WHERE credito_id = ? ORDER BY numero_cuota ASC
         ");
         $cu_stmt->execute([$cr['id']]);
@@ -118,6 +113,43 @@ if ($verificado) {
                 $prox_cuota_num = $cu['numero_cuota'];
                 break;
             }
+        }
+
+        // Interés por atraso + saldo real por cuota — mismo criterio que
+        // cobrador/estado_cuenta.php: mora congelada en la base si existe,
+        // si no se calcula al vuelo. Solo cuotas impagas con atraso real
+        // (una PAGADA puede tener monto_mora histórico, no se muestra).
+        $mora_total_credito = 0.0;
+        $saldo_capital       = 0.0;
+        foreach ($cuotas as &$cu) {
+            $impaga = in_array($cu['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA'], true);
+            $dias   = $impaga ? dias_atraso_habiles($cu['fecha_vencimiento']) : 0;
+            $mora   = 0.0;
+            if ($impaga && $dias > 0) {
+                $mora_db = (float) $cu['monto_mora'];
+                $mora = $mora_db > 0
+                    ? $mora_db
+                    : calcular_mora((float) $cu['monto_cuota'], $dias, (float) $cr['interes_moratorio_pct']);
+                $mora = max(0.0, $mora); // credito con pct negativo (dato anomalo)
+            }
+            $saldo_cuota = max(0.0, (float) $cu['monto_cuota'] - (float) ($cu['saldo_pagado'] ?? 0));
+            $cu['_dias_atraso'] = $dias;
+            $cu['_mora']        = $mora;
+            $cu['_total']       = $cu['estado'] === 'CAP_PAGADA' ? $mora : ($saldo_cuota + $mora);
+            $mora_total_credito += $mora;
+            if (in_array($cu['estado'], ['PENDIENTE', 'VENCIDA', 'PARCIAL'], true)) {
+                $saldo_capital += $saldo_cuota;
+            }
+        }
+        unset($cu);
+        $cr['mora_total']      = $mora_total_credito;
+        $cr['saldo_pendiente'] = $saldo_capital + $mora_total_credito;
+
+        // Próxima cuota impaga (misma que $prox_cuota_num) — su total real,
+        // ya con interés si corresponde, para el bloque "Próximo vencimiento".
+        $prox_total = null;
+        foreach ($cuotas as $cu) {
+            if ($cu['numero_cuota'] === $prox_cuota_num) { $prox_total = $cu; break; }
         }
 
         $pg_stmt = $pdo->prepare("
@@ -134,6 +166,7 @@ if ($verificado) {
             'info'           => $cr,
             'cuotas'         => $cuotas,
             'prox_cuota_num' => $prox_cuota_num,
+            'prox_cuota'     => $prox_total,
             'pagos'          => $pg_stmt->fetchAll(),
         ];
     }
@@ -390,6 +423,13 @@ foreach ($creditos as $entry) {
         .metric-value { font-size: .88rem; font-weight: 700; color: var(--slate-900); }
         .metric-value.green { color: var(--green); }
         .metric-value.indigo { color: var(--indigo); }
+        .metric-value.red   { color: var(--red); }
+        /* Con interés: 4 cajas, 2x2 en vez de forzar 4 columnas apretadas */
+        .metrics-row.cols-4 { grid-template-columns: repeat(2, 1fr); }
+        .metrics-note {
+            font-size: .74rem; color: var(--slate-500); line-height: 1.4;
+            margin: -6px 0 14px;
+        }
 
         /* ── Progress bar ── */
         .progress-wrap { margin-bottom: 14px; }
@@ -415,10 +455,11 @@ foreach ($creditos as $entry) {
             background: var(--slate-50);
             gap: 8px;
         }
-        .prox-venc .pv-left {}
         .prox-venc .pv-label    { font-size: .68rem; color: var(--slate-500); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
         .prox-venc .pv-fecha    { font-size: .92rem; font-weight: 700; color: var(--slate-900); }
-        .prox-venc .pv-monto    { font-size: 1.1rem; font-weight: 800; color: var(--indigo); flex-shrink: 0; }
+        .prox-venc .pv-monto    { font-size: 1.1rem; font-weight: 800; color: var(--indigo); flex-shrink: 0; text-align: right; }
+        .pv-dias-habiles { font-size: .72rem; color: var(--red); font-weight: 600; margin-top: 4px; }
+        .pv-desglose     { font-size: .68rem; color: var(--slate-500); text-align: right; margin-top: 2px; }
 
         .countdown {
             display: inline-flex; align-items: center; gap: 4px;
@@ -464,6 +505,11 @@ foreach ($creditos as $entry) {
 
         /* T6: Tachado para pagadas */
         table.cuotas-tbl tr.pagada-row td:not(:last-child) { color: var(--slate-400); text-decoration: line-through; text-decoration-color: var(--slate-300); }
+
+        /* Días de atraso (col. Vencimiento, en rojo) / desglose de interés
+           (col. Monto, en gris) — sub-línea dentro de la celda */
+        .cuota-sub { font-size: .68rem; color: var(--slate-500); font-weight: 400; text-decoration: none; margin-top: 1px; }
+        table.cuotas-tbl tr td:nth-child(2) .cuota-sub { color: var(--red); font-weight: 600; }
 
         .estado-badge {
             display: inline-flex; align-items: center;
@@ -607,8 +653,10 @@ foreach ($creditos as $entry) {
             $cr             = $entry['info'];
             $cuotas         = $entry['cuotas'];
             $prox_cuota_num = $entry['prox_cuota_num'];
+            $prox_cuota     = $entry['prox_cuota'];
             $pagos          = $entry['pagos'];
             $es_moroso      = $cr['estado'] === 'MOROSO';
+            $tiene_interes  = (float) $cr['mora_total'] > 0.005;
             $pct            = $cr['total_cuotas'] > 0
                                 ? round($cr['cuotas_pagadas'] * 100 / $cr['total_cuotas'])
                                 : 0;
@@ -624,6 +672,9 @@ foreach ($creditos as $entry) {
                 <div>
                     <strong>Este crédito tiene cuotas atrasadas</strong>
                     <p>Por favor, comunicáte con tu cobrador para regularizar la situación.</p>
+                    <?php if ($tiene_interes): ?>
+                        <p>Interés por atraso acumulado: <strong><?= formato_pesos($cr['mora_total']) ?></strong></p>
+                    <?php endif; ?>
                 </div>
             </div>
             <?php endif; ?>
@@ -645,7 +696,7 @@ foreach ($creditos as $entry) {
                 </div>
 
                 <!-- T3: Resumen financiero -->
-                <div class="metrics-row">
+                <div class="metrics-row <?= $tiene_interes ? 'cols-4' : '' ?>">
                     <div class="metric-box">
                         <div class="metric-label">Crédito total</div>
                         <div class="metric-value"><?= formato_pesos($cr['monto_total']) ?></div>
@@ -658,7 +709,18 @@ foreach ($creditos as $entry) {
                         <div class="metric-label">Saldo pendiente</div>
                         <div class="metric-value indigo"><?= formato_pesos((float)$cr['saldo_pendiente']) ?></div>
                     </div>
+                    <?php if ($tiene_interes): ?>
+                    <div class="metric-box">
+                        <div class="metric-label">Interés acumulado</div>
+                        <div class="metric-value red"><?= formato_pesos($cr['mora_total']) ?></div>
+                    </div>
+                    <?php endif; ?>
                 </div>
+                <?php if ($tiene_interes): ?>
+                <div class="metrics-note">
+                    El saldo pendiente incluye <?= formato_pesos($cr['mora_total']) ?> de interés por atraso, actualizado al día de hoy.
+                </div>
+                <?php endif; ?>
 
                 <!-- Progress bar -->
                 <div class="progress-wrap">
@@ -672,7 +734,7 @@ foreach ($creditos as $entry) {
                 </div>
 
                 <!-- T5: Próximo vencimiento + countdown -->
-                <?php if ($cr['prox_venc']): ?>
+                <?php if ($cr['prox_venc'] && $prox_cuota): ?>
                     <?php $cd = dias_venc($cr['prox_venc']); ?>
                     <div class="prox-venc">
                         <div class="pv-left">
@@ -681,8 +743,18 @@ foreach ($creditos as $entry) {
                             <span class="countdown <?= $cd['cls'] ?>">
                                 <?= e($cd['texto']) ?>
                             </span>
+                            <?php if ($prox_cuota['_dias_atraso'] > 0): ?>
+                                <div class="pv-dias-habiles"><?= $prox_cuota['_dias_atraso'] ?> día<?= $prox_cuota['_dias_atraso'] !== 1 ? 's' : '' ?> hábil<?= $prox_cuota['_dias_atraso'] !== 1 ? 'es' : '' ?> de atraso</div>
+                            <?php endif; ?>
                         </div>
-                        <div class="pv-monto"><?= formato_pesos((float)$cr['prox_monto']) ?></div>
+                        <div>
+                            <div class="pv-monto"><?= formato_pesos((float)$prox_cuota['_total']) ?></div>
+                            <?php if ($prox_cuota['estado'] === 'CAP_PAGADA' && $prox_cuota['_mora'] > 0.005): ?>
+                                <div class="pv-desglose">Capital pagado — solo interés</div>
+                            <?php elseif ($prox_cuota['_mora'] > 0.005): ?>
+                                <div class="pv-desglose">Cuota <?= formato_pesos((float)$prox_cuota['monto_cuota']) ?> + interés <?= formato_pesos((float)$prox_cuota['_mora']) ?></div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 <?php endif; ?>
 
@@ -715,8 +787,20 @@ foreach ($creditos as $entry) {
                                 ?>
                                 <tr class="<?= $row_cls ?>">
                                     <td class="fw-bold"><?= $cu['numero_cuota'] ?></td>
-                                    <td><?= date('d/m/Y', strtotime($cu['fecha_vencimiento'])) ?></td>
-                                    <td class="text-right"><?= formato_pesos($cu['monto_cuota']) ?></td>
+                                    <td>
+                                        <?= date('d/m/Y', strtotime($cu['fecha_vencimiento'])) ?>
+                                        <?php if ($cu['_dias_atraso'] > 0): ?>
+                                            <div class="cuota-sub"><?= $cu['_dias_atraso'] ?> día<?= $cu['_dias_atraso'] !== 1 ? 's' : '' ?> hábil<?= $cu['_dias_atraso'] !== 1 ? 'es' : '' ?> de atraso</div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-right">
+                                        <?= formato_pesos($es_pagada ? (float) $cu['monto_cuota'] : (float) $cu['_total']) ?>
+                                        <?php if ($cu['estado'] === 'CAP_PAGADA' && $cu['_mora'] > 0.005): ?>
+                                            <div class="cuota-sub">Capital pagado — solo interés</div>
+                                        <?php elseif ($cu['_mora'] > 0.005): ?>
+                                            <div class="cuota-sub"><?= formato_pesos((float) $cu['monto_cuota']) ?> + <?= formato_pesos((float) $cu['_mora']) ?> int.</div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="text-right">
                                         <span class="estado-badge"
                                               style="background:<?= $est['bg'] ?>;color:<?= $est['color'] ?>">
