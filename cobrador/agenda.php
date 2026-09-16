@@ -40,7 +40,7 @@ $condCobrador = 'AND cr.cobrador_id = ?';
 $sql = "
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
            cr.cant_cuotas, cr.dia_cobro, cr.veces_refinanciado,
-           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
+           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona, cl.token_acceso,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen,
            (SELECT pt2.id FROM ic_pagos_temporales pt2 WHERE pt2.cuota_id=cu.id AND pt2.estado='PENDIENTE' LIMIT 1) AS pt_id
@@ -169,7 +169,7 @@ $_ph_cobrados = implode(',', array_fill(0, count($jornadas_disp), '?'));
 $stmt_cobrados = $pdo->prepare("
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
            cr.cant_cuotas,
-           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
+           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona, cl.token_acceso,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            pt.id AS pt_id,
            pt.fecha_jornada AS jornada_pago,
@@ -238,7 +238,7 @@ foreach ($venc_por_credito as $cid => $cuotas) {
 $semana_stmt = $pdo->prepare("
     SELECT cu.id,
            cl.id AS cliente_id,
-           cl.nombres, cl.apellidos, cl.telefono, cl.zona,
+           cl.nombres, cl.apellidos, cl.telefono, cl.zona, cl.token_acceso,
            cl.coordenadas,
            cr.id AS credito_id, cr.interes_moratorio_pct, cr.cant_cuotas, cr.dia_cobro, cr.veces_refinanciado,
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
@@ -304,7 +304,7 @@ $nombres_dia = [1=>'Lunes',2=>'Martes',3=>'Miércoles',4=>'Jueves',5=>'Viernes',
 $mensual_stmt = $pdo->prepare("
     SELECT cu.*, cr.id AS credito_id, cr.frecuencia, cr.interes_moratorio_pct, cr.cobrador_id,
            cr.cant_cuotas, cr.veces_refinanciado,
-           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona,
+           cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.coordenadas, cl.zona, cl.token_acceso,
            COALESCE(cr.articulo_desc, art.descripcion) AS articulo,
            (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id=cu.id AND pt.estado='PENDIENTE') AS pago_pen,
            (SELECT pt2.id FROM ic_pagos_temporales pt2 WHERE pt2.cuota_id=cu.id AND pt2.estado='PENDIENTE' LIMIT 1) AS pt_id
@@ -861,6 +861,9 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
         $mora_pos = $c['mora_calc'] > 0;
         $data     = htmlspecialchars(json_encode($c), ENT_QUOTES);
         $wa_msg   = 'Hola ' . $c['nombres'] . ', le recordamos su cuota #' . $c['numero_cuota'] . ' vencida el ' . date('d/m/Y', strtotime($c['fecha_vencimiento'])) . '. Total: ' . formato_pesos($c['total_a_cobrar']);
+        $wa_msg_portal = !empty($c['token_acceso'])
+            ? 'Hola ' . $c['nombres'] . ', podés ver el estado de tu crédito acá: ' . APP_URL . 'p/' . $c['token_acceso']
+            : '';
 ?>
     <?php
         $cardClass = '';
@@ -1007,13 +1010,12 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
                         class="btn-ic btn-ghost btn-icon" title="Ver artículo" style="width:44px;height:44px;border-radius:8px;font-size:1rem;display:flex;align-items:center;justify-content:center;">
                     <i class="fa fa-box-open"></i>
                 </button>
-                <?php if (!$c['pago_pen']): ?>
-                <button type="button"
-                        onclick="abrirIntento(<?= (int)$c['id'] ?>, '<?= e(addslashes($c['apellidos'].' '.$c['nombres'])) ?>')"
-                        class="btn-ic btn-ghost btn-icon" title="No cobré"
-                        style="width:44px;height:44px;border-radius:8px;font-size:1rem;color:var(--warning);display:flex;align-items:center;justify-content:center;">
-                    <i class="fa fa-user-slash"></i>
-                </button>
+                <?php if (!$c['pago_pen'] && $wa_msg_portal): ?>
+                <a href="<?= whatsapp_url($c['telefono'], $wa_msg_portal) ?>" target="_blank"
+                   class="btn-ic btn-ghost btn-icon" title="Compartir portal por WhatsApp"
+                   style="width:44px;height:44px;border-radius:8px;font-size:1.1rem;color:#25D366;background:rgba(37,211,102,.1);display:flex;align-items:center;justify-content:center;">
+                    <i class="fa fa-share-nodes"></i>
+                </a>
                 <?php endif; ?>
             </div>
         </div>
