@@ -152,4 +152,23 @@ final class LogicaFinancieraTest extends TestCase
             1000.0, 0.0, 0.0, 'PARCIAL',
         ];
     }
+
+    // ── calcular_grupo_cuotas() ──────────────────────────────────
+
+    #[Test]
+    public function it_descuenta_un_pago_temporal_pendiente_del_monto_a_cobrar(): void
+    {
+        $resultado = calcular_grupo_cuotas([[
+            'fecha_vencimiento'       => '2026-01-01',
+            'monto_cuota'              => 1000.0,
+            'monto_mora'               => 0.0,
+            'interes_moratorio_pct'    => 0.0,
+            'saldo_pagado'             => 0.0,
+            'monto_pendiente'          => 400.0,
+            'cuota_estado'             => 'VENCIDA',
+        ]]);
+
+        $this->assertSame(600.0, $resultado['monto_atraso']);
+        $this->assertSame(600.0, $resultado['monto_total']);
+    }
 }

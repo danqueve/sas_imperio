@@ -50,7 +50,8 @@ $stmt = $pdo->prepare("
            cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
            cu.estado AS cuota_estado, cu.monto_mora, cu.saldo_pagado,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
-           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id = cu.id AND pt.estado IN ('PENDIENTE','APROBADO')) AS pago_pen,
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen,
+           COALESCE((SELECT SUM(pt.monto_total) FROM ic_pagos_temporales pt WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE'), 0) AS monto_pendiente,
            (SELECT pt3.fecha_jornada
             FROM ic_pagos_confirmados pc3
             JOIN ic_pagos_temporales pt3 ON pt3.id = pc3.pago_temp_id
@@ -461,7 +462,8 @@ $stmt_qm = $pdo->prepare("
            cu.monto_mora, cu.saldo_pagado,
            cr.interes_moratorio_pct,
            COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
-           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id = cu.id AND pt.estado IN ('PENDIENTE','APROBADO')) AS pago_pen,
+           (SELECT COUNT(*) FROM ic_pagos_temporales pt WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE') AS pago_pen,
+           COALESCE((SELECT SUM(pt.monto_total) FROM ic_pagos_temporales pt WHERE pt.cuota_id = cu.id AND pt.estado = 'PENDIENTE'), 0) AS monto_pendiente,
            (SELECT pt3.fecha_jornada
             FROM ic_pagos_confirmados pc3
             JOIN ic_pagos_temporales pt3 ON pt3.id = pc3.pago_temp_id

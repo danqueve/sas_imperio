@@ -107,7 +107,10 @@ function calcular_grupo_cuotas(array $cuotas): array
     $monto_fijo   = 0.0;
     $monto_atraso = 0.0;
     foreach ($cuotas as $cu) {
-        $saldo_p = (float) ($cu['saldo_pagado'] ?? 0);
+        // Los pagos temporales pendientes todavía no actualizan saldo_pagado,
+        // pero ya fueron cobrados y no pueden volver a pedirse en la agenda.
+        $saldo_p = (float) ($cu['saldo_pagado'] ?? 0)
+            + (float) ($cu['monto_pendiente'] ?? 0);
         $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
         if ($dias_atraso > 0) {
             $cuotas_atrasadas++;
@@ -115,9 +118,10 @@ function calcular_grupo_cuotas(array $cuotas): array
             $mora = $mora_db > 0
                 ? $mora_db
                 : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
-            $monto_atraso += ($cu['cuota_estado'] === 'CAP_PAGADA')
-                ? $mora
-                : max(0, (float) $cu['monto_cuota'] + $mora - $saldo_p);
+            // La fórmula única también cubre CAP_PAGADA: normalmente el
+            // capital ya está en saldo_pagado y queda solo la mora; si hubo
+            // un pago parcial de mora, descuenta además ese saldo real.
+            $monto_atraso += max(0, (float) $cu['monto_cuota'] + $mora - $saldo_p);
         } else {
             $monto_fijo = max(0, (float) $cu['monto_cuota'] - $saldo_p);
             break;
