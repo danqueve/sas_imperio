@@ -27,7 +27,7 @@ if (!$pt_id) {
 // cobrador solo puede anular los propios.
 if (in_array($rol, ['admin', 'supervisor'], true)) {
     $stmt = $pdo->prepare("
-        SELECT pt.id, pt.cobrador_id, cu.numero_cuota, cl.apellidos, cl.nombres, cl.dni
+        SELECT pt.id, pt.cobrador_id, pt.monto_total, cu.numero_cuota, cr.id AS credito_id, cl.apellidos, cl.nombres, cl.dni
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu ON pt.cuota_id = cu.id
         JOIN ic_creditos cr ON cr.id = cu.credito_id
@@ -37,7 +37,7 @@ if (in_array($rol, ['admin', 'supervisor'], true)) {
     $stmt->execute([$pt_id]);
 } else {
     $stmt = $pdo->prepare("
-        SELECT pt.id, pt.cobrador_id, cu.numero_cuota, cl.apellidos, cl.nombres, cl.dni
+        SELECT pt.id, pt.cobrador_id, pt.monto_total, cu.numero_cuota, cr.id AS credito_id, cl.apellidos, cl.nombres, cl.dni
         FROM ic_pagos_temporales pt
         JOIN ic_cuotas cu ON pt.cuota_id = cu.id
         JOIN ic_creditos cr ON cr.id = cu.credito_id
@@ -66,7 +66,9 @@ if (es_super_admin()) {
     if (!$motivo) {
         $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Completá el motivo de la solicitud.'];
     } else {
-        $sol_id = crear_solicitud_autorizacion($pdo, 'anular_pago_temporal', 'pago_temporal', $pt_id, [], $motivo, $uid);
+        $detalle_sol = 'Cliente: ' . $row['apellidos'] . ', ' . $row['nombres']
+            . ' — Cuota #' . $row['numero_cuota'] . ' — ' . formato_pesos($row['monto_total']);
+        $sol_id = crear_solicitud_autorizacion($pdo, 'anular_pago_temporal', 'pago_temporal', $pt_id, ['credito_id' => $row['credito_id']], $motivo, $uid, $detalle_sol);
         registrar_log($pdo, $uid, 'SOLICITUD_AUTORIZACION_CREADA', 'pago_temporal', $pt_id,
             'Solicitud #' . $sol_id . ' para anular pago — Cuota #' . $row['numero_cuota']
             . ' — Cliente: ' . $row['apellidos'] . ', ' . $row['nombres'] . ' — Motivo: ' . $motivo);

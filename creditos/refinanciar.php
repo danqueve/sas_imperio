@@ -180,7 +180,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Error al procesar la refinanciación. Intente nuevamente.';
             }
         } else {
-            $sol_id = crear_solicitud_autorizacion($pdo, 'refinanciar_credito', 'credito', $id, $f, $f['observaciones'], $_SESSION['user_id']);
+            $detalle_sol = 'Cliente: ' . $cr['apellidos'] . ', ' . $cr['nombres']
+                . ' — ' . (int) $f['nuevas_cuotas'] . ' cuotas ' . $f['frecuencia']
+                . (!empty($f['capitalizar_mora']) ? ' — capitaliza mora' : '')
+                . ((float) ($f['interes_adicional'] ?? 0) > 0 ? ' — +' . $f['interes_adicional'] . '% interés adicional' : '');
+            $sol_id = crear_solicitud_autorizacion($pdo, 'refinanciar_credito', 'credito', $id, $f, $f['observaciones'], $_SESSION['user_id'], $detalle_sol);
             registrar_log($pdo, $_SESSION['user_id'], 'SOLICITUD_AUTORIZACION_CREADA', 'credito', $id,
                 'Solicitud #' . $sol_id . ' para refinanciar — Motivo: ' . $f['observaciones']);
             $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Solicitud de refinanciación enviada. Un super admin la va a revisar.'];

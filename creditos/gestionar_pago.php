@@ -79,18 +79,28 @@ if ($accion === 'solicitar_autorizacion_revertir') {
         exit;
     }
 
-    $chk = $pdo->prepare("SELECT cuota_id FROM ic_pagos_confirmados WHERE id = ?");
+    $chk = $pdo->prepare("
+        SELECT pc.monto_total, cu.numero_cuota, cl.apellidos, cl.nombres
+        FROM ic_pagos_confirmados pc
+        JOIN ic_cuotas cu ON cu.id = pc.cuota_id
+        JOIN ic_creditos cr2 ON cr2.id = cu.credito_id
+        JOIN ic_clientes cl ON cl.id = cr2.cliente_id
+        WHERE pc.id = ?
+    ");
     $chk->execute([$pc_id]);
-    $cuota_id_chk = $chk->fetchColumn();
-    if (!$cuota_id_chk) {
+    $pc_info = $chk->fetch();
+    if (!$pc_info) {
         $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Pago no encontrado.'];
         header('Location: ' . $back);
         exit;
     }
 
+    $detalle_sol = 'Cliente: ' . $pc_info['apellidos'] . ', ' . $pc_info['nombres']
+        . ' — Cuota #' . $pc_info['numero_cuota'] . ' — ' . formato_pesos($pc_info['monto_total']);
+
     $sol_id = crear_solicitud_autorizacion(
         $pdo, 'revertir_pago_confirmado', 'pago_confirmado', $pc_id,
-        ['credito_id' => $credito_id], $motivo, $uid
+        ['credito_id' => $credito_id], $motivo, $uid, $detalle_sol
     );
     registrar_log($pdo, $uid, 'SOLICITUD_AUTORIZACION_CREADA', 'pago_confirmado', $pc_id,
         'Solicitud #' . $sol_id . ' para revertir pago — Crédito #' . $credito_id . ' — Motivo: ' . $motivo);

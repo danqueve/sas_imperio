@@ -1642,13 +1642,17 @@ function badge_riesgo(int $nivel): string
  */
 function crear_solicitud_autorizacion(
     PDO $pdo, string $tipo_accion, string $entidad, int $entidad_id,
-    array $payload, string $motivo, int $solicitante_id
+    array $payload, string $motivo, int $solicitante_id, string $detalle_contexto = ''
 ): int {
+    // $detalle_contexto se guarda tal cual, calculado por el llamador en
+    // el momento de crear la solicitud (cliente/cuota/monto) — no se
+    // recalcula después, porque aprobar una reversión o una anulación
+    // borra la fila original y ya no habría de dónde volver a sacarlo.
     $stmt = $pdo->prepare("
-        INSERT INTO ic_solicitudes_autorizacion (tipo_accion, entidad, entidad_id, payload, motivo, solicitante_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO ic_solicitudes_autorizacion (tipo_accion, entidad, entidad_id, payload, motivo, detalle_contexto, solicitante_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     ");
-    $stmt->execute([$tipo_accion, $entidad, $entidad_id, json_encode($payload), $motivo, $solicitante_id]);
+    $stmt->execute([$tipo_accion, $entidad, $entidad_id, json_encode($payload), $motivo, $detalle_contexto ?: null, $solicitante_id]);
     return (int) $pdo->lastInsertId();
 }
 

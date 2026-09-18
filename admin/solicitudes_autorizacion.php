@@ -111,12 +111,27 @@ function cargar_solicitudes(PDO $pdo, string $estadoSql): array
 $pendientes = cargar_solicitudes($pdo, "= 'PENDIENTE'");
 $resueltas  = array_slice(cargar_solicitudes($pdo, "IN ('APROBADA','RECHAZADA')"), 0, 20);
 
-// Contexto legible del payload para cada solicitud (crédito, cliente, monto, etc.)
+// Contexto legible de cada solicitud (crédito, cliente, monto, etc.).
+// Desde que existe `detalle_contexto` (calculado por el llamador al crear
+// la solicitud, cuando la entidad todavía existe seguro), se usa ese
+// texto guardado — funciona igual para PENDIENTE y para ya resueltas,
+// sin importar que aprobar una reversión/anulación borre la fila
+// original. El fallback de re-consulta en vivo queda solo para
+// solicitudes viejas creadas antes de que existiera esa columna.
 function contexto_solicitud(PDO $pdo, array $sol): array
 {
     $payload = json_decode($sol['payload'], true) ?: [];
+    $credito_id = match ($sol['tipo_accion']) {
+        'revertir_pago_confirmado', 'anular_pago_temporal' => (int) ($payload['credito_id'] ?? 0),
+        'refinanciar_credito' => (int) $sol['entidad_id'],
+        default => 0,
+    };
+
+    if (!empty($sol['detalle_contexto'])) {
+        return ['credito_id' => $credito_id, 'detalle' => $sol['detalle_contexto']];
+    }
+
     if ($sol['tipo_accion'] === 'revertir_pago_confirmado') {
-        $credito_id = (int) ($payload['credito_id'] ?? 0);
         $stmt = $pdo->prepare("
             SELECT pc.monto_total, cu.numero_cuota, cl.apellidos, cl.nombres
             FROM ic_pagos_confirmados pc
@@ -135,7 +150,6 @@ function contexto_solicitud(PDO $pdo, array $sol): array
         ];
     }
     if ($sol['tipo_accion'] === 'refinanciar_credito') {
-        $credito_id = (int) $sol['entidad_id'];
         $stmt = $pdo->prepare("SELECT cl.apellidos, cl.nombres FROM ic_creditos cr JOIN ic_clientes cl ON cl.id=cr.cliente_id WHERE cr.id=?");
         $stmt->execute([$credito_id]);
         $r = $stmt->fetch();
@@ -159,15 +173,28 @@ function contexto_solicitud(PDO $pdo, array $sol): array
         ");
         $stmt->execute([(int) $sol['entidad_id']]);
         $r = $stmt->fetch();
-        if (!$r) return ['credito_id' => 0, 'detalle' => 'El pago ya no existe (puede haber sido aprobado o anulado por otra vía).'];
-        if ($r['estado'] !== 'PENDIENTE') return ['credito_id' => (int) $r['credito_id'], 'detalle' => 'El pago ya no está pendiente (estado actual: ' . $r['estado'] . ').'];
-        return [
-            'credito_id' => (int) $r['credito_id'],
-            'detalle' => 'Cliente: ' . $r['apellidos'] . ', ' . $r['nombres']
-                . ' — Cuota #' . $r['numero_cuota'] . ' — ' . formato_pesos($r['monto_total']),
-        ];
+        if (!$r) return ['credito_id' => $credito_id, 'detalle' => 'El pago ya no existe (puede haber sido aprobado o anulado por otra vía).'];
+        $detalle = 'Cliente: ' . $r['apellidos'] . ', ' . $r['nombres']
+            . ' — Cuota #' . $r['numero_cuota'] . ' — ' . formato_pesos($r['monto_total']);
+        if ($r['estado'] !== 'PENDIENTE') $detalle .= ' (el pago ya no está pendiente por otra vía: ' . $r['estado'] . ')';
+        return ['credito_id' => (int) $r['credito_id'], 'detalle' => $detalle];
     }
     return ['credito_id' => 0, 'detalle' => '—'];
+}
+
+// Celda de detalle compartida por las 2 tablas — igual para ambas salvo
+// que, en una solicitud de refinanciación ya aprobada, también linkea al
+// crédito nuevo que se creó al ejecutarla.
+function celda_detalle(array $ctx, array $s): string
+{
+    $html = e($ctx['detalle']);
+    if ($ctx['credito_id']) {
+        $html .= '<br><a href="../creditos/ver?id=' . $ctx['credito_id'] . '" target="_blank" style="font-size:.75rem">Ver crédito #' . $ctx['credito_id'] . ' →</a>';
+    }
+    if ($s['estado'] === 'APROBADA' && $s['tipo_accion'] === 'refinanciar_credito' && !empty($s['resultado_entidad_id'])) {
+        $html .= '<br><a href="../creditos/ver?id=' . (int) $s['resultado_entidad_id'] . '" target="_blank" style="font-size:.75rem;color:var(--success)">→ Crédito nuevo #' . (int) $s['resultado_entidad_id'] . '</a>';
+    }
+    return $html;
 }
 
 $page_title   = 'Solicitudes de Autorización';
@@ -203,12 +230,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <td class="text-muted">#<?= $s['id'] ?></td>
                     <td><span class="badge-ic badge-warning"><?= e($TIPO_LABELS[$s['tipo_accion']] ?? $s['tipo_accion']) ?></span></td>
-                    <td style="font-size:.85rem">
-                        <?= e($ctx['detalle']) ?>
-                        <?php if ($ctx['credito_id']): ?>
-                            <br><a href="../creditos/ver?id=<?= $ctx['credito_id'] ?>" target="_blank" style="font-size:.75rem">Ver crédito #<?= $ctx['credito_id'] ?> →</a>
-                        <?php endif; ?>
-                    </td>
+                    <td style="font-size:.85rem"><?= celda_detalle($ctx, $s) ?></td>
                     <td><?= e($s['solicitante_nombre']) ?></td>
                     <td style="max-width:220px;font-size:.82rem"><?= e($s['motivo']) ?></td>
                     <td class="nowrap text-muted" style="font-size:.78rem"><?= date('d/m/Y H:i', strtotime($s['fecha_solicitud'])) ?></td>
@@ -243,7 +265,9 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <th>#</th>
                     <th>Tipo</th>
+                    <th>Detalle</th>
                     <th>Solicitante</th>
+                    <th>Motivo</th>
                     <th>Estado</th>
                     <th>Resuelto por</th>
                     <th>Fecha resolución</th>
@@ -251,19 +275,23 @@ require_once __DIR__ . '/../views/layout.php';
             </thead>
             <tbody>
             <?php if (empty($resueltas)): ?>
-                <tr><td colspan="6" class="text-center text-muted" style="padding:24px">Sin solicitudes resueltas todavía.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted" style="padding:24px">Sin solicitudes resueltas todavía.</td></tr>
             <?php else: ?>
-            <?php foreach ($resueltas as $s): ?>
+            <?php foreach ($resueltas as $s):
+                $ctx = contexto_solicitud($pdo, $s);
+            ?>
                 <tr>
                     <td class="text-muted">#<?= $s['id'] ?></td>
                     <td><?= e($TIPO_LABELS[$s['tipo_accion']] ?? $s['tipo_accion']) ?></td>
+                    <td style="font-size:.85rem"><?= celda_detalle($ctx, $s) ?></td>
                     <td><?= e($s['solicitante_nombre']) ?></td>
+                    <td style="max-width:220px;font-size:.82rem"><?= e($s['motivo']) ?></td>
                     <td>
                         <span class="badge-ic <?= $s['estado'] === 'APROBADA' ? 'badge-success' : 'badge-danger' ?>">
                             <?= e($s['estado']) ?>
                         </span>
                         <?php if ($s['estado'] === 'RECHAZADA' && !empty($s['motivo_rechazo'])): ?>
-                            <div class="text-muted" style="font-size:.72rem"><?= e($s['motivo_rechazo']) ?></div>
+                            <div class="text-muted" style="font-size:.72rem">Motivo del rechazo: <?= e($s['motivo_rechazo']) ?></div>
                         <?php endif; ?>
                     </td>
                     <td><?= e($s['aprobador_nombre'] ?? '—') ?></td>
