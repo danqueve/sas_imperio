@@ -71,6 +71,7 @@ $stmt = $pdo->prepare("
                         AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas  cu   ON cu.credito_id = cr.id
                         AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+                        AND cu.fecha_vencimiento <= CURDATE()
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
     LEFT JOIN (
         SELECT credito_id
@@ -492,6 +493,7 @@ $stmt_qm = $pdo->prepare("
       AND cr.estado IN ('EN_CURSO','MOROSO')
       AND cr.frecuencia IN ('diario', 'quincenal', 'mensual')
       AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
+      AND cu.fecha_vencimiento <= CURDATE()
       AND filtro.credito_id IS NULL
       $zona_where
     ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
