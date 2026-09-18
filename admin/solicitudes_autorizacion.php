@@ -126,14 +126,19 @@ function contexto_solicitud(PDO $pdo, array $sol): array
         'refinanciar_credito' => (int) $sol['entidad_id'],
         default => 0,
     };
+    $base = [
+        'credito_id'     => $credito_id,
+        'cliente_id'     => (int) ($sol['cliente_id'] ?? 0),
+        'cliente_nombre' => $sol['cliente_nombre'] ?? '',
+    ];
 
     if (!empty($sol['detalle_contexto'])) {
-        return ['credito_id' => $credito_id, 'detalle' => $sol['detalle_contexto']];
+        return $base + ['detalle' => $sol['detalle_contexto']];
     }
 
     if ($sol['tipo_accion'] === 'revertir_pago_confirmado') {
         $stmt = $pdo->prepare("
-            SELECT pc.monto_total, cu.numero_cuota, cl.apellidos, cl.nombres
+            SELECT pc.monto_total, cu.numero_cuota, cl.id AS cliente_id, cl.apellidos, cl.nombres
             FROM ic_pagos_confirmados pc
             JOIN ic_cuotas cu ON cu.id = pc.cuota_id
             JOIN ic_creditos cr ON cr.id = cu.credito_id
@@ -142,29 +147,30 @@ function contexto_solicitud(PDO $pdo, array $sol): array
         ");
         $stmt->execute([(int) $sol['entidad_id']]);
         $r = $stmt->fetch();
-        if (!$r) return ['credito_id' => $credito_id, 'detalle' => 'El pago ya no existe (puede haber sido revertido por otra vía).'];
+        if (!$r) return $base + ['detalle' => 'El pago ya no existe (puede haber sido revertido por otra vía).'];
         return [
-            'credito_id' => $credito_id,
-            'detalle' => 'Cliente: ' . $r['apellidos'] . ', ' . $r['nombres']
-                . ' — Cuota #' . $r['numero_cuota'] . ' — ' . formato_pesos($r['monto_total']),
+            'credito_id'     => $credito_id,
+            'cliente_id'     => (int) $r['cliente_id'],
+            'cliente_nombre' => $r['apellidos'] . ', ' . $r['nombres'],
+            'detalle'        => 'Cuota #' . $r['numero_cuota'] . ' — ' . formato_pesos($r['monto_total']),
         ];
     }
     if ($sol['tipo_accion'] === 'refinanciar_credito') {
-        $stmt = $pdo->prepare("SELECT cl.apellidos, cl.nombres FROM ic_creditos cr JOIN ic_clientes cl ON cl.id=cr.cliente_id WHERE cr.id=?");
+        $stmt = $pdo->prepare("SELECT cl.id AS cliente_id, cl.apellidos, cl.nombres FROM ic_creditos cr JOIN ic_clientes cl ON cl.id=cr.cliente_id WHERE cr.id=?");
         $stmt->execute([$credito_id]);
         $r = $stmt->fetch();
-        $cliente = $r ? ($r['apellidos'] . ', ' . $r['nombres']) : '—';
         return [
-            'credito_id' => $credito_id,
-            'detalle' => 'Cliente: ' . $cliente
-                . ' — ' . (int) ($payload['nuevas_cuotas'] ?? 0) . ' cuotas ' . ($payload['frecuencia'] ?? '')
+            'credito_id'     => $credito_id,
+            'cliente_id'     => $r ? (int) $r['cliente_id'] : 0,
+            'cliente_nombre' => $r ? ($r['apellidos'] . ', ' . $r['nombres']) : '—',
+            'detalle' => (int) ($payload['nuevas_cuotas'] ?? 0) . ' cuotas ' . ($payload['frecuencia'] ?? '')
                 . (!empty($payload['capitalizar_mora']) ? ' — capitaliza mora' : '')
                 . ((float) ($payload['interes_adicional'] ?? 0) > 0 ? ' — +' . $payload['interes_adicional'] . '% interés adicional' : ''),
         ];
     }
     if ($sol['tipo_accion'] === 'anular_pago_temporal') {
         $stmt = $pdo->prepare("
-            SELECT pt.monto_total, pt.estado, cu.numero_cuota, cr.id AS credito_id, cl.apellidos, cl.nombres
+            SELECT pt.monto_total, pt.estado, cu.numero_cuota, cr.id AS credito_id, cl.id AS cliente_id, cl.apellidos, cl.nombres
             FROM ic_pagos_temporales pt
             JOIN ic_cuotas cu ON cu.id = pt.cuota_id
             JOIN ic_creditos cr ON cr.id = cu.credito_id
@@ -173,13 +179,17 @@ function contexto_solicitud(PDO $pdo, array $sol): array
         ");
         $stmt->execute([(int) $sol['entidad_id']]);
         $r = $stmt->fetch();
-        if (!$r) return ['credito_id' => $credito_id, 'detalle' => 'El pago ya no existe (puede haber sido aprobado o anulado por otra vía).'];
-        $detalle = 'Cliente: ' . $r['apellidos'] . ', ' . $r['nombres']
-            . ' — Cuota #' . $r['numero_cuota'] . ' — ' . formato_pesos($r['monto_total']);
+        if (!$r) return $base + ['detalle' => 'El pago ya no existe (puede haber sido aprobado o anulado por otra vía).'];
+        $detalle = 'Cuota #' . $r['numero_cuota'] . ' — ' . formato_pesos($r['monto_total']);
         if ($r['estado'] !== 'PENDIENTE') $detalle .= ' (el pago ya no está pendiente por otra vía: ' . $r['estado'] . ')';
-        return ['credito_id' => (int) $r['credito_id'], 'detalle' => $detalle];
+        return [
+            'credito_id'     => (int) $r['credito_id'],
+            'cliente_id'     => (int) $r['cliente_id'],
+            'cliente_nombre' => $r['apellidos'] . ', ' . $r['nombres'],
+            'detalle'        => $detalle,
+        ];
     }
-    return ['credito_id' => 0, 'detalle' => '—'];
+    return $base + ['detalle' => '—'];
 }
 
 // Celda de detalle compartida por las 2 tablas — igual para ambas salvo
@@ -195,6 +205,17 @@ function celda_detalle(array $ctx, array $s): string
         $html .= '<br><a href="../creditos/ver?id=' . (int) $s['resultado_entidad_id'] . '" target="_blank" style="font-size:.75rem;color:var(--success)">→ Crédito nuevo #' . (int) $s['resultado_entidad_id'] . '</a>';
     }
     return $html;
+}
+
+// Celda de cliente — linkea a la ficha si se conoce su id.
+function celda_cliente(array $ctx): string
+{
+    if (empty($ctx['cliente_nombre'])) return '<span class="text-muted">—</span>';
+    $nombre = e($ctx['cliente_nombre']);
+    if ($ctx['cliente_id']) {
+        return '<a href="../clientes/ver?id=' . (int) $ctx['cliente_id'] . '" target="_blank">' . $nombre . '</a>';
+    }
+    return $nombre;
 }
 
 $page_title   = 'Solicitudes de Autorización';
@@ -213,6 +234,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <th>#</th>
                     <th>Tipo</th>
+                    <th>Cliente</th>
                     <th>Detalle</th>
                     <th>Solicitante</th>
                     <th>Motivo</th>
@@ -222,7 +244,7 @@ require_once __DIR__ . '/../views/layout.php';
             </thead>
             <tbody>
             <?php if (empty($pendientes)): ?>
-                <tr><td colspan="7" class="text-center text-muted" style="padding:32px">No hay solicitudes pendientes.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted" style="padding:32px">No hay solicitudes pendientes.</td></tr>
             <?php else: ?>
             <?php foreach ($pendientes as $s):
                 $ctx = contexto_solicitud($pdo, $s);
@@ -230,6 +252,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <td class="text-muted">#<?= $s['id'] ?></td>
                     <td><span class="badge-ic badge-warning"><?= e($TIPO_LABELS[$s['tipo_accion']] ?? $s['tipo_accion']) ?></span></td>
+                    <td style="font-size:.85rem"><?= celda_cliente($ctx) ?></td>
                     <td style="font-size:.85rem"><?= celda_detalle($ctx, $s) ?></td>
                     <td><?= e($s['solicitante_nombre']) ?></td>
                     <td style="max-width:220px;font-size:.82rem"><?= e($s['motivo']) ?></td>
@@ -265,6 +288,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <th>#</th>
                     <th>Tipo</th>
+                    <th>Cliente</th>
                     <th>Detalle</th>
                     <th>Solicitante</th>
                     <th>Motivo</th>
@@ -275,7 +299,7 @@ require_once __DIR__ . '/../views/layout.php';
             </thead>
             <tbody>
             <?php if (empty($resueltas)): ?>
-                <tr><td colspan="8" class="text-center text-muted" style="padding:24px">Sin solicitudes resueltas todavía.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted" style="padding:24px">Sin solicitudes resueltas todavía.</td></tr>
             <?php else: ?>
             <?php foreach ($resueltas as $s):
                 $ctx = contexto_solicitud($pdo, $s);
@@ -283,6 +307,7 @@ require_once __DIR__ . '/../views/layout.php';
                 <tr>
                     <td class="text-muted">#<?= $s['id'] ?></td>
                     <td><?= e($TIPO_LABELS[$s['tipo_accion']] ?? $s['tipo_accion']) ?></td>
+                    <td style="font-size:.85rem"><?= celda_cliente($ctx) ?></td>
                     <td style="font-size:.85rem"><?= celda_detalle($ctx, $s) ?></td>
                     <td><?= e($s['solicitante_nombre']) ?></td>
                     <td style="max-width:220px;font-size:.82rem"><?= e($s['motivo']) ?></td>

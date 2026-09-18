@@ -80,7 +80,7 @@ if ($accion === 'solicitar_autorizacion_revertir') {
     }
 
     $chk = $pdo->prepare("
-        SELECT pc.monto_total, cu.numero_cuota, cl.apellidos, cl.nombres
+        SELECT pc.monto_total, cu.numero_cuota, cl.id AS cliente_id, cl.apellidos, cl.nombres
         FROM ic_pagos_confirmados pc
         JOIN ic_cuotas cu ON cu.id = pc.cuota_id
         JOIN ic_creditos cr2 ON cr2.id = cu.credito_id
@@ -95,12 +95,13 @@ if ($accion === 'solicitar_autorizacion_revertir') {
         exit;
     }
 
-    $detalle_sol = 'Cliente: ' . $pc_info['apellidos'] . ', ' . $pc_info['nombres']
-        . ' — Cuota #' . $pc_info['numero_cuota'] . ' — ' . formato_pesos($pc_info['monto_total']);
+    $detalle_sol = 'Cuota #' . $pc_info['numero_cuota'] . ' — ' . formato_pesos($pc_info['monto_total']);
+    $cliente_nombre_sol = $pc_info['apellidos'] . ', ' . $pc_info['nombres'];
 
     $sol_id = crear_solicitud_autorizacion(
         $pdo, 'revertir_pago_confirmado', 'pago_confirmado', $pc_id,
-        ['credito_id' => $credito_id], $motivo, $uid, $detalle_sol
+        ['credito_id' => $credito_id], $motivo, $uid, $detalle_sol,
+        (int) $pc_info['cliente_id'], $cliente_nombre_sol
     );
     registrar_log($pdo, $uid, 'SOLICITUD_AUTORIZACION_CREADA', 'pago_confirmado', $pc_id,
         'Solicitud #' . $sol_id . ' para revertir pago — Crédito #' . $credito_id . ' — Motivo: ' . $motivo);
