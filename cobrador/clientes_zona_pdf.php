@@ -83,10 +83,10 @@ function fmt(float $v): string {
 require_once __DIR__ . '/../lib/PDFBase.php';
 
 // Columnas (total = 190mm):
-// Cliente/Tel(58) + Artículo(50) + Cuota(18) + Monto(30) + Prox.Venc.(34)
-$CA     = [58, 50, 18, 30, 34];
-$LA     = ['Cliente / Tel.', 'Articulo', 'Cuota', 'Monto', 'Prox. Venc.'];
-$ALIGNS = ['L', 'L', 'C', 'R', 'C'];
+// #(8) + Cliente/Tel(50) + Artículo(50) + Cuota(18) + Monto(30) + Prox.Venc.(34)
+$CA     = [8, 50, 50, 18, 30, 34];
+$LA     = ['#', 'Cliente / Tel.', 'Articulo', 'Cuota', 'Monto', 'Prox. Venc.'];
+$ALIGNS = ['C', 'L', 'L', 'C', 'R', 'C'];
 
 class ClientesZonaPDF extends PDFBase
 {
@@ -150,6 +150,7 @@ foreach ($por_dia as $dia_num => $lista) {
     // Encabezado de día
     $pdf->diaHeader($dia_nombre, count($lista));
     $pdf->encabezadoColumnas();
+    $num = 0;
 
     foreach ($lista as $r) {
         // Salto de página anticipado
@@ -179,28 +180,30 @@ foreach ($por_dia as $dia_num => $lista) {
         $cliente_name = mb_strimwidth($r['apellidos'] . ', ' . $r['nombres'], 0, 38, '..');
         if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
         $articulo = mb_strimwidth($r['articulo'] ?? '—', 0, 32, '..');
+        $num++;
 
         // ── Celdas con borde ──────────────────────────────────
-        $pdf->Cell($CA[0], $row_h, '', 1, 0, 'L', false);                       // cliente (borde)
-        $pdf->Cell($CA[1], $row_h, lat($articulo), 1, 0, 'L', false);
-        $pdf->Cell($CA[2], $row_h, lat($cuota_label), 1, 0, 'C', false);
-        $pdf->Cell($CA[3], $row_h, $monto > 0 ? lat(fmt($monto)) : '—', 1, 0, 'R', false);
-        $pdf->Cell($CA[4], $row_h, lat($prox_venc), 1, 0, 'C', false);
+        $pdf->Cell($CA[0], $row_h, (string)$num, 1, 0, 'C', false);
+        $pdf->Cell($CA[1], $row_h, '', 1, 0, 'L', false);                       // cliente (borde)
+        $pdf->Cell($CA[2], $row_h, lat($articulo), 1, 0, 'L', false);
+        $pdf->Cell($CA[3], $row_h, lat($cuota_label), 1, 0, 'C', false);
+        $pdf->Cell($CA[4], $row_h, $monto > 0 ? lat(fmt($monto)) : '—', 1, 0, 'R', false);
+        $pdf->Cell($CA[5], $row_h, lat($prox_venc), 1, 0, 'C', false);
         $pdf->Ln();
 
         // Texto cliente — línea 1
         $pdf->SetFont('Helvetica', $es_moroso ? 'B' : '', 7);
         if ($es_moroso) $pdf->SetTextColor(160, 30, 30);
-        $pdf->SetXY($x0 + 0.8, $y0 + 0.8);
-        $pdf->Cell($CA[0] - 1, 4, lat($cliente_name), 0, 0, 'L', false);
+        $pdf->SetXY($x0 + $CA[0] + 0.8, $y0 + 0.8);
+        $pdf->Cell($CA[1] - 1, 4, lat($cliente_name), 0, 0, 'L', false);
         $pdf->SetTextColor(0, 0, 0);
 
         // Texto cliente — línea 2 (teléfono)
         if ($has_phone) {
             $pdf->SetFont('Helvetica', 'I', 6);
             $pdf->SetTextColor(80, 80, 80);
-            $pdf->SetXY($x0 + 0.8, $y0 + 4.5);
-            $pdf->Cell($CA[0] - 1, 3.5, lat('Tel: ' . mb_strimwidth($r['telefono'], 0, 24, '')), 0, 0, 'L', false);
+            $pdf->SetXY($x0 + $CA[0] + 0.8, $y0 + 4.5);
+            $pdf->Cell($CA[1] - 1, 3.5, lat('Tel: ' . mb_strimwidth($r['telefono'], 0, 24, '')), 0, 0, 'L', false);
             $pdf->SetTextColor(0, 0, 0);
         }
 
@@ -211,19 +214,19 @@ foreach ($por_dia as $dia_num => $lista) {
     // Subtotal del día
     $total_monto_dia = array_sum(array_filter(array_column($lista, 'monto_cuota')));
     $pdf->SetFont('Helvetica', 'B', 7);
-    $pdf->Cell($CA[0] + $CA[1] + $CA[2], 5, lat('Total ' . $dia_nombre . ': ' . count($lista) . ' cliente(s)'), 1, 0, 'R');
-    $pdf->Cell($CA[3], 5, lat(fmt($total_monto_dia)), 1, 0, 'R');
-    $pdf->Cell($CA[4], 5, '', 1, 1, 'L');
+    $pdf->Cell($CA[0] + $CA[1] + $CA[2] + $CA[3], 5, lat('Total ' . $dia_nombre . ': ' . count($lista) . ' cliente(s)'), 1, 0, 'R');
+    $pdf->Cell($CA[4], 5, lat(fmt($total_monto_dia)), 1, 0, 'R');
+    $pdf->Cell($CA[5], 5, '', 1, 1, 'L');
     $pdf->Ln(4);
 }
 
 // ── Total general ────────────────────────────────────────────
 $total_monto_gral = array_sum(array_filter(array_column($rows, 'monto_cuota')));
 $pdf->SetFont('Helvetica', 'B', 9);
-$pdf->Cell($CA[0] + $CA[1] + $CA[2], 7,
+$pdf->Cell($CA[0] + $CA[1] + $CA[2] + $CA[3], 7,
     lat('TOTAL GENERAL — ' . count($rows) . ' cliente(s)'), 1, 0, 'R');
-$pdf->Cell($CA[3], 7, lat(fmt($total_monto_gral)), 1, 0, 'R');
-$pdf->Cell($CA[4], 7, '', 1, 1, 'L');
+$pdf->Cell($CA[4], 7, lat(fmt($total_monto_gral)), 1, 0, 'R');
+$pdf->Cell($CA[5], 7, '', 1, 1, 'L');
 
 $nombre_pdf = 'clientes_dia_' . $cobrador_id . '_' . date('Ymd') . '.pdf';
 $pdf->Output('I', $nombre_pdf);
