@@ -38,9 +38,13 @@ if (!$cobrador) die('Cobrador no encontrado.');
 
 if (empty($dias_sel)) die('Seleccioná al menos un día.');
 
+// La ficha es semanal: incluye cuotas vencidas y las que vencen hasta el
+// sábado de la semana operativa actual, aunque se emita antes de su día.
+$fin_semana = calcular_semana_sabado(date('Y-m-d'));
+
 // ── Consulta semanales (mejora 1: MOROSO; mejora 2: cant_cuotas; mejora 4: zona) ──
 $placeholders = implode(',', array_fill(0, count($dias_sel), '?'));
-$params = array_merge([$cobrador_id], $dias_sel);
+$params = array_merge([$cobrador_id, $fin_semana], $dias_sel);
 
 $stmt = $pdo->prepare("
     SELECT cl.id AS cliente_id,
@@ -71,7 +75,7 @@ $stmt = $pdo->prepare("
                         AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas  cu   ON cu.credito_id = cr.id
                         AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
-                        AND cu.fecha_vencimiento <= CURDATE()
+                        AND cu.fecha_vencimiento <= ?
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
     LEFT JOIN (
         SELECT credito_id
@@ -493,12 +497,12 @@ $stmt_qm = $pdo->prepare("
       AND cr.estado IN ('EN_CURSO','MOROSO')
       AND cr.frecuencia IN ('diario', 'quincenal', 'mensual')
       AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
-      AND cu.fecha_vencimiento <= CURDATE()
+      AND cu.fecha_vencimiento <= ?
       AND filtro.credito_id IS NULL
       $zona_where
     ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
-$stmt_qm->execute(array_merge([$cobrador_id], $zonas_sel));
+$stmt_qm->execute(array_merge([$cobrador_id, $fin_semana], $zonas_sel));
 $rows_qm = $stmt_qm->fetchAll();
 
 if (!empty($rows_qm)) {

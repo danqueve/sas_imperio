@@ -89,6 +89,31 @@ final class LogicaFinancieraTest extends TestCase
         ];
     }
 
+    // ── calcular_semana_sabado() ─────────────────────────────────
+
+    #[Test]
+    #[DataProvider('semanaSabadoProvider')]
+    public function it_calcula_el_cierre_sabado_de_la_semana_operativa(
+        string $fecha,
+        string $esperado
+    ): void {
+        // Arrange: fecha de emisión de la agenda.
+
+        // Act
+        $resultado = calcular_semana_sabado($fecha);
+
+        // Assert
+        $this->assertSame($esperado, $resultado);
+    }
+
+    public static function semanaSabadoProvider(): iterable
+    {
+        yield 'lunes cierra el sábado de esa semana' => ['2026-09-21', '2026-09-26'];
+        yield 'miércoles conserva el mismo sábado' => ['2026-09-23', '2026-09-26'];
+        yield 'sábado es el día de cierre' => ['2026-09-26', '2026-09-26'];
+        yield 'domingo pertenece a la semana cerrada' => ['2026-09-27', '2026-09-26'];
+    }
+
     // ── calcular_mora() ───────────────────────────────────────────
 
     #[Test]

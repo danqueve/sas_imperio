@@ -49,13 +49,16 @@ if (!$cobrador) die('Cobrador no encontrado.');
 
 if (empty($dias_sel)) die('Seleccioná al menos un día.');
 
+// La exportación debe usar el mismo cierre lunes-sábado que la ficha PDF.
+$fin_semana = calcular_semana_sabado(date('Y-m-d'));
+
 // calcularGrupo() ahora vive en config/funciones.php como
 // calcular_grupo_cuotas(), compartida con cobrador/agenda_pdf.php (antes
 // duplicada verbatim en los dos archivos).
 
 // ── Consulta 1: Semanales (idéntica a agenda_pdf.php) ───────────
 $placeholders = implode(',', array_fill(0, count($dias_sel), '?'));
-$params = array_merge([$cobrador_id], $dias_sel);
+$params = array_merge([$cobrador_id, $fin_semana], $dias_sel);
 
 $stmt = $pdo->prepare("
     SELECT cl.id AS cliente_id,
@@ -74,7 +77,7 @@ $stmt = $pdo->prepare("
                         AND cr.frecuencia = 'semanal'
     JOIN ic_cuotas  cu   ON cu.credito_id = cr.id
                         AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
-                        AND cu.fecha_vencimiento <= CURDATE()
+                        AND cu.fecha_vencimiento <= ?
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
     LEFT JOIN (
         SELECT credito_id
@@ -139,11 +142,11 @@ if ($incluir_qm) {
           AND cr.estado IN ('EN_CURSO','MOROSO')
           AND cr.frecuencia IN ('diario', 'quincenal', 'mensual')
           AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
-          AND cu.fecha_vencimiento <= CURDATE()
+          AND cu.fecha_vencimiento <= ?
           AND filtro.credito_id IS NULL
         ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
     ");
-    $stmt_qm->execute([$cobrador_id]);
+    $stmt_qm->execute([$cobrador_id, $fin_semana]);
     $rows_qm_raw = $stmt_qm->fetchAll();
 
     // Agrupar por cliente y frecuencia — TODAS las cuotas del grupo, mismo

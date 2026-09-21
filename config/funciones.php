@@ -23,6 +23,18 @@ function calcular_semana_lunes(string $fecha_jornada): string
     return $d->format('Y-m-d');
 }
 
+/**
+ * Devuelve el sábado que cierra la semana de cobro de una fecha de jornada.
+ * Regla: la semana operativa va de lunes a sábado; un domingo pertenece a la
+ * semana que cerró el sábado anterior.
+ */
+function calcular_semana_sabado(string $fecha_jornada): string
+{
+    $lunes = new DateTime(calcular_semana_lunes($fecha_jornada));
+    $lunes->modify('+5 days');
+    return $lunes->format('Y-m-d');
+}
+
 // ── Datos de la empresa (comprobantes: recibos, cupones) ───────
 
 define('EMP_RAZON',    'IMPERIO COMERCIAL S.A.S');
