@@ -43,7 +43,7 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
-               cl.nombres, cl.apellidos, cl.id AS cliente_id,
+               cl.nombres, cl.apellidos, cl.id AS cliente_id, cl.zona,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
                cu.saldo_pagado, cu.estado AS cuota_estado,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
@@ -69,7 +69,7 @@ if ($multi_jornada) {
     $dstmt = $pdo->prepare("
         SELECT pt.*,
                cr.id AS credito_id,
-               cl.nombres, cl.apellidos, cl.id AS cliente_id,
+               cl.nombres, cl.apellidos, cl.id AS cliente_id, cl.zona,
                cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
                cu.saldo_pagado, cu.estado AS cuota_estado,
                COALESCE(cr.articulo_desc, a.descripcion) AS articulo,
@@ -320,67 +320,39 @@ class RendicionPDF extends PDFBase
 
 }
 
-// ── Preparar label de fecha para el header ──────────────────
-if ($es_multi) {
-    $fecha_label = 'Jornadas: ' . date('d/m', strtotime($fechas_jornada[0])) . ' - ' . date('d/m/Y', strtotime(end($fechas_jornada)));
-} else {
-    $fecha_label = 'Fecha: ' . label_jornada($fechas_jornada[0]);
-}
-
-$pdf = new RendicionPDF('P', 'mm', 'A4');
-$pdf->AliasNbPages();
-$pdf->cobrador_nombre  = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
-$pdf->fecha_label      = $fecha_label;
-$pdf->fecha_impresion  = date('d/m/Y H:i');
-$pdf->num_pagos        = count($pagos);
-$pdf->cols            = $COLS;
-$pdf->labels          = $LABELS;
-$pdf->aligns          = $ALIGNS;
-$pdf->SetMargins(10, 10, 10);
-$pdf->SetAutoPageBreak(true, 16);
-$pdf->AddPage();
-
-// ── Renderizar jornadas ─────────────────────────────────────
-$pdf->SetTextColor(0, 0, 0);
-$pdf->SetDrawColor(0, 0, 0);
-
-foreach ($por_jornada as $fecha_j => $pagos_j):
-
-    // Sub-encabezado de jornada (solo si multi-jornada)
-    if ($es_multi) {
-        $pdf->SetFont('Helvetica', 'B', 9);
-        $pdf->SetFillColor(230, 230, 230);
-        $pdf->Cell($ANCHO_TOTAL, 7, lat('Jornada: ' . label_jornada($fecha_j)), 1, 1, 'L', true);
-        $pdf->SetFillColor(255, 255, 255);
-    }
-
-    // Organizar en 2 secciones
+// Organiza una lista de pagos (ya agrupados por crédito+jornada) en las 2
+// secciones de siempre (Normal / Críticos 5+) y las dibuja — extraída tal
+// cual del bloque que antes vivía inline en el loop de jornadas, para poder
+// llamarla una vez por zona cuando la rendición tiene más de una, o una
+// sola vez con todos los pagos de la jornada cuando es una sola zona (o
+// "Sin zona" uniforme) — en ese caso el resultado es idéntico al de antes.
+// $index es el número de fila corrido: no se reinicia entre zonas ni entre
+// secciones, mismo criterio que ya usaba antes entre Normal y Críticos.
+function renderSeccionesPagos(RendicionPDF $pdf, array $COLS, int $ANCHO_TOTAL, array $pagos_list, int $index): array
+{
     $pagos_normal = [];
     $pagos_5plus  = [];
-    foreach ($pagos_j as $p) {
-        if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
+    foreach ($pagos_list as $p) {
+        if ((int) $p['cuotas_atrasadas_cliente'] >= 5) {
             $pagos_5plus[] = $p;
         } else {
             $pagos_normal[] = $p;
         }
     }
-    
+
     $secciones = [
         ['titulo' => 'Cobranza Normal (< 5 atrasadas)', 'datos' => $pagos_normal],
-        ['titulo' => 'Morosos Criticos (5+ atrasadas)', 'datos' => $pagos_5plus]
+        ['titulo' => 'Morosos Criticos (5+ atrasadas)', 'datos' => $pagos_5plus],
     ];
 
-    $j_efectivo = 0.0;
-    $j_transfer = 0.0;
-    $j_mora     = 0.0;
-    $j_total    = 0.0;
-
-    $index = 1;
+    $tot_efectivo = 0.0;
+    $tot_transfer = 0.0;
+    $tot_mora     = 0.0;
+    $tot_total    = 0.0;
 
     foreach ($secciones as $sec) {
         if (empty($sec['datos'])) continue;
-        
-        // Sub-encabezado de sección
+
         $pdf->SetFont('Helvetica', 'BI', 8);
         $pdf->SetTextColor(80, 80, 80);
         $pdf->Cell($ANCHO_TOTAL, 6, lat($sec['titulo']), 1, 1, 'L', false);
@@ -461,11 +433,103 @@ foreach ($por_jornada as $fecha_j => $pagos_j):
         $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($sec_transfer), $COLS[6] - 1),  1, 0, 'R', false);
         $pdf->Cell($COLS[7], 6, $pdf->fitText(fmt($sec_total), $COLS[7] - 1),     1, 0, 'R', false);
         $pdf->Ln();
-        
-        $j_efectivo += $sec_efectivo;
-        $j_transfer += $sec_transfer;
-        $j_mora     += $sec_mora;
-        $j_total    += $sec_total;
+
+        $tot_efectivo += $sec_efectivo;
+        $tot_transfer += $sec_transfer;
+        $tot_mora     += $sec_mora;
+        $tot_total    += $sec_total;
+    }
+
+    return ['efectivo' => $tot_efectivo, 'transfer' => $tot_transfer, 'mora' => $tot_mora, 'total' => $tot_total, 'index' => $index];
+}
+
+// ── Preparar label de fecha para el header ──────────────────
+if ($es_multi) {
+    $fecha_label = 'Jornadas: ' . date('d/m', strtotime($fechas_jornada[0])) . ' - ' . date('d/m/Y', strtotime(end($fechas_jornada)));
+} else {
+    $fecha_label = 'Fecha: ' . label_jornada($fechas_jornada[0]);
+}
+
+$pdf = new RendicionPDF('P', 'mm', 'A4');
+$pdf->AliasNbPages();
+$pdf->cobrador_nombre  = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
+$pdf->fecha_label      = $fecha_label;
+$pdf->fecha_impresion  = date('d/m/Y H:i');
+$pdf->num_pagos        = count($pagos);
+$pdf->cols            = $COLS;
+$pdf->labels          = $LABELS;
+$pdf->aligns          = $ALIGNS;
+$pdf->SetMargins(10, 10, 10);
+$pdf->SetAutoPageBreak(true, 16);
+$pdf->AddPage();
+
+// ── Renderizar jornadas ─────────────────────────────────────
+$pdf->SetTextColor(0, 0, 0);
+$pdf->SetDrawColor(0, 0, 0);
+
+foreach ($por_jornada as $fecha_j => $pagos_j):
+
+    // Sub-encabezado de jornada (solo si multi-jornada)
+    if ($es_multi) {
+        $pdf->SetFont('Helvetica', 'B', 9);
+        $pdf->SetFillColor(230, 230, 230);
+        $pdf->Cell($ANCHO_TOTAL, 7, lat('Jornada: ' . label_jornada($fecha_j)), 1, 1, 'L', true);
+        $pdf->SetFillColor(255, 255, 255);
+    }
+
+    // Agrupar por zona DENTRO de esta jornada — solo si hay mas de 1 zona
+    // real entre los pagos de hoy (si es 1 sola, o "Sin zona" uniforme, no
+    // se muestra ningun encabezado/subtotal de zona: queda identico a como
+    // se veia el reporte antes de este cambio).
+    $zonas_en_jornada = [];
+    foreach ($pagos_j as $p) {
+        $zk = mb_strtoupper(trim($p['zona'] ?? ''), 'UTF-8') ?: 'SIN ZONA';
+        $zonas_en_jornada[$zk][] = $p;
+    }
+    ksort($zonas_en_jornada, SORT_STRING);
+    $es_multi_zona = count($zonas_en_jornada) > 1;
+
+    $j_efectivo = 0.0;
+    $j_transfer = 0.0;
+    $j_mora     = 0.0;
+    $j_total    = 0.0;
+
+    $index = 1;
+
+    if ($es_multi_zona) {
+        foreach ($zonas_en_jornada as $zona_nombre => $pagos_zona) {
+            $pdf->SetFont('Helvetica', 'BI', 8);
+            $pdf->SetFillColor(220, 220, 220);
+            $pdf->Cell($ANCHO_TOTAL, 6, lat('Zona: ' . $zona_nombre), 1, 1, 'L', true);
+            $pdf->SetFillColor(255, 255, 255);
+
+            $rz = renderSeccionesPagos($pdf, $COLS, $ANCHO_TOTAL, $pagos_zona, $index);
+            $index = $rz['index'];
+
+            // Fila subtotal de zona
+            $pdf->SetFont('Helvetica', 'B', 8);
+            $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+            $pdf->SetFillColor(245, 245, 245);
+            $pdf->Cell($ancho_label, 6, lat('SUBTOTAL ZONA ' . $zona_nombre), 1, 0, 'R', true);
+            $pdf->Cell($COLS[5], 6, $pdf->fitText(fmt($rz['efectivo']), $COLS[5] - 1), 1, 0, 'R', true);
+            $pdf->Cell($COLS[6], 6, $pdf->fitText(fmt($rz['transfer']), $COLS[6] - 1), 1, 0, 'R', true);
+            $pdf->Cell($COLS[7], 6, $pdf->fitText(fmt($rz['total']), $COLS[7] - 1),    1, 0, 'R', true);
+            $pdf->SetFillColor(255, 255, 255);
+            $pdf->Ln();
+            $pdf->Ln(2);
+
+            $j_efectivo += $rz['efectivo'];
+            $j_transfer += $rz['transfer'];
+            $j_mora     += $rz['mora'];
+            $j_total    += $rz['total'];
+        }
+    } else {
+        $rj = renderSeccionesPagos($pdf, $COLS, $ANCHO_TOTAL, $pagos_j, $index);
+        $index      = $rj['index'];
+        $j_efectivo = $rj['efectivo'];
+        $j_transfer = $rj['transfer'];
+        $j_mora     = $rj['mora'];
+        $j_total    = $rj['total'];
     }
 
     // Fila total de jornada

@@ -29,7 +29,7 @@ $dstmt = $pdo->prepare("
            cr.dia_cobro,
            COALESCE(pc.cliente_nombres_snap,   cl.nombres)    AS nombres,
            COALESCE(pc.cliente_apellidos_snap, cl.apellidos)  AS apellidos,
-           cl.id AS cliente_id,
+           cl.id AS cliente_id, cl.zona,
            COALESCE(pc.numero_cuota,     cu.numero_cuota)     AS numero_cuota,
            COALESCE(pc.fecha_vcto_orig,  cu.fecha_vencimiento) AS fecha_vencimiento,
            COALESCE(pc.monto_cuota_orig, cu.monto_cuota)      AS monto_cuota,
@@ -235,6 +235,94 @@ class RendicionHistorialPDF extends PDFBase
 
 }
 
+function renderSeccionesPagosHistorial(RendicionHistorialPDF $pdf, array $COLS, array $pagos_list, int $index): array
+{
+    $pagos_normal = [];
+    $pagos_5plus  = [];
+    foreach ($pagos_list as $p) {
+        if ((int) $p['cuotas_atrasadas_cliente'] >= 5) {
+            $pagos_5plus[] = $p;
+        } else {
+            $pagos_normal[] = $p;
+        }
+    }
+
+    $secciones = [
+        ['titulo' => 'Cobranza Normal (< 5 atrasadas)', 'datos' => $pagos_normal],
+        ['titulo' => 'Morosos Criticos (5+ atrasadas)', 'datos' => $pagos_5plus],
+    ];
+
+    $tot_efectivo = 0.0;
+    $tot_transfer = 0.0;
+    $tot_total    = 0.0;
+
+    foreach ($secciones as $sec) {
+        if (empty($sec['datos'])) continue;
+
+        // Sub-encabezado de sección
+        $pdf->SetFont('Helvetica', 'BI', 8);
+        $pdf->SetTextColor(80, 80, 80);
+        $ancho_total_seccion = array_sum($COLS);
+        $pdf->Cell($ancho_total_seccion, 6, lat($sec['titulo']), 1, 1, 'L', false);
+        $pdf->SetTextColor(0, 0, 0);
+
+        $sec_efectivo = 0.0;
+        $sec_transfer = 0.0;
+        $sec_total    = 0.0;
+
+        foreach ($sec['datos'] as $p) {
+            $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
+            if ((int) $p['cuotas_atrasadas_cliente'] >= 5) {
+                $cliente_raw .= ' (At. ' . $p['cuotas_atrasadas_cliente'] . ')';
+            }
+            $articulo_raw = $p['articulo'];
+            $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
+            $vlr_cuota  = (float) $p['monto_cuota_sum'];
+
+            // Código de operación de la transferencia; "S/C" (sin código) solo
+            // tiene sentido si hubo transferencia — un pago 100% efectivo nunca
+            // tuvo código que mostrar.
+            $tr = (float) $p['monto_transferencia'];
+            $codigo_op = $p['codigo_transferencia'] ?? '';
+            $codigo_op_str = $codigo_op !== '' ? $codigo_op : ($tr > 0 ? 'S/C' : '-');
+
+            $sec_efectivo += (float) $p['monto_efectivo'];
+            $sec_transfer += (float) $p['monto_transferencia'];
+            $sec_total    += (float) $p['monto_total'];
+
+            $pdf->SetFont('Helvetica', '', 8);
+            $pdf->Cell($COLS[0], 6, $index,                                      1, 0, 'C', false);
+            $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
+            $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
+            $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
+            $pdf->Cell($COLS[4], 6, fmt($vlr_cuota),                             1, 0, 'R', false);
+            $pdf->Cell($COLS[5], 6, fmt((float) $p['monto_efectivo']),           1, 0, 'R', false);
+            $pdf->Cell($COLS[6], 6, fmt((float) $p['monto_transferencia']),      1, 0, 'R', false);
+            $pdf->Cell($COLS[7], 6, $pdf->fitText($codigo_op_str, $COLS[7] - 1), 1, 0, 'C', false);
+            $pdf->Cell($COLS[8], 6, fmt((float) $p['monto_total']),              1, 0, 'R', false);
+            $pdf->Ln();
+            $index++;
+        }
+
+        // Fila SUBTOTAL de sección
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+        $label_total = 'SUBTOTAL ' . mb_strtoupper($sec['titulo'], 'UTF-8');
+        $pdf->Cell($ancho_label, 6, lat($label_total), 1, 0, 'R', false);
+        $pdf->Cell($COLS[5], 6, fmt($sec_efectivo), 1, 0, 'R', false);
+        $pdf->Cell($COLS[6], 6, fmt($sec_transfer), 1, 0, 'R', false);
+        $pdf->Cell($COLS[7], 6, '',                 1, 0, 'C', false);
+        $pdf->Cell($COLS[8], 6, fmt($sec_total),    1, 0, 'R', false);
+        $pdf->Ln();
+
+        $tot_efectivo += $sec_efectivo;
+        $tot_transfer += $sec_transfer;
+        $tot_total    += $sec_total;
+    }
+
+    return ['efectivo' => $tot_efectivo, 'transfer' => $tot_transfer, 'total' => $tot_total, 'index' => $index];
+}
+
 $pdf = new RendicionHistorialPDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->cobrador_nombre  = $cobrador['nombre'] . ' ' . $cobrador['apellido'];
@@ -255,82 +343,44 @@ $pdf->SetTextColor(0, 0, 0);
 $pdf->SetDrawColor(0, 0, 0);
 $pdf->SetFillColor(255, 255, 255);
 
-// Organizar en 2 secciones
-$pagos_normal = [];
-$pagos_5plus  = [];
+// Agrupar por zona — solo si hay mas de 1 zona real entre los pagos de
+// esta rendicion (si es 1 sola, o "Sin zona" uniforme, no se muestra
+// ningun encabezado/subtotal de zona: queda identico a como se veia el
+// reporte antes de este cambio).
+$zonas_pagos = [];
 foreach ($pagos as $p) {
-    if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
-        $pagos_5plus[] = $p;
-    } else {
-        $pagos_normal[] = $p;
-    }
+    $zk = mb_strtoupper(trim($p['zona'] ?? ''), 'UTF-8') ?: 'SIN ZONA';
+    $zonas_pagos[$zk][] = $p;
 }
-
-$secciones = [
-    ['titulo' => 'Cobranza Normal (< 5 atrasadas)', 'datos' => $pagos_normal],
-    ['titulo' => 'Morosos Criticos (5+ atrasadas)', 'datos' => $pagos_5plus]
-];
+ksort($zonas_pagos, SORT_STRING);
+$es_multi_zona = count($zonas_pagos) > 1;
 
 $index = 1;
-foreach ($secciones as $sec) {
-    if (empty($sec['datos'])) continue;
 
-    // Sub-encabezado de sección
-    $pdf->SetFont('Helvetica', 'BI', 8);
-    $pdf->SetTextColor(80, 80, 80);
-    $ancho_total_seccion = array_sum($COLS);
-    $pdf->Cell($ancho_total_seccion, 6, lat($sec['titulo']), 1, 1, 'L', false);
-    $pdf->SetTextColor(0, 0, 0);
+if ($es_multi_zona) {
+    foreach ($zonas_pagos as $zona_nombre => $pagos_zona) {
+        $pdf->SetFont('Helvetica', 'BI', 8);
+        $pdf->SetFillColor(220, 220, 220);
+        $pdf->Cell(array_sum($COLS), 6, lat('Zona: ' . $zona_nombre), 1, 1, 'L', true);
+        $pdf->SetFillColor(255, 255, 255);
 
-    $sec_efectivo = 0.0;
-    $sec_transfer = 0.0;
-    $sec_mora     = 0.0;
-    $sec_total    = 0.0;
+        $rz = renderSeccionesPagosHistorial($pdf, $COLS, $pagos_zona, $index);
+        $index = $rz['index'];
 
-    foreach ($sec['datos'] as $p) {
-        $cliente_raw = $p['apellidos'] . ', ' . $p['nombres'];
-        if ((int)$p['cuotas_atrasadas_cliente'] >= 5) {
-            $cliente_raw .= ' (At. ' . $p['cuotas_atrasadas_cliente'] . ')';
-        }
-        $articulo_raw = $p['articulo'];
-        $cuotas_str = implode(', ', array_map(fn($n) => '#' . $n, $p['cuotas_nums']));
-        $vlr_cuota  = (float) $p['monto_cuota_sum'];
-
-        // Código de operación de la transferencia; "S/C" (sin código) solo
-        // tiene sentido si hubo transferencia — un pago 100% efectivo nunca
-        // tuvo código que mostrar.
-        $tr = (float) $p['monto_transferencia'];
-        $codigo_op = $p['codigo_transferencia'] ?? '';
-        $codigo_op_str = $codigo_op !== '' ? $codigo_op : ($tr > 0 ? 'S/C' : '-');
-
-        $sec_efectivo += (float)$p['monto_efectivo'];
-        $sec_transfer += (float)$p['monto_transferencia'];
-        $sec_total    += (float)$p['monto_total'];
-
-        $pdf->SetFont('Helvetica', '', 8);
-        $pdf->Cell($COLS[0], 6, $index,                                      1, 0, 'C', false);
-        $pdf->Cell($COLS[1], 6, $pdf->fitText($cliente_raw, $COLS[1] - 1),   1, 0, 'L', false);
-        $pdf->Cell($COLS[2], 6, $pdf->fitText($articulo_raw, $COLS[2] - 1),  1, 0, 'L', false);
-        $pdf->Cell($COLS[3], 6, $pdf->fitText($cuotas_str, $COLS[3] - 1),   1, 0, 'C', false);
-        $pdf->Cell($COLS[4], 6, fmt($vlr_cuota),                             1, 0, 'R', false);
-        $pdf->Cell($COLS[5], 6, fmt((float)$p['monto_efectivo']),            1, 0, 'R', false);
-        $pdf->Cell($COLS[6], 6, fmt((float)$p['monto_transferencia']),       1, 0, 'R', false);
-        $pdf->Cell($COLS[7], 6, $pdf->fitText($codigo_op_str, $COLS[7] - 1), 1, 0, 'C', false);
-        $pdf->Cell($COLS[8], 6, fmt((float)$p['monto_total']),               1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
+        $pdf->SetFillColor(245, 245, 245);
+        $pdf->Cell($ancho_label, 6, lat('SUBTOTAL ZONA ' . $zona_nombre), 1, 0, 'R', true);
+        $pdf->Cell($COLS[5], 6, fmt($rz['efectivo']), 1, 0, 'R', true);
+        $pdf->Cell($COLS[6], 6, fmt($rz['transfer']), 1, 0, 'R', true);
+        $pdf->Cell($COLS[7], 6, '',                   1, 0, 'C', true);
+        $pdf->Cell($COLS[8], 6, fmt($rz['total']),    1, 0, 'R', true);
+        $pdf->SetFillColor(255, 255, 255);
         $pdf->Ln();
-        $index++;
+        $pdf->Ln(2);
     }
-
-    // Fila SUBTOTAL de sección
-    $pdf->SetFont('Helvetica', 'B', 7);
-    $ancho_label = $COLS[0] + $COLS[1] + $COLS[2] + $COLS[3] + $COLS[4];
-    $label_total = 'SUBTOTAL ' . mb_strtoupper($sec['titulo'], 'UTF-8');
-    $pdf->Cell($ancho_label, 6, lat($label_total), 1, 0, 'R', false);
-    $pdf->Cell($COLS[5], 6, fmt($sec_efectivo), 1, 0, 'R', false);
-    $pdf->Cell($COLS[6], 6, fmt($sec_transfer), 1, 0, 'R', false);
-    $pdf->Cell($COLS[7], 6, '',                 1, 0, 'C', false);
-    $pdf->Cell($COLS[8], 6, fmt($sec_total),    1, 0, 'R', false);
-    $pdf->Ln();
+} else {
+    renderSeccionesPagosHistorial($pdf, $COLS, $pagos, $index);
 }
 
 // ── Fila TOTALES ────────────────────────────────────────────────
