@@ -24,6 +24,27 @@ if (es_super_admin()) {
         SELECT COUNT(*) FROM ic_solicitudes_autorizacion WHERE estado = 'PENDIENTE'
     ")->fetchColumn();
 }
+
+// Reclamos/Posventa abiertos (badge sidebar) — un cobrador solo ve los
+// suyos (misma cartera que en tickets/index.php); admin/supervisor ven
+// todos.
+$n_reclamos_abiertos = 0;
+if ($rol !== 'vendedor') {
+    $_pdo_lay ??= obtener_conexion();
+    if ($rol === 'cobrador') {
+        $_stmt_recl = $_pdo_lay->prepare("
+            SELECT COUNT(*) FROM ic_tickets tk
+            JOIN ic_clientes cl ON cl.id = tk.cliente_id
+            WHERE tk.estado = 'abierto' AND cl.cobrador_id = ?
+        ");
+        $_stmt_recl->execute([$user['id']]);
+        $n_reclamos_abiertos = (int) $_stmt_recl->fetchColumn();
+    } else {
+        $n_reclamos_abiertos = (int) $_pdo_lay->query("
+            SELECT COUNT(*) FROM ic_tickets WHERE estado = 'abierto'
+        ")->fetchColumn();
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -97,6 +118,22 @@ if (es_super_admin()) {
                         <i class="fa fa-box-open"></i>
                         <span class="nav-text">Artículos / Stock</span>
                     </a>
+                <?php endif; ?>
+
+                <!-- Atención al Cliente — visible para todos los roles excepto vendedor -->
+                <?php if ($rol !== 'vendedor'): ?>
+                <div class="nav-label">Atención al Cliente</div>
+                <a class="nav-item <?= ($page_current ?? '') === 'tickets' ? 'active' : '' ?>"
+                   href="<?= BASE_URL ?>tickets/index"
+                   data-tooltip="Reclamos y Posventa">
+                    <i class="fa fa-headset"></i>
+                    <span class="nav-text">Reclamos y Posventa</span>
+                    <?php if ($n_reclamos_abiertos > 0): ?>
+                        <span class="nav-badge" title="<?= $n_reclamos_abiertos ?> caso<?= $n_reclamos_abiertos !== 1 ? 's' : '' ?> abierto<?= $n_reclamos_abiertos !== 1 ? 's' : '' ?>">
+                            <?= $n_reclamos_abiertos ?>
+                        </span>
+                    <?php endif; ?>
+                </a>
                 <?php endif; ?>
 
                 <?php if ($rol !== 'vendedor'): ?>
@@ -248,17 +285,6 @@ if (es_super_admin()) {
                         <i class="fa fa-history"></i>
                         <span class="nav-text">Actividad</span>
                     </a>
-                <?php endif; ?>
-
-                <!-- Atención al Cliente — visible para todos los roles excepto vendedor -->
-                <?php if ($rol !== 'vendedor'): ?>
-                <div class="nav-label">Atención al Cliente</div>
-                <a class="nav-item <?= ($page_current ?? '') === 'tickets' ? 'active' : '' ?>"
-                   href="<?= BASE_URL ?>tickets/index"
-                   data-tooltip="Reclamos y Posventa">
-                    <i class="fa fa-headset"></i>
-                    <span class="nav-text">Reclamos y Posventa</span>
-                </a>
                 <?php endif; ?>
 
             </nav>
