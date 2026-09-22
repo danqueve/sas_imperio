@@ -95,7 +95,7 @@ require_once __DIR__ . '/../views/layout.php';
 .tv-desc-tag { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
 .tv-desc-badges { display: flex; gap: 8px; }
 .tv-titulo { font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 10px; }
-.tv-desc-text { color: var(--text-body); font-size: .92rem; line-height: 1.7; white-space: pre-wrap; margin-bottom: 14px; }
+.tv-desc-text { color: var(--text-main); font-size: .92rem; line-height: 1.7; white-space: pre-wrap; margin-bottom: 14px; }
 .tv-desc-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: .76rem; color: var(--text-muted); padding-top: 12px; border-top: 1px solid var(--dark-border); }
 .tv-desc-meta span { display: inline-flex; align-items: center; gap: 6px; }
 

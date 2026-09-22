@@ -119,7 +119,7 @@ require_once __DIR__ . '/../views/layout.php';
 .tk-card-cliente { font-weight: 700; font-size: .9rem; color: var(--text-main); margin-bottom: 3px; }
 .tk-card-cliente:hover { color: var(--primary-light); }
 .tk-card-credito { font-size: .76rem; color: var(--text-muted); margin-bottom: 8px; }
-.tk-card-desc { font-size: .8rem; color: var(--text-body); line-height: 1.4; margin-bottom: 10px; }
+.tk-card-desc { font-size: .8rem; color: var(--text-main); line-height: 1.4; margin-bottom: 10px; }
 
 .tk-card-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .7rem; color: var(--text-muted); margin-bottom: 10px; flex-wrap: wrap; }
 .tk-card-footer .resp-count { display: inline-flex; align-items: center; gap: 4px; }
