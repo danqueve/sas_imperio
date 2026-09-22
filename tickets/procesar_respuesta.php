@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
+verificar_permiso('gestionar_reclamos');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: index');
@@ -20,80 +21,78 @@ if (!$ticket_id) {
     header('Location: index'); exit;
 }
 
-// Cargar ticket
-$stmt = $pdo->prepare("SELECT * FROM ic_tickets WHERE id = ?");
+// Cargar ticket + cobrador del cliente (para el scoping de cartera)
+$stmt = $pdo->prepare("
+    SELECT tk.*, cl.cobrador_id
+    FROM ic_tickets tk
+    JOIN ic_clientes cl ON cl.id = tk.cliente_id
+    WHERE tk.id = ?
+");
 $stmt->execute([$ticket_id]);
 $tk = $stmt->fetch();
 
 if (!$tk) {
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Ticket no encontrado.'];
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Caso no encontrado.'];
     header('Location: index'); exit;
 }
 
-$es_creador = ((int)$tk['creado_por'] === $uid);
-$es_admin   = es_admin();
-$puede_cerrar = $es_creador || $es_admin;
+if (es_cobrador() && (int) $tk['cobrador_id'] !== $uid) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'No tenés acceso a este caso.'];
+    header('Location: index'); exit;
+}
 
-// ── Solo cambio de estado (sin mensaje) ──────────────────────
-if (isset($_POST['solo_estado'])) {
-    $nuevo_estado = $_POST['solo_estado'];
+// Un envío puede traer mensaje, cambio de estado, o ambos a la vez (ej. el
+// usuario escribe una novedad y aprieta "Resolver" en el mismo formulario) —
+// se procesan los dos juntos, nunca se descarta el mensaje en silencio.
+$mensaje      = trim($_POST['mensaje'] ?? '');
+$nuevo_estado = $_POST['solo_estado'] ?? null;
 
-    if (!in_array($nuevo_estado, ['abierto','en_progreso','resuelto'])) {
-        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Estado inválido.'];
-        header('Location: ' . $back); exit;
-    }
-
-    if ($nuevo_estado === 'resuelto' && !$puede_cerrar) {
-        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Solo el creador o un administrador puede cerrar el ticket.'];
-        header('Location: ' . $back); exit;
-    }
-
-    if ($nuevo_estado === 'abierto' && !$puede_cerrar) {
-        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Sin permisos para reabrir el ticket.'];
-        header('Location: ' . $back); exit;
-    }
-
-    $pdo->prepare("UPDATE ic_tickets SET estado=? WHERE id=?")->execute([$nuevo_estado, $ticket_id]);
-    registrar_log($pdo, $uid, 'TICKET_ESTADO', 'ticket', $ticket_id, 'Estado → ' . $nuevo_estado);
-
-    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Estado actualizado: ' . ucfirst(str_replace('_',' ',$nuevo_estado)) . '.'];
+if ($nuevo_estado !== null && !in_array($nuevo_estado, ['abierto', 'en_progreso', 'resuelto'], true)) {
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Estado inválido.'];
     header('Location: ' . $back); exit;
 }
 
-// ── Respuesta con mensaje ────────────────────────────────────
-if ($tk['estado'] === 'resuelto') {
-    $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'El ticket está resuelto. Reabrilo antes de responder.'];
-    header('Location: ' . $back); exit;
-}
-
-$mensaje = trim($_POST['mensaje'] ?? '');
-if (!$mensaje) {
+if ($mensaje === '' && $nuevo_estado === null) {
     $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'El mensaje no puede estar vacío.'];
+    header('Location: ' . $back); exit;
+}
+
+// Un caso resuelto no admite mensajes ni queda en el mismo estado — la única
+// acción válida sobre él es reabrirlo (nuevo_estado = 'abierto').
+if ($tk['estado'] === 'resuelto' && $nuevo_estado !== 'abierto') {
+    $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'El caso está resuelto. Reabrilo antes de responder o cambiar el estado.'];
     header('Location: ' . $back); exit;
 }
 
 try {
     $pdo->beginTransaction();
 
-    // Insertar respuesta
-    $pdo->prepare("INSERT INTO ic_ticket_respuestas (ticket_id, usuario_id, mensaje) VALUES (?,?,?)")
-        ->execute([$ticket_id, $uid, $mensaje]);
+    if ($mensaje !== '') {
+        $pdo->prepare("INSERT INTO ic_ticket_respuestas (ticket_id, usuario_id, mensaje) VALUES (?,?,?)")
+            ->execute([$ticket_id, $uid, $mensaje]);
+        registrar_log($pdo, $uid, 'TICKET_RESPUESTA', 'ticket', $ticket_id, mb_strimwidth($mensaje, 0, 80, '...'));
+    }
 
-    // Auto-progresar abierto → en_progreso en primera respuesta de otro usuario
-    if ($tk['estado'] === 'abierto' && !$es_creador) {
-        $pdo->prepare("UPDATE ic_tickets SET estado='en_progreso' WHERE id=?")->execute([$ticket_id]);
-    } else {
-        // Actualizar updated_at para reflejar actividad
-        $pdo->prepare("UPDATE ic_tickets SET updated_at=NOW() WHERE id=?")->execute([$ticket_id]);
+    if ($nuevo_estado !== null) {
+        $pdo->prepare("UPDATE ic_tickets SET estado=? WHERE id=?")->execute([$nuevo_estado, $ticket_id]);
+        registrar_log($pdo, $uid, 'TICKET_ESTADO', 'ticket', $ticket_id, 'Estado → ' . $nuevo_estado);
+    } elseif ($mensaje !== '') {
+        // Sin cambio de estado explícito: solo progresar abierto → en_progreso
+        // en la primera respuesta de alguien distinto del creador.
+        $es_creador = ((int) $tk['creado_por'] === $uid);
+        if ($tk['estado'] === 'abierto' && !$es_creador) {
+            $pdo->prepare("UPDATE ic_tickets SET estado='en_progreso' WHERE id=?")->execute([$ticket_id]);
+        } else {
+            $pdo->prepare("UPDATE ic_tickets SET updated_at=NOW() WHERE id=?")->execute([$ticket_id]);
+        }
     }
 
     $pdo->commit();
-    registrar_log($pdo, $uid, 'TICKET_RESPUESTA', 'ticket', $ticket_id, mb_strimwidth($mensaje, 0, 80, '...'));
-    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Respuesta enviada.'];
+    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Caso actualizado.'];
 
 } catch (Exception $e) {
     $pdo->rollBack();
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al enviar la respuesta.'];
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Error al actualizar el caso.'];
 }
 
 header('Location: ' . $back);

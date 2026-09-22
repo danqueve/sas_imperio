@@ -576,7 +576,7 @@ h5, h6 { font-weight: 600; color: var(--text-body); }
   display: block;
   font-size: .72rem;
   font-weight: 600;
-  color: var(--text-body);
+  color: var(--text-main);
   text-transform: uppercase;
   letter-spacing: .6px;
   margin-bottom: 6px;
@@ -997,6 +997,15 @@ body.theme-cobrador input:focus,
 body.theme-cobrador select:focus {
   border-color: var(--primary) !important;
   box-shadow: 0 0 0 2px rgba(79,70,229,.1) !important;
+}
+/* El <option> de un <select> no hereda el fondo blanco de arriba — sin
+   esto quedaba con el fondo oscuro de --dark-card (que este tema no
+   redefine) y el texto oscuro de --text-main de este mismo tema,
+   dos colores oscuros encima del otro, casi ilegible al abrir el
+   desplegable. */
+body.theme-cobrador select option {
+  background: #ffffff;
+  color: var(--text-main);
 }
 body.theme-cobrador .page-header-title { color: var(--text-main); }
 body.theme-cobrador #modal-info        { background: #f3f4f6 !important; border: 1px solid #e5e7eb; }

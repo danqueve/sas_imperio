@@ -1,40 +1,53 @@
 <?php
-// tickets/ver.php — Ver ticket + hilo de respuestas
+// tickets/ver.php — Detalle de un Reclamo/Posventa + hilo de conversación
 require_once __DIR__ . '/../config/conexion.php';
 require_once __DIR__ . '/../config/sesion.php';
 require_once __DIR__ . '/../config/funciones.php';
 verificar_sesion();
+verificar_permiso('gestionar_reclamos');
 
 $pdo       = obtener_conexion();
 $uid       = (int) $_SESSION['user_id'];
-$rol       = $_SESSION['rol'];
 $ticket_id = (int) ($_GET['id'] ?? 0);
 
 if (!$ticket_id) {
     header('Location: index'); exit;
 }
 
-// ── Cargar ticket ────────────────────────────────────────────
+// ── Cargar ticket + cliente + crédito + artículo + cobrador ────
 $stmt = $pdo->prepare("
     SELECT tk.*,
-           CONCAT(uc.nombre, ' ', uc.apellido) AS creado_por_nombre, uc.rol AS creado_por_rol,
-           CONCAT(ud.nombre, ' ', ud.apellido) AS delegado_nombre
+           cl.nombres AS cliente_nombres, cl.apellidos AS cliente_apellidos, cl.cobrador_id,
+           cob.nombre AS cobrador_nombre, cob.apellido AS cobrador_apellido,
+           cr.fecha_alta AS credito_fecha_alta, cr.estado AS credito_estado,
+           COALESCE(cr.articulo_desc, art.descripcion, 'Sin artículo') AS articulo,
+           CONCAT(uc.nombre, ' ', uc.apellido) AS creado_por_nombre
     FROM ic_tickets tk
+    JOIN ic_clientes cl ON cl.id = tk.cliente_id
+    LEFT JOIN ic_usuarios cob ON cob.id = cl.cobrador_id
+    JOIN ic_creditos cr ON cr.id = tk.credito_id
+    LEFT JOIN ic_articulos art ON art.id = cr.articulo_id
     JOIN ic_usuarios uc ON uc.id = tk.creado_por
-    LEFT JOIN ic_usuarios ud ON ud.id = tk.delegado_a_usuario
     WHERE tk.id = ?
 ");
 $stmt->execute([$ticket_id]);
 $tk = $stmt->fetch();
 
 if (!$tk) {
-    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Ticket no encontrado.'];
+    $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Caso no encontrado.'];
     header('Location: index'); exit;
+}
+
+// Scoping de cartera: un cobrador solo puede ver casos de sus propios clientes.
+if (es_cobrador() && (int) $tk['cobrador_id'] !== $uid) {
+    http_response_code(403);
+    require __DIR__ . '/../views/403.php';
+    exit;
 }
 
 // ── Cargar respuestas ────────────────────────────────────────
 $resp_stmt = $pdo->prepare("
-    SELECT tr.*, CONCAT(u.nombre, ' ', u.apellido) AS autor, u.rol AS autor_rol
+    SELECT tr.*, CONCAT(u.nombre, ' ', u.apellido) AS autor
     FROM ic_ticket_respuestas tr
     JOIN ic_usuarios u ON u.id = tr.usuario_id
     WHERE tr.ticket_id = ?
@@ -46,238 +59,121 @@ $respuestas = $resp_stmt->fetchAll();
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
 
-$es_creador = ((int)$tk['creado_por'] === $uid);
-$es_admin   = es_admin();
-$puede_cerrar = $es_creador || $es_admin;
-
-// Helpers de badge
-function badge_est(string $e): string {
-    return match($e) {
-        'abierto'     => '<span class="badge-status open">Abierto</span>',
-        'en_progreso' => '<span class="badge-status progress">En progreso</span>',
-        'resuelto'    => '<span class="badge-status resolved">Resuelto</span>',
-        default       => '<span class="badge bg-secondary">' . htmlspecialchars($e) . '</span>',
-    };
-}
-function badge_prio(string $p): string {
-    return match($p) {
-        'alta'  => '<span class="badge-prio high"><i class="fa fa-angles-up me-1"></i>Alta</span>',
-        'media' => '<span class="badge-prio medium"><i class="fa fa-minus me-1"></i>Media</span>',
-        'baja'  => '<span class="badge-prio low"><i class="fa fa-angles-down me-1"></i>Baja</span>',
-        default => '',
-    };
+function tv_badge_estado(string $e): string
+{
+    $map = [
+        'abierto'     => ['danger',  'Abierto'],
+        'en_progreso' => ['warning', 'En Progreso'],
+        'resuelto'    => ['success', 'Resuelto'],
+    ];
+    [$clase, $label] = $map[$e] ?? ['muted', $e];
+    return "<span class=\"badge-ic badge-{$clase}\">{$label}</span>";
 }
 
-$page_title   = 'Ticket #' . $ticket_id;
+function tv_badge_prioridad(string $p): string
+{
+    $map = ['alta' => ['danger', 'Alta'], 'media' => ['info', 'Media'], 'baja' => ['muted', 'Baja']];
+    [$clase, $label] = $map[$p] ?? ['muted', $p];
+    return "<span class=\"badge-ic badge-{$clase}\">{$label}</span>";
+}
+
+$tipo_label = $tk['tipo'] === 'posventa' ? 'Posventa' : 'Reclamo';
+$tipo_icon  = $tk['tipo'] === 'posventa' ? 'fa-screwdriver-wrench' : 'fa-triangle-exclamation';
+
+$page_title   = ucfirst($tk['tipo']) . ' #' . $ticket_id;
 $page_current = 'tickets';
-$topbar_actions = '<a href="index" class="btn-ic btn-sm" style="background:rgba(107,114,128,.2);color:#9ca3af;border:1px solid rgba(107,114,128,.3)"><i class="fa fa-arrow-left me-1"></i> Volver</a>';
+$topbar_actions = '<a href="index" class="btn-ic btn-ghost btn-sm"><i class="fa fa-arrow-left"></i> Volver</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
-<?php
-$is_light = ($rol === 'cobrador');
-$card_bg  = $is_light ? '#ffffff' : 'rgba(15,23,42,.4)';
-$card_bor = $is_light ? '#d1d5db' : 'rgba(255,255,255,.05)';
-$text_main = $is_light ? '#1f2937' : '#f1f5f9';
-$text_muted = $is_light ? '#64748b' : '#94a3b8';
-$bubble_other_bg = $is_light ? '#f3f4f6' : 'rgba(30,41,59,.8)';
-$header_bg = $is_light ? '#f9fafb' : 'rgba(30,41,59,.6)';
-$sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
-?>
-
 <style>
-/* Reutilizamos y refinamos los estilos de badges */
-.badge-status {
-    padding: 4px 10px; border-radius: 6px; font-size: .72rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .3px; display: inline-flex; align-items: center;
-}
-.badge-status.open     { background: rgba(239,68,68,<?= $is_light?'.1':'.15' ?>); color: <?= $is_light?'#dc2626':'#fca5a5' ?>; border: 1px solid rgba(239,68,68,.2); }
-.badge-status.progress { background: rgba(245,158,11,<?= $is_light?'.1':'.15' ?>); color: <?= $is_light?'#d97706':'#fcd34d' ?>; border: 1px solid rgba(245,158,11,.2); }
-.badge-status.resolved { background: rgba(34,197,94,<?= $is_light?'.1':'.15' ?>); color: <?= $is_light?'#16a34a':'#86efac' ?>; border: 1px solid rgba(34,197,94,.2); }
+.tv-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .tv-layout { grid-template-columns: 1fr; } }
 
-.badge-prio { font-size: .75rem; font-weight: 500; display: inline-flex; align-items: center; }
-.badge-prio.high   { color: <?= $is_light?'#dc2626':'#fca5a5' ?>; }
-.badge-prio.medium { color: <?= $is_light?'#4f46e5':'#a5b4fc' ?>; }
-.badge-prio.low    { color: <?= $is_light?'#6b7280':'#9ca3af' ?>; }
+.tv-desc-box { margin-bottom: 20px; }
+.tv-desc-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.tv-desc-tag { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
+.tv-desc-badges { display: flex; gap: 8px; }
+.tv-titulo { font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 10px; }
+.tv-desc-text { color: var(--text-body); font-size: .92rem; line-height: 1.7; white-space: pre-wrap; margin-bottom: 14px; }
+.tv-desc-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: .76rem; color: var(--text-muted); padding-top: 12px; border-top: 1px solid var(--dark-border); }
+.tv-desc-meta span { display: inline-flex; align-items: center; gap: 6px; }
 
-.chat-container {
-    background: <?= $card_bg ?>; border-radius: 16px; border: 1px solid <?= $card_bor ?>;
-    display: flex; flex-direction: column; overflow: hidden;
-}
+.tv-chat { display: flex; flex-direction: column; overflow: hidden; }
+.tv-chat-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 14px; border-bottom: 1px solid var(--dark-border); margin-bottom: 14px; }
+.tv-chat-header .title { font-weight: 700; font-size: .85rem; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
+.tv-chat-body { max-height: 460px; overflow-y: auto; padding-right: 4px; margin-bottom: 16px; }
 
-.chat-header {
-    background: <?= $header_bg ?>; padding: 16px 20px;
-    border-bottom: 1px solid <?= $card_bor ?>;
+.tv-bubble-wrap { display: flex; gap: 10px; margin-bottom: 16px; max-width: 88%; }
+.tv-bubble-wrap.mine { flex-direction: row-reverse; margin-left: auto; }
+.tv-avatar {
+    width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center;
+    justify-content: center; font-size: .75rem; font-weight: 700; background: var(--dark-input); color: var(--text-muted);
 }
+.tv-bubble-wrap.mine .tv-avatar { background: var(--primary); color: #fff; }
+.tv-bubble { padding: 10px 14px; border-radius: 12px; font-size: .87rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.tv-bubble.other { background: var(--dark-input); color: var(--text-main); border: 1px solid var(--dark-border); border-top-left-radius: 3px; }
+.tv-bubble.mine  { background: var(--primary); color: #fff; border-top-right-radius: 3px; }
+.tv-bubble-meta { font-size: .66rem; color: var(--text-muted); margin-top: 5px; display: flex; gap: 8px; }
+.tv-bubble-wrap.mine .tv-bubble-meta { justify-content: flex-end; }
 
-.chat-body {
-    padding: 24px; max-height: 500px; overflow-y: auto;
-    background: <?= $is_light ? '#ffffff' : 'radial-gradient(circle at top right, rgba(99,102,241,0.03), transparent)' ?>;
-}
+.tv-empty-thread { text-align: center; padding: 20px; color: var(--text-muted); opacity: .6; font-size: .82rem; }
 
-.bubble-wrap { display:flex; margin-bottom:20px; gap:12px; max-width: 85%; }
-.bubble-wrap.mine { flex-direction:row-reverse; margin-left: auto; }
+.tv-reply-form textarea { width: 100%; margin-bottom: 10px; }
+.tv-reply-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
-.avatar {
-    width:38px; height:38px; border-radius:10px; flex-shrink:0;
-    display:flex; align-items:center; justify-content:center;
-    font-size:.8rem; font-weight:700; letter-spacing:.5px;
-    box-shadow: 0 4px 6px rgba(0,0,0,.1);
-}
+.tv-side { display: flex; flex-direction: column; gap: 16px; }
+.tv-side-item { margin-bottom: 14px; }
+.tv-side-item:last-child { margin-bottom: 0; }
+.tv-side-label { font-size: .68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 6px; }
+.tv-side-value { font-size: .88rem; color: var(--text-main); }
+.tv-side-value a { color: var(--primary-light); }
 
-.bubble {
-    padding:12px 16px; border-radius:14px;
-    font-size:.9rem; line-height:1.55; white-space:pre-wrap; word-break:break-word;
-    position: relative;
-    box-shadow: 0 2px 4px rgba(0,0,0,<?= $is_light ? '.05' : '.1' ?>);
-}
-.bubble.mine {
-    background: linear-gradient(135deg, #3c50e0 0%, #2c3ec0 100%); color: #fff;
-    border-bottom-right-radius: 2px;
-}
-.bubble.other {
-    background: <?= $bubble_other_bg ?>; color: <?= $is_light ? '#1f2937' : '#e5e7eb' ?>; border: 1px solid <?= $card_bor ?>;
-    border-top-left-radius: 2px;
-}
-
-.bubble-meta { font-size:.68rem; color:<?= $text_muted ?>; margin-top:6px; display: flex; gap: 8px; }
-.bubble-wrap.mine .bubble-meta { justify-content: flex-end; }
-
-.desc-box {
-    background: <?= $sidebar_bg ?>; border: 1px solid <?= $card_bor ?>;
-    border-radius: 12px; padding: 20px;
-}
-
-.sidebar-card {
-    background: <?= $sidebar_bg ?>; border: 1px solid <?= $card_bor ?>;
-    border-radius: 12px; padding: 20px;
-}
-
-<?php if ($is_light): ?>
-.chat-container textarea {
-    background: #ffffff !important; border-color: #d1d5db !important;
-    color: #000000 !important; font-weight: 500 !important;
-}
-.chat-container .bg-dark { background: #f9fafb !important; }
-.desc-box h4 { color: #000000 !important; }
-.sidebar-card .text-light { color: #000000 !important; }
-.avatar[style*="rgba(255,255,255,.05)"] { background: #f3f4f6 !important; }
-.bubble.other { color: #000000 !important; font-weight: 450 !important; }
-.form-label-premium { color: #000000 !important; opacity: 0.8; }
-<?php endif; ?>
-
-/* Agrandar botón de envío y mejorar input group con estilo Modal */
-.chat-input-wrapper {
-    background: <?= $is_light ? '#ffffff' : 'rgba(30,41,59,.8)' ?>; 
-    padding: 25px;
-    border-top: 1px solid <?= $card_bor ?>;
-    transition: all .3s ease;
-    position: relative;
-    z-index: 10;
-}
-
-/* Efecto "Modal" en el contenedor al enfocar */
-.chat-input-wrapper.is-focused {
-    background: <?= $is_light ? '#ffffff' : 'rgba(15,23,42,.95)' ?>;
-    box-shadow: 0 -15px 30px -10px rgba(0,0,0,<?= $is_light ? '.1' : '.4' ?>);
-    transform: translateY(-5px);
-    border-top-color: #3c50e0;
-}
-
-.input-premium-modal {
-    background: <?= $input_bg ?> !important; 
-    border: 1px solid <?= $card_bor ?> !important;
-    color: <?= $is_light ? '#000000' : '#f1f5f9' ?> !important; 
-    padding: 18px 20px !important; 
-    border-radius: 16px !important;
-    font-size: .95rem !important; 
-    transition: all .3s !important;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.05) !important;
-    line-height: 1.6 !important;
-    font-weight: 500 !important;
-}
-
-.input-premium-modal:focus {
-    border-color: #3c50e0 !important;
-    background: <?= $is_light ? '#fff' : 'rgba(15,23,42,1)' ?> !important;
-    box-shadow: 0 0 0 4px rgba(60,80,224,0.15), inset 0 2px 4px rgba(0,0,0,0.02) !important;
-}
-
-.btn-send-ticket {
-    width: 65px; height: 65px; border-radius: 18px !important;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.5rem !important; transition: all .3s;
-    box-shadow: 0 8px 16px rgba(60,80,224,0.3);
-    border: none !important;
-}
-.btn-send-ticket:hover { 
-    transform: scale(1.08) rotate(-5deg); 
-    box-shadow: 0 12px 20px rgba(60,80,224,0.4); 
-}
+.tv-resuelto-box { text-align: center; padding: 18px; }
 </style>
 
 <?php if ($flash): ?>
-    <div class="alert alert-<?= $flash['type'] ?> mb-3"><?= e($flash['msg']) ?></div>
+    <div class="alert-ic alert-<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div>
 <?php endif; ?>
 
-<div class="row g-4">
+<div class="tv-layout">
     <!-- Columna principal -->
-    <div class="col-12 col-lg-8">
-        <!-- Descripción original -->
-        <div class="desc-box mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <span class="text-muted small fw-bold" style="letter-spacing:1px">ASUNTO DEL TICKET</span>
-                <div class="d-flex gap-2">
-                    <?= badge_est($tk['estado']) ?>
-                    <?= badge_prio($tk['prioridad']) ?>
+    <div>
+        <div class="card-ic tv-desc-box">
+            <div class="tv-desc-top">
+                <span class="tv-desc-tag"><i class="fa <?= $tipo_icon ?>"></i> <?= e($tipo_label) ?> #<?= $ticket_id ?></span>
+                <div class="tv-desc-badges">
+                    <?= tv_badge_estado($tk['estado']) ?>
+                    <?= tv_badge_prioridad($tk['prioridad']) ?>
                 </div>
             </div>
-            <h4 class="mb-3 fw-bold text-light"><?= e($tk['titulo']) ?></h4>
-            <div style="color:#cbd5e1; font-size:.95rem; white-space:pre-wrap; line-height:1.7">
-                <?= e($tk['descripcion']) ?>
-            </div>
-            <div class="mt-4 pt-3 border-top border-secondary border-opacity-10 d-flex align-items-center gap-3" style="font-size:.75rem;color:#64748b">
-                <div class="d-flex align-items-center gap-1">
-                    <i class="fa fa-user-circle opacity-50"></i> <?= e($tk['creado_por_nombre']) ?>
-                </div>
-                <div class="d-flex align-items-center gap-1">
-                    <i class="fa fa-calendar-alt opacity-50"></i> <?= date('d/m/Y H:i', strtotime($tk['created_at'])) ?>
-                </div>
+            <div class="tv-titulo"><?= e($tk['titulo']) ?></div>
+            <div class="tv-desc-text"><?= e($tk['descripcion']) ?></div>
+            <div class="tv-desc-meta">
+                <span><i class="fa fa-user-circle" style="opacity:.6"></i> <?= e($tk['creado_por_nombre']) ?></span>
+                <span><i class="fa fa-calendar-alt" style="opacity:.6"></i> <?= date('d/m/Y H:i', strtotime($tk['created_at'])) ?></span>
             </div>
         </div>
 
-        <!-- Hilo de respuestas -->
-        <div class="chat-container mb-4">
-            <div class="chat-header d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="fa fa-comments text-primary"></i>
-                    <span class="fw-bold small text-light" style="letter-spacing:.5px">CONVERSACIÓN</span>
-                </div>
-                <span class="badge rounded-pill bg-dark text-muted" style="font-size:.65rem"><?= count($respuestas) ?> respuestas</span>
+        <div class="card-ic tv-chat">
+            <div class="tv-chat-header">
+                <span class="title"><i class="fa fa-comments" style="color:var(--primary-light)"></i> CONVERSACIÓN</span>
+                <span class="badge-ic badge-muted"><?= count($respuestas) ?> respuestas</span>
             </div>
-            
-            <div id="hilo-respuestas" class="chat-body">
+
+            <div id="tv-hilo" class="tv-chat-body">
                 <?php if (empty($respuestas)): ?>
-                    <div class="text-center py-4 opacity-30">
-                        <i class="fa fa-comment-slash fa-2x mb-2"></i>
-                        <p class="small mb-0">Sin respuestas todavía.</p>
-                    </div>
+                    <div class="tv-empty-thread"><i class="fa fa-comment-slash" style="font-size:1.4rem;display:block;margin-bottom:6px"></i>Sin respuestas todavía.</div>
                 <?php else: ?>
                     <?php foreach ($respuestas as $r): ?>
-                        <?php 
-                            $es_mio = ((int)$r['usuario_id'] === $uid); 
-                            $bg_avatar = $es_mio ? '#3c50e0' : 'rgba(255,255,255,.1)';
-                            $tx_avatar = $es_mio ? '#fff' : '#cbd5e1';
-                        ?>
-                        <div class="bubble-wrap <?= $es_mio ? 'mine' : '' ?>">
-                            <div class="avatar" style="background:<?= $bg_avatar ?>; color:<?= $tx_avatar ?>">
-                                <?= mb_strtoupper(mb_substr($r['autor'], 0, 1) . mb_substr(explode(' ', $r['autor'])[1] ?? '', 0, 1)) ?>
-                            </div>
-                            <div class="bubble-body">
-                                <div class="bubble <?= $es_mio ? 'mine' : 'other' ?>"><?= e($r['mensaje']) ?></div>
-                                <div class="bubble-meta">
-                                    <span class="fw-bold"><?= $es_mio ? 'Tú' : e($r['autor']) ?></span>
-                                    <span><?= date('H:i', strtotime($r['created_at'])) ?></span>
+                        <?php $es_mio = ((int) $r['usuario_id'] === $uid); ?>
+                        <div class="tv-bubble-wrap <?= $es_mio ? 'mine' : '' ?>">
+                            <div class="tv-avatar"><?= mb_strtoupper(mb_substr($r['autor'], 0, 1)) ?></div>
+                            <div>
+                                <div class="tv-bubble <?= $es_mio ? 'mine' : 'other' ?>"><?= e($r['mensaje']) ?></div>
+                                <div class="tv-bubble-meta">
+                                    <span><?= $es_mio ? 'Tú' : e($r['autor']) ?></span>
+                                    <span><?= date('d/m H:i', strtotime($r['created_at'])) ?></span>
                                 </div>
                             </div>
                         </div>
@@ -285,138 +181,71 @@ $sidebar_bg = $is_light ? '#ffffff' : 'rgba(30,41,59,.4)';
                 <?php endif; ?>
             </div>
 
-            <!-- Formulario de respuesta integrado en el chat -->
-            <!-- Formulario de respuesta con botón más grande -->
             <?php if ($tk['estado'] !== 'resuelto'): ?>
-                <div class="chat-input-wrapper" id="chat-input-container">
-                    <form method="POST" action="procesar_respuesta">
+                <form method="POST" action="procesar_respuesta" class="form-ic tv-reply-form">
+                    <?php csrf_input(); ?>
+                    <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
+                    <textarea name="mensaje" rows="3" placeholder="Escribí una respuesta o novedad..." required></textarea>
+                    <div class="tv-reply-actions">
+                        <button type="submit" class="btn-ic btn-primary"><i class="fa fa-paper-plane"></i> Enviar</button>
+                        <?php if ($tk['estado'] === 'abierto'): ?>
+                            <button type="submit" name="solo_estado" value="en_progreso" class="btn-ic btn-warning"><i class="fa fa-arrow-right"></i> Pasar a En Progreso</button>
+                        <?php endif; ?>
+                        <button type="submit" name="solo_estado" value="resuelto" class="btn-ic btn-success"><i class="fa fa-check-double"></i> Resolver y Cerrar</button>
+                    </div>
+                </form>
+            <?php else: ?>
+                <div class="tv-resuelto-box">
+                    <span class="badge-ic badge-success" style="font-size:.85rem"><i class="fa fa-check-circle"></i> RESUELTO</span>
+                    <form method="POST" action="procesar_respuesta" style="display:inline;margin-left:10px">
                         <?php csrf_input(); ?>
                         <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
-                        <div class="d-flex gap-4 align-items-center">
-                            <div class="flex-grow-1">
-                                <textarea name="mensaje" class="form-control input-premium-modal" id="chat-textarea"
-                                          rows="2" placeholder="Escribí tu respuesta aquí..." required
-                                          style="resize: none; min-height: 80px;"></textarea>
-                            </div>
-                            <button type="submit" class="btn btn-primary btn-send-ticket" title="Enviar mensaje">
-                                <i class="fa fa-paper-plane"></i>
-                            </button>
-                        </div>
-                        <div class="d-flex gap-3 mt-4 flex-wrap justify-content-center">
-                            <?php if ($puede_cerrar): ?>
-                                <button type="submit" name="solo_estado" value="resuelto" class="btn-ic btn-sm py-2 px-3"
-                                        style="background:rgba(34,197,94,<?= $is_light?'.1':'.15' ?>);color:<?= $is_light?'#16a34a':'#86efac' ?>;border:1px solid rgba(34,197,94,.2); font-weight: 700; border-radius: 10px;">
-                                    <i class="fa fa-check-double me-1"></i> Resolver y Finalizar
-                                </button>
-                            <?php endif; ?>
-                            <?php if ($tk['estado'] === 'abierto'): ?>
-                                <button type="submit" name="solo_estado" value="en_progreso" class="btn-ic btn-sm py-2 px-3"
-                                        style="background:rgba(245,158,11,<?= $is_light?'.1':'.15' ?>);color:<?= $is_light?'#d97706':'#fcd34d' ?>;border:1px solid rgba(245,158,11,.2); font-weight: 700; border-radius: 10px;">
-                                    <i class="fa fa-spinner fa-spin-fast me-1"></i> Asignar "En Progreso"
-                                </button>
-                            <?php endif; ?>
-                        </div>
+                        <input type="hidden" name="solo_estado" value="abierto">
+                        <button type="submit" class="btn-ic btn-ghost btn-sm"><i class="fa fa-rotate-left"></i> Reabrir</button>
                     </form>
-                </div>
-            <?php else: ?>
-                <div class="p-4 text-center bg-dark bg-opacity-50 border-top">
-                    <span class="text-success fw-bold">
-                        <i class="fa fa-check-circle me-1"></i> TICKET RESUELTO Y CERRADO
-                    </span>
-                    <?php if ($puede_cerrar): ?>
-                        <form method="POST" action="procesar_respuesta" class="d-inline ms-3">
-                            <?php csrf_input(); ?>
-                            <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
-                            <button type="submit" name="solo_estado" value="abierto"
-                                    class="btn-ic btn-sm" style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color: #9ca3af">
-                                <i class="fa fa-rotate-left me-1"></i>Reabrir
-                            </button>
-                        </form>
-                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </div>
     </div>
 
-    <!-- Sidebar info -->
-    <div class="col-12 col-lg-4">
-        <div class="sidebar-card sticky-top" style="top: 80px">
-            <h6 class="text-muted small fw-bold mb-4" style="letter-spacing:1.5px">PROPIEDADES</h6>
-            
-            <div class="d-flex flex-column gap-4">
-                <div class="detail-item">
-                    <label class="text-muted smaller d-block mb-1">Estado actual</label>
-                    <?= badge_est($tk['estado']) ?>
-                </div>
-
-                <div class="detail-item">
-                    <label class="text-muted smaller d-block mb-1">Prioridad asignada</label>
-                    <?= badge_prio($tk['prioridad']) ?>
-                </div>
-
-                <div class="detail-item">
-                    <label class="text-muted smaller d-block mb-1">Titular del ticket</label>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="avatar" style="width:28px; height:28px; background:rgba(255,255,255,.05); font-size:.6rem">
-                            <?= mb_substr($tk['creado_por_nombre'], 0, 1) ?>
-                        </div>
-                        <span class="text-light small"><?= e($tk['creado_por_nombre']) ?></span>
-                    </div>
-                </div>
-
-                <div class="detail-item">
-                    <label class="text-muted smaller d-block mb-1">Encargado / Delegado</label>
-                    <?php if ($tk['delegado_nombre']): ?>
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="avatar" style="width:28px; height:28px; background:rgba(99,102,241,.1); color:#a5b4fc; font-size:.6rem">
-                                <?= mb_substr($tk['delegado_nombre'], 0, 1) ?>
-                            </div>
-                            <span class="text-light small"><?= e($tk['delegado_nombre']) ?></span>
-                        </div>
-                    <?php elseif ($tk['delegado_a_rol']): ?>
-                        <div class="d-flex align-items-center gap-2 text-primary">
-                            <i class="fa fa-users-gear" style="font-size:.8rem"></i>
-                            <span class="small fw-bold"><?= ucfirst(e($tk['delegado_a_rol'])) ?></span>
-                        </div>
-                    <?php else: ?>
-                        <span class="text-muted italic opacity-50 small">Sin asignar todavía</span>
-                    <?php endif; ?>
-                </div>
-
-                <div class="pt-3 border-top border-secondary border-opacity-10">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted smaller">ID Ticket</span>
-                        <span class="text-light small fw-bold">#<?= str_pad($tk['id'], 6, '0', STR_PAD_LEFT) ?></span>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-muted smaller">Versión</span>
-                        <span class="text-muted smaller">v2.1 (Premium)</span>
-                    </div>
-                </div>
+    <!-- Sidebar -->
+    <div class="card-ic tv-side">
+        <div>
+            <span class="tv-side-label">Cliente</span>
+            <div class="tv-side-value">
+                <a href="../clientes/ver?id=<?= (int) $tk['cliente_id'] ?>">
+                    <?= e($tk['cliente_apellidos'] . ', ' . $tk['cliente_nombres']) ?>
+                </a>
             </div>
+        </div>
+        <div class="tv-side-item">
+            <span class="tv-side-label">Crédito</span>
+            <div class="tv-side-value">
+                <a href="../creditos/ver?id=<?= (int) $tk['credito_id'] ?>">Crédito #<?= (int) $tk['credito_id'] ?></a>
+                <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px"><?= e($tk['articulo']) ?></div>
+            </div>
+        </div>
+        <?php if ($tk['cobrador_nombre']): ?>
+        <div class="tv-side-item">
+            <span class="tv-side-label">Cobrador del cliente</span>
+            <div class="tv-side-value"><?= e($tk['cobrador_nombre'] . ' ' . $tk['cobrador_apellido']) ?></div>
+        </div>
+        <?php endif; ?>
+        <div class="tv-side-item">
+            <span class="tv-side-label">Creado por</span>
+            <div class="tv-side-value"><?= e($tk['creado_por_nombre']) ?></div>
+        </div>
+        <div class="tv-side-item" style="border-top:1px solid var(--dark-border);padding-top:12px">
+            <span class="tv-side-label">ID de caso</span>
+            <div class="tv-side-value">#<?= str_pad((string) $ticket_id, 6, '0', STR_PAD_LEFT) ?></div>
         </div>
     </div>
 </div>
 
 <script>
-// Manejo del estado "Modal" del input de chat
-(function(){
-    const hilo = document.getElementById('hilo-respuestas');
-    const textarea = document.getElementById('chat-textarea');
-    const container = document.getElementById('chat-input-container');
-
-    // Auto-scroll al final
+(function () {
+    const hilo = document.getElementById('tv-hilo');
     if (hilo) hilo.scrollTop = hilo.scrollHeight;
-
-    // Efecto visual modal al enfocar
-    if (textarea && container) {
-        textarea.addEventListener('focus', () => {
-            container.classList.add('is-focused');
-        });
-        textarea.addEventListener('blur', () => {
-            container.classList.remove('is-focused');
-        });
-    }
 })();
 </script>
 

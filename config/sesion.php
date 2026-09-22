@@ -183,6 +183,7 @@ $permisos = [
     'registrar_ventas'       => ['admin', 'supervisor', 'vendedor'],
     'ver_ventas'             => ['admin', 'supervisor', 'vendedor'],
     'ver_clientes_vendedor'  => ['admin', 'supervisor', 'vendedor'],
+    'gestionar_reclamos'     => ['admin', 'supervisor', 'cobrador'],
 ];
 
 function verificar_permiso(string $accion): void

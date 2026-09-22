@@ -250,14 +250,14 @@ if (es_super_admin()) {
                     </a>
                 <?php endif; ?>
 
-                <!-- Soporte — visible para todos los roles excepto vendedor -->
+                <!-- Atención al Cliente — visible para todos los roles excepto vendedor -->
                 <?php if ($rol !== 'vendedor'): ?>
-                <div class="nav-label">Soporte</div>
+                <div class="nav-label">Atención al Cliente</div>
                 <a class="nav-item <?= ($page_current ?? '') === 'tickets' ? 'active' : '' ?>"
                    href="<?= BASE_URL ?>tickets/index"
-                   data-tooltip="Tickets">
-                    <i class="fa fa-ticket-simple"></i>
-                    <span class="nav-text">Tickets</span>
+                   data-tooltip="Reclamos y Posventa">
+                    <i class="fa fa-headset"></i>
+                    <span class="nav-text">Reclamos y Posventa</span>
                 </a>
                 <?php endif; ?>
 
