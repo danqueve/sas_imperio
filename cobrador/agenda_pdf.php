@@ -100,7 +100,7 @@ $stmt = $pdo->prepare("
         GROUP BY credito_id
         HAVING COUNT(*) >= 5
     ) filtro ON filtro.credito_id = cr.id
-    WHERE cr.dia_cobro IN ($placeholders)
+    WHERE (cr.dia_cobro IN ($placeholders) OR cr.dia_cobro IS NULL)
       AND filtro.credito_id IS NULL
       $zona_where
     ORDER BY cr.dia_cobro ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
@@ -116,11 +116,16 @@ unset($r);
 // cliente quedan juntas en '_cuotas' (antes se descartaba todo menos
 // la más vieja). El primer registro visto de cada grupo ya es el más
 // viejo gracias al ORDER BY ... cu.fecha_vencimiento ASC de la query.
+// Los créditos con dia_cobro NULL (sin día designado) se agrupan aparte,
+// en $sin_dia — así nunca quedan invisibles del todo (ver bloque
+// "Sin dia asignado" más abajo, que se imprime siempre, sin importar
+// qué días estén tildados en el modal).
 $por_dia = [];
 foreach ($dias_sel as $d) $por_dia[$d] = [];
+$sin_dia = [];
 $grupos = [];
 foreach ($rows as $r) {
-    $clave = $r['dia_cobro'] . '-' . $r['credito_id'];
+    $clave = ($r['dia_cobro'] ?? 'null') . '-' . $r['credito_id'];
     if (!isset($grupos[$clave])) {
         $grupos[$clave] = $r;
         $grupos[$clave]['_cuotas'] = [];
@@ -128,20 +133,26 @@ foreach ($rows as $r) {
     $grupos[$clave]['_cuotas'][] = $r;
 }
 foreach ($grupos as $g) {
-    $por_dia[$g['dia_cobro']][] = $g;
+    if ($g['dia_cobro'] === null) {
+        $sin_dia[] = $g;
+    } else {
+        $por_dia[$g['dia_cobro']][] = $g;
+    }
 }
-// Ordenar cada día alfabéticamente por zona + apellidos. Normalizado a
-// mayúsculas antes de comparar: la query SQL ya agrupa "Norte"/"norte"
-// como la misma zona (collation case-insensitive), pero strcmp() es
-// case-sensitive a nivel de byte y deshacía ese agrupamiento.
-foreach ($dias_sel as $d) {
-    usort($por_dia[$d], fn($a, $b) =>
-        strcmp(
-            mb_strtoupper(($a['zona'] ?? '') . $a['apellidos']),
-            mb_strtoupper(($b['zona'] ?? '') . $b['apellidos'])
-        )
+// Ordenar cada día (y el bloque "Sin dia asignado") alfabéticamente por
+// zona + apellidos. Normalizado a mayúsculas antes de comparar: la query
+// SQL ya agrupa "Norte"/"norte" como la misma zona (collation
+// case-insensitive), pero strcmp() es case-sensitive a nivel de byte y
+// deshacía ese agrupamiento.
+$cmp_zona_apellido = fn($a, $b) =>
+    strcmp(
+        mb_strtoupper(($a['zona'] ?? '') . $a['apellidos']),
+        mb_strtoupper(($b['zona'] ?? '') . $b['apellidos'])
     );
+foreach ($dias_sel as $d) {
+    usort($por_dia[$d], $cmp_zona_apellido);
 }
+usort($sin_dia, $cmp_zona_apellido);
 
 // ── Helpers ─────────────────────────────────────────────────────
 function fmt(float $v): string {
@@ -478,6 +489,11 @@ if ($es_agenda_general) {
         renderBloqueSemanal($pdf, $COLS, $nombre_dia, $por_dia[$dia] ?? [], $resumen, $hay_pago_pendiente, $resumen_zona);
     }
 }
+
+// Clientes semanales sin día de cobro asignado (cr.dia_cobro NULL) — se
+// imprimen siempre, sin importar qué días estén tildados en el modal,
+// para que nunca queden invisibles de la ficha por un dato faltante.
+renderBloqueSemanal($pdf, $COLS, 'Sin dia asignado', $sin_dia, $resumen, $hay_pago_pendiente, $resumen_zona);
 
 // ── Sección: Quincenales y Mensuales ────────────────────────────
 $stmt_qm = $pdo->prepare("
