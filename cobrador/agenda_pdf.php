@@ -44,7 +44,9 @@ $fin_semana = calcular_semana_sabado(date('Y-m-d'));
 
 // ── Consulta semanales (mejora 1: MOROSO; mejora 2: cant_cuotas; mejora 4: zona) ──
 $placeholders = implode(',', array_fill(0, count($dias_sel), '?'));
-$params = array_merge([$cobrador_id, $fin_semana], $dias_sel);
+// $fin_semana se pasa 2 veces: una para el corte normal (vencidas + esta
+// semana) y otra para el fallback "adelantado" (ver JOIN de cu más abajo).
+$params = array_merge([$cobrador_id, $fin_semana, $fin_semana], $dias_sel);
 
 $stmt = $pdo->prepare("
     SELECT cl.id AS cliente_id,
@@ -73,9 +75,22 @@ $stmt = $pdo->prepare("
                         AND cr.cobrador_id = ?
                         AND cr.estado IN ('EN_CURSO','MOROSO')
                         AND cr.frecuencia = 'semanal'
+    LEFT JOIN (
+        SELECT credito_id, MIN(fecha_vencimiento) AS primera_venc
+        FROM ic_cuotas
+        WHERE estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+        GROUP BY credito_id
+    ) prox ON prox.credito_id = cr.id
     JOIN ic_cuotas  cu   ON cu.credito_id = cr.id
                         AND cu.estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
-                        AND cu.fecha_vencimiento <= ?
+                        AND (
+                              cu.fecha_vencimiento <= ?
+                              -- Adelantado: el crédito no tiene NINGUNA cuota dentro
+                              -- de la ventana normal (vencidas + esta semana) — se
+                              -- muestra igual, solo con su cuota más próxima, para
+                              -- que el cliente nunca desaparezca del todo de la ficha.
+                              OR (prox.primera_venc > ? AND cu.fecha_vencimiento = prox.primera_venc)
+                            )
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
     LEFT JOIN (
         SELECT credito_id
@@ -92,6 +107,10 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute(array_merge($params, $zonas_sel));
 $rows = $stmt->fetchAll();
+foreach ($rows as &$r) {
+    $r['adelantado'] = $r['fecha_vencimiento'] > $fin_semana;
+}
+unset($r);
 
 // Agrupar por dia_cobro + crédito — TODAS las cuotas impagas de cada
 // cliente quedan juntas en '_cuotas' (antes se descartaba todo menos
@@ -200,6 +219,7 @@ class AgendaPDF extends PDFBase
         // columna cuando se suman a un nombre que ya estaba justo al límite.
         $cliente_name = $r['apellidos'] . ', ' . $r['nombres'];
         if ($es_moroso) $cliente_name = '[M] ' . $cliente_name;
+        if (!empty($r['adelantado'])) $cliente_name .= ' (Adelantado)';
         if ((int) ($r['pago_pen'] ?? 0) > 0) $cliente_name .= ' *';
         $cliente_name = $this->fitText($cliente_name, $cols[1] - 2);
 
@@ -486,6 +506,12 @@ $stmt_qm = $pdo->prepare("
     JOIN ic_clientes cl ON cr.cliente_id = cl.id
     LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
     LEFT JOIN (
+        SELECT credito_id, MIN(fecha_vencimiento) AS primera_venc
+        FROM ic_cuotas
+        WHERE estado IN ('PENDIENTE','VENCIDA','CAP_PAGADA','PARCIAL')
+        GROUP BY credito_id
+    ) prox ON prox.credito_id = cr.id
+    LEFT JOIN (
         SELECT credito_id
         FROM ic_cuotas
         WHERE fecha_vencimiento < CURDATE()
@@ -497,13 +523,21 @@ $stmt_qm = $pdo->prepare("
       AND cr.estado IN ('EN_CURSO','MOROSO')
       AND cr.frecuencia IN ('diario', 'quincenal', 'mensual')
       AND cu.estado IN ('PENDIENTE', 'VENCIDA', 'CAP_PAGADA', 'PARCIAL')
-      AND cu.fecha_vencimiento <= ?
+      AND (
+            cu.fecha_vencimiento <= ?
+            -- Adelantado, mismo criterio que la Sección de Semanales.
+            OR (prox.primera_venc > ? AND cu.fecha_vencimiento = prox.primera_venc)
+          )
       AND filtro.credito_id IS NULL
       $zona_where
     ORDER BY cr.frecuencia ASC, COALESCE(cl.zona,'') ASC, cl.apellidos ASC, cu.fecha_vencimiento ASC
 ");
-$stmt_qm->execute(array_merge([$cobrador_id, $fin_semana], $zonas_sel));
+$stmt_qm->execute(array_merge([$cobrador_id, $fin_semana, $fin_semana], $zonas_sel));
 $rows_qm = $stmt_qm->fetchAll();
+foreach ($rows_qm as &$r) {
+    $r['adelantado'] = $r['fecha_vencimiento'] > $fin_semana;
+}
+unset($r);
 
 if (!empty($rows_qm)) {
     // Agrupar por frecuencia + crédito — TODAS las cuotas impagas de
