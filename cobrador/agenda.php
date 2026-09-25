@@ -1010,7 +1010,7 @@ function render_tabla_cuotas(array $cuotas, string $titulo, string $color, strin
                         class="btn-ic btn-ghost btn-icon" title="Ver artículo" style="width:44px;height:44px;border-radius:8px;font-size:1rem;display:flex;align-items:center;justify-content:center;">
                     <i class="fa fa-box-open"></i>
                 </button>
-                <?php if (!$c['pago_pen'] && $wa_msg_portal): ?>
+                <?php if ($wa_msg_portal): ?>
                 <a href="<?= whatsapp_url($c['telefono'], $wa_msg_portal) ?>" target="_blank"
                    class="btn-ic btn-ghost btn-icon" title="Compartir portal por WhatsApp"
                    style="width:44px;height:44px;border-radius:8px;font-size:1.1rem;color:#25D366;background:rgba(37,211,102,.1);display:flex;align-items:center;justify-content:center;">

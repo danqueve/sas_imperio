@@ -127,8 +127,8 @@ require_once __DIR__ . '/../views/layout.php';
 
 .tk-card-cliente { font-weight: 700; font-size: .9rem; color: var(--text-main); margin-bottom: 3px; }
 .tk-card-cliente:hover { color: var(--primary-light); }
-.tk-card-credito { font-size: .76rem; color: var(--text-muted); margin-bottom: 8px; }
-.tk-card-desc { font-size: .8rem; color: var(--text-main); line-height: 1.4; margin-bottom: 10px; }
+.tk-card-credito { font-size: .76rem; color: var(--text-muted); margin-bottom: 8px; overflow-wrap: break-word; }
+.tk-card-desc { font-size: .8rem; color: var(--text-main); line-height: 1.4; margin-bottom: 10px; overflow-wrap: break-word; }
 
 .tk-card-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .7rem; color: var(--text-muted); margin-bottom: 10px; flex-wrap: wrap; }
 .tk-card-footer .resp-count { display: inline-flex; align-items: center; gap: 4px; }
@@ -219,9 +219,9 @@ body.theme-cobrador .kanban-col-header { background: #ffffff; border-color: #e5e
                             </a>
                             <div class="tk-card-credito">
                                 <i class="fa fa-file-invoice-dollar" style="opacity:.6"></i>
-                                Crédito #<?= (int) $t['credito_id'] ?> — <?= e(mb_strimwidth($t['articulo'], 0, 40, '...')) ?>
+                                Crédito #<?= (int) $t['credito_id'] ?> — <?= e($t['articulo']) ?>
                             </div>
-                            <div class="tk-card-desc"><?= e(mb_strimwidth($t['titulo'], 0, 90, '...')) ?></div>
+                            <div class="tk-card-desc"><?= e($t['titulo']) ?></div>
                             <div class="tk-card-footer">
                                 <?= tk_badge_prioridad($t['prioridad']) ?>
                                 <?php if ($cobrador_nombre && !$is_cobrador): ?>
