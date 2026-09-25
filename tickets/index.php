@@ -94,9 +94,18 @@ $COLUMNAS_DEF = [
     'resuelto'    => ['label' => 'Resuelto',    'color' => 'var(--success)', 'icon' => 'fa-circle-check'],
 ];
 
+$export_qs = http_build_query(array_filter([
+    'tipo'        => $f_tipo !== 'todos' ? $f_tipo : null,
+    'cobrador_id' => $f_cobrador > 0 ? $f_cobrador : null,
+    'q'           => $f_q !== '' ? $f_q : null,
+]));
+$export_suffix = $export_qs !== '' ? '?' . $export_qs : '';
+
 $page_title   = 'Reclamos y Posventa';
 $page_current = 'tickets';
-$topbar_actions = '<a href="nuevo" class="btn-ic btn-accent btn-sm"><i class="fa fa-plus"></i> Nuevo Caso</a>';
+$topbar_actions = '<a href="nuevo" class="btn-ic btn-accent btn-sm"><i class="fa fa-plus"></i> Nuevo Caso</a> '
+    . '<a href="reclamos_pdf' . $export_suffix . '" target="_blank" class="btn-ic btn-danger btn-sm" title="Exporta los casos Abiertos y En Progreso"><i class="fa fa-file-pdf"></i> PDF</a> '
+    . '<a href="reclamos_excel' . $export_suffix . '" target="_blank" class="btn-ic btn-success btn-sm" title="Exporta los casos Abiertos y En Progreso"><i class="fa fa-file-excel"></i> Excel</a>';
 require_once __DIR__ . '/../views/layout.php';
 ?>
 
