@@ -141,6 +141,83 @@ class ReclamosPDF extends PDFBase
         $this->SetFillColor(255, 255, 255);
         $this->SetFont('Helvetica', '', 7);
     }
+
+    // Cuenta cuántas líneas ocuparía $txt (ya codificado con lat()) en un
+    // MultiCell de ancho $w — mismo algoritmo de word-wrap que usa
+    // MultiCell() por dentro (adaptado de fpdf/fpdf.php), para poder
+    // calcular la altura de la fila ANTES de dibujar nada.
+    function nbLines(float $w, string $txt): int
+    {
+        $cw = $this->CurrentFont['cw'];
+        if ($w == 0) $w = $this->w - $this->rMargin - $this->x;
+        $wmax = ($w - 2 * $this->cMargin) * 1000 / $this->FontSize;
+        $s  = str_replace("\r", '', $txt);
+        $nb = strlen($s);
+        if ($nb > 0 && $s[$nb - 1] === "\n") $nb--;
+        $sep = -1; $i = 0; $j = 0; $l = 0; $nl = 1;
+        while ($i < $nb) {
+            $c = $s[$i];
+            if ($c === "\n") {
+                $i++; $sep = -1; $j = $i; $l = 0; $nl++;
+                continue;
+            }
+            if ($c === ' ') $sep = $i;
+            $l += $cw[$c] ?? 0;
+            if ($l > $wmax) {
+                if ($sep === -1) {
+                    if ($i === $j) $i++;
+                } else {
+                    $i = $sep + 1;
+                }
+                $nl++;
+                $j = $i; $l = 0; $sep = -1;
+            } else {
+                $i++;
+            }
+        }
+        return $nl;
+    }
+
+    // Fila con altura variable: las columnas marcadas en $wrap se dibujan
+    // con MultiCell (texto completo, en varias líneas si hace falta); el
+    // resto con Cell de una sola línea, centrada verticalmente en la
+    // misma altura de fila. El borde de cada columna se dibuja aparte con
+    // Rect(), a la altura uniforme de toda la fila — si se dejara que
+    // MultiCell/Cell dibujen su propio borde, una columna más corta
+    // quedaría con un borde más bajo que sus vecinas.
+    function drawFilaAjustada(array $valores, array $wrap, float $lineH = 4.2): void
+    {
+        $maxLineas = 1;
+        foreach ($wrap as $i => $w) {
+            if ($w) $maxLineas = max($maxLineas, $this->nbLines($this->cols[$i] - 2, $valores[$i]));
+        }
+        $rowH = max(5.5, $maxLineas * $lineH);
+
+        // Salto de página manual — Rect()/MultiCell() sin borde no activan
+        // por sí solos el auto-page-break de FPDF.
+        if ($this->GetY() + $rowH > $this->GetPageHeight() - 18) {
+            $this->AddPage();
+            $this->encabezadoTabla();
+        }
+
+        $x0 = 10;
+        $y0 = $this->GetY();
+
+        foreach ($this->cols as $i => $w) {
+            $x = $x0 + array_sum(array_slice($this->cols, 0, $i));
+            $this->Rect($x, $y0, $w, $rowH);
+        }
+        foreach ($this->cols as $i => $w) {
+            $x = $x0 + array_sum(array_slice($this->cols, 0, $i));
+            $this->SetXY($x, $y0);
+            if ($wrap[$i]) {
+                $this->MultiCell($w, $lineH, $valores[$i], 0, $this->aligns[$i]);
+            } else {
+                $this->Cell($w, $rowH, $valores[$i], 0, 0, $this->aligns[$i]);
+            }
+        }
+        $this->SetXY($x0, $y0 + $rowH);
+    }
 }
 
 $pdf = new ReclamosPDF('P', 'mm', 'A4');
@@ -171,25 +248,32 @@ foreach ($SECCIONES as $estado_key => $titulo) {
     $pdf->Cell(190, 7, lat($titulo . ' — ' . count($lista) . ' caso(s)'), 0, 1, 'L');
     $pdf->encabezadoTabla();
 
-    foreach ($lista as $t) {
-        $cliente = $t['cliente_apellidos'] . ', ' . $t['cliente_nombres'];
-        $credito = '#' . $t['credito_id'] . ' — ' . $t['articulo'];
-        $cobrador = $t['cobrador_nombre'] ? $t['cobrador_apellido'] . ', ' . $t['cobrador_nombre'] : '—';
-        $prioridad = ucfirst($t['prioridad']);
-        $actualiz = date('d/m/y', strtotime($t['updated_at']));
+    // Columnas que se ajustan a varias líneas si hace falta (Cliente,
+    // Credito/Articulo, Titulo, Cobrador) — el resto son valores cortos
+    // de una sola línea (#, Tipo, Prior., Actualiz., Resp.).
+    $WRAP = [false, false, true, true, true, false, true, false, false];
 
-        $pdf->SetFont('Helvetica', '', 7);
-        $pdf->SetX(10);
-        $pdf->Cell($COLS[0], 5.5, (string) $t['id'],                                      1, 0, 'C');
-        $pdf->Cell($COLS[1], 5.5, lat(ucfirst($t['tipo'])),                                1, 0, 'L');
-        $pdf->Cell($COLS[2], 5.5, $pdf->fitText($cliente, $COLS[2] - 2),                   1, 0, 'L');
-        $pdf->Cell($COLS[3], 5.5, $pdf->fitText($credito, $COLS[3] - 2),                   1, 0, 'L');
-        $pdf->Cell($COLS[4], 5.5, $pdf->fitText($t['titulo'], $COLS[4] - 2),               1, 0, 'L');
-        $pdf->Cell($COLS[5], 5.5, lat($prioridad),                                         1, 0, 'C');
-        $pdf->Cell($COLS[6], 5.5, $pdf->fitText($cobrador, $COLS[6] - 2),                  1, 0, 'L');
-        $pdf->Cell($COLS[7], 5.5, $actualiz,                                               1, 0, 'C');
-        $pdf->Cell($COLS[8], 5.5, (string) $t['num_resp'],                                 1, 0, 'C');
-        $pdf->Ln();
+    $pdf->SetFont('Helvetica', '', 7);
+    foreach ($lista as $t) {
+        $cliente   = $t['cliente_apellidos'] . ', ' . $t['cliente_nombres'];
+        $credito   = '#' . $t['credito_id'] . ' — ' . $t['articulo'];
+        $cobrador  = $t['cobrador_nombre'] ? $t['cobrador_apellido'] . ', ' . $t['cobrador_nombre'] : '—';
+        $prioridad = ucfirst($t['prioridad']);
+        $actualiz  = date('d/m/y', strtotime($t['updated_at']));
+
+        $valores = [
+            (string) $t['id'],
+            lat(ucfirst($t['tipo'])),
+            lat($cliente),
+            lat($credito),
+            lat($t['titulo']),
+            lat($prioridad),
+            lat($cobrador),
+            $actualiz,
+            (string) $t['num_resp'],
+        ];
+
+        $pdf->drawFilaAjustada($valores, $WRAP);
     }
 
     $pdf->Ln(3);
