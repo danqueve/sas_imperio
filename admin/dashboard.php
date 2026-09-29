@@ -222,7 +222,8 @@ $cobrado_semana = (float)$stmt_sem->fetchColumn();
 
 // ── Ranking cobradores de la semana (Lun–Sáb + tardíos domingo) ──────────────
 $stmt_rank = $pdo->prepare("
-    SELECT u.nombre, u.apellido, COUNT(*) AS pagos, COALESCE(SUM(pc.monto_total),0) AS total
+    SELECT pc.cobrador_id, u.nombre, u.apellido, u.meta_semanal,
+           COUNT(*) AS pagos, COALESCE(SUM(pc.monto_total),0) AS total
     FROM ic_pagos_confirmados pc
     JOIN ic_usuarios u ON pc.cobrador_id = u.id
     WHERE pc.fecha_jornada BETWEEN ? AND ?
@@ -230,7 +231,40 @@ $stmt_rank = $pdo->prepare("
 ");
 $stmt_rank->execute([$semana_inicio, $semana_fin_ext]);
 $cobradores_mes = $stmt_rank->fetchAll();
-$max_cob = count($cobradores_mes) ? (float)$cobradores_mes[0]['total'] : 1;
+$cobradores_ranking_ids = array_values(array_unique(array_map(
+    static fn(array $cob): int => (int) $cob['cobrador_id'],
+    $cobradores_mes
+)));
+$metas_auto_ranking = calcular_metas_semanales_auto($pdo, $cobradores_ranking_ids);
+$cobrado_atribuido_ranking = array_fill_keys($cobradores_ranking_ids, 0.0);
+if (!empty($cobradores_ranking_ids)) {
+    $ph_ranking = implode(',', array_fill(0, count($cobradores_ranking_ids), '?'));
+    $stmt_atribuido_ranking = $pdo->prepare("
+        SELECT cobrador_id, COALESCE(SUM(monto_total), 0) AS total
+        FROM ic_pagos_temporales
+        WHERE cobrador_id IN ($ph_ranking)
+          AND fecha_jornada BETWEEN ? AND ?
+          AND estado IN ('PENDIENTE', 'APROBADO')
+          AND origen = 'cobrador'
+        GROUP BY cobrador_id
+    ");
+    $stmt_atribuido_ranking->execute([
+        ...$cobradores_ranking_ids,
+        $semana_inicio,
+        $semana_fin_ext,
+    ]);
+    foreach ($stmt_atribuido_ranking->fetchAll() as $cobrado) {
+        $cobrado_atribuido_ranking[(int) $cobrado['cobrador_id']] = (float) $cobrado['total'];
+    }
+}
+foreach ($cobradores_mes as &$cob) {
+    $meta_automatica = (float) ($metas_auto_ranking[(int) $cob['cobrador_id']] ?? 0.0);
+    $cob['meta_efectiva'] = $cob['meta_semanal'] === null
+        ? $meta_automatica
+        : (float) $cob['meta_semanal'];
+    $cob['cobrado_atribuido'] = $cobrado_atribuido_ranking[(int) $cob['cobrador_id']] ?? 0.0;
+}
+unset($cob);
 
 // ── Últimos pagos aprobados ───────────────────────────────────
 $ultimos_pagos = $pdo->query("
@@ -485,7 +519,10 @@ require_once __DIR__ . '/../views/layout.php';
             <?php
             $medals = ['🥇', '🥈', '🥉', '4°', '5°'];
             foreach ($cobradores_mes as $i => $cob):
-                $pct = $max_cob > 0 ? round($cob['total'] / $max_cob * 100) : 0;
+                $pct_de_meta = $cob['meta_efectiva'] > 0
+                    ? min(100, round($cob['cobrado_atribuido'] / $cob['meta_efectiva'] * 100))
+                    : null;
+                $ancho_barra = $pct_de_meta ?? 0;
             ?>
             <div style="padding:12px 0;<?= $i < count($cobradores_mes) - 1 ? 'border-bottom:1px solid var(--dark-border)' : '' ?>">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
@@ -497,8 +534,15 @@ require_once __DIR__ . '/../views/layout.php';
                         <strong style="color:var(--primary-light);font-size:.87rem"><?= formato_pesos($cob['total']) ?></strong>
                     </span>
                 </div>
+                <div class="text-muted" style="font-size:.72rem;margin-bottom:6px">
+                    <?php if ($pct_de_meta === null): ?>
+                        Sin meta definida · cobrado atribuido <?= formato_pesos($cob['cobrado_atribuido']) ?>
+                    <?php else: ?>
+                        <?= $pct_de_meta ?>% de meta · cobrado atribuido <?= formato_pesos($cob['cobrado_atribuido']) ?> / meta <?= formato_pesos($cob['meta_efectiva']) ?>
+                    <?php endif; ?>
+                </div>
                 <div style="height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden">
-                    <div style="height:100%;width:<?= $pct ?>%;background:linear-gradient(90deg,var(--primary),var(--primary-light));border-radius:2px;transition:width .8s ease"></div>
+                    <div style="height:100%;width:<?= $ancho_barra ?>%;background:linear-gradient(90deg,var(--primary),var(--primary-light));border-radius:2px;transition:width .8s ease"></div>
                 </div>
             </div>
             <?php endforeach; ?>

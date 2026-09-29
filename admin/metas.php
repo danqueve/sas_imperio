@@ -52,10 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'snaps
     exit;
 }
 
-// ── Semana actual (Lun-Sáb) ────────────────────────────────
+// ── Semana actual (Lun-Sáb; domingo incluido para cobrado) ──
 $dow       = (int) date('N');
 $lunes     = date('Y-m-d', strtotime('-' . ($dow - 1) . ' days'));
 $sabado    = date('Y-m-d', strtotime($lunes . ' +5 days'));
+$domingo   = date('Y-m-d', strtotime($lunes . ' +6 days'));
 
 // ── Cobradores activos con su meta (override manual, nullable) ──
 $cobradores = $pdo->query("
@@ -77,11 +78,42 @@ $stmt_cobrado = $pdo->prepare("
       AND origen = 'cobrador'
     GROUP BY cobrador_id
 ");
-$stmt_cobrado->execute([$lunes, $sabado]);
+$stmt_cobrado->execute([$lunes, $domingo]);
 $cobrado_map = [];
 foreach ($stmt_cobrado->fetchAll() as $r) {
     $cobrado_map[(int) $r['cobrador_id']] = (float) $r['total'];
 }
+
+// ── Objetivos efectivos y resumen del equipo ─────────────────
+// La meta efectiva solo existe en memoria para esta vista: un override manual
+// prevalece sobre la automática, sin alterar ningún valor almacenado.
+$meta_automatica_equipo = 0.0;
+$meta_objetivo_equipo   = 0.0;
+$cobrado_atribuido      = 0.0;
+foreach ($cobradores as &$cob) {
+    $cob['meta_automatica'] = (float) ($metas_auto[(int) $cob['id']] ?? 0.0);
+    $cob['es_automatica']   = ($cob['meta_semanal'] === null);
+    $cob['meta_efectiva']   = $cob['es_automatica']
+        ? $cob['meta_automatica']
+        : (float) $cob['meta_semanal'];
+    $cob['cobrado_semana']  = (float) ($cobrado_map[(int) $cob['id']] ?? 0.0);
+    $cob['cumplimiento_pct'] = $cob['meta_efectiva'] > 0
+        ? min(100, round($cob['cobrado_semana'] / $cob['meta_efectiva'] * 100))
+        : 0;
+    $cob['cumplimiento_color'] = $cob['cumplimiento_pct'] >= 100
+        ? '#d4a017'
+        : ($cob['cumplimiento_pct'] >= 70
+            ? 'var(--success)'
+            : ($cob['cumplimiento_pct'] >= 40 ? '#f97316' : 'var(--danger)'));
+
+    $meta_automatica_equipo += $cob['meta_automatica'];
+    $meta_objetivo_equipo   += $cob['meta_efectiva'];
+    $cobrado_atribuido      += $cob['cobrado_semana'];
+}
+unset($cob);
+$cumplimiento_equipo = $meta_objetivo_equipo > 0
+    ? min(100, round($cobrado_atribuido / $meta_objetivo_equipo * 100))
+    : 0;
 
 // ── Layout ─────────────────────────────────────────────────
 $page_title   = 'Metas Semanales';
@@ -96,6 +128,31 @@ require_once __DIR__ . '/../views/layout.php';
     </div>
     <?php unset($_SESSION['flash']); ?>
 <?php endif; ?>
+
+<div class="card-ic mb-4" style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <span class="card-title"><i class="fa fa-users"></i> Resumen del Equipo</span>
+        <span class="text-muted" style="font-size:.78rem">Objetivos vigentes de la semana actual</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+        <div style="padding:12px;background:rgba(255,255,255,.04);border-radius:8px">
+            <div class="text-muted" style="font-size:.74rem">Meta automática de cartera</div>
+            <div style="font-size:1.1rem;font-weight:800;margin-top:4px"><?= formato_pesos($meta_automatica_equipo) ?></div>
+        </div>
+        <div style="padding:12px;background:rgba(255,255,255,.04);border-radius:8px">
+            <div class="text-muted" style="font-size:.74rem">Meta objetivo del equipo</div>
+            <div style="font-size:1.1rem;font-weight:800;color:var(--primary-light);margin-top:4px"><?= formato_pesos($meta_objetivo_equipo) ?></div>
+        </div>
+        <div style="padding:12px;background:rgba(255,255,255,.04);border-radius:8px">
+            <div class="text-muted" style="font-size:.74rem">Cobrado atribuido</div>
+            <div style="font-size:1.1rem;font-weight:800;color:var(--success);margin-top:4px"><?= formato_pesos($cobrado_atribuido) ?></div>
+        </div>
+        <div style="padding:12px;background:rgba(255,255,255,.04);border-radius:8px">
+            <div class="text-muted" style="font-size:.74rem">Cumplimiento vs objetivo</div>
+            <div style="font-size:1.1rem;font-weight:800;margin-top:4px"><?= $cumplimiento_equipo ?>% <span class="text-muted" style="font-size:.76rem;font-weight:400">de meta</span></div>
+        </div>
+    </div>
+</div>
 
 <div class="card-ic mb-4" style="padding:16px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
@@ -132,6 +189,7 @@ require_once __DIR__ . '/../views/layout.php';
                         <th>Cobrador</th>
                         <th class="text-right">Meta Automática</th>
                         <th style="width:180px">Override Manual ($)</th>
+                        <th class="text-right">Meta Objetivo Efectiva</th>
                         <th class="text-right">Cobrado Semana</th>
                         <th style="min-width:200px">Cumplimiento</th>
                         <th class="text-center">Estado</th>
@@ -139,15 +197,6 @@ require_once __DIR__ . '/../views/layout.php';
                 </thead>
                 <tbody>
                 <?php foreach ($cobradores as $cob): ?>
-                    <?php
-                    $meta_auto     = $metas_auto[(int) $cob['id']] ?? 0.0;
-                    $meta_manual   = $cob['meta_semanal']; // nullable: override opcional
-                    $es_automatico = ($meta_manual === null);
-                    $meta          = $es_automatico ? $meta_auto : (float) $meta_manual;
-                    $cobrado = $cobrado_map[(int) $cob['id']] ?? 0.0;
-                    $pct     = $meta > 0 ? min(100, round($cobrado / $meta * 100)) : 0;
-                    $color   = $pct >= 100 ? '#d4a017' : ($pct >= 70 ? 'var(--success)' : ($pct >= 40 ? '#f97316' : 'var(--danger)'));
-                    ?>
                     <tr>
                         <td>
                             <div style="display:flex;align-items:center;gap:10px">
@@ -156,7 +205,7 @@ require_once __DIR__ . '/../views/layout.php';
                                 </div>
                                 <div>
                                     <div style="font-weight:700;font-size:.95rem"><?= e($cob['apellido'] . ', ' . $cob['nombre']) ?></div>
-                                    <?php if ($es_automatico): ?>
+                                    <?php if ($cob['es_automatica']): ?>
                                         <span class="badge-ic badge-primary" style="font-size:.68rem">Automático</span>
                                     <?php else: ?>
                                         <span class="badge-ic badge-muted" style="font-size:.68rem">Manual</span>
@@ -165,30 +214,36 @@ require_once __DIR__ . '/../views/layout.php';
                             </div>
                         </td>
                         <td class="text-right" style="color:var(--text-muted)">
-                            <?= formato_pesos($meta_auto) ?>
+                            <?= formato_pesos($cob['meta_automatica']) ?>
                         </td>
                         <td>
                             <input type="number" name="meta[<?= $cob['id'] ?>]"
-                                value="<?= $es_automatico ? '' : (int) $meta_manual ?>"
+                                value="<?= $cob['es_automatica'] ? '' : (int) $cob['meta_semanal'] ?>"
                                 placeholder="Automático" step="10000" min="0" style="width:160px;text-align:right">
                         </td>
+                        <td class="text-right" style="font-weight:800">
+                            <?= formato_pesos($cob['meta_efectiva']) ?>
+                            <div class="text-muted" style="font-size:.7rem;font-weight:400">
+                                <?= $cob['es_automatica'] ? 'Automática aplicada' : 'Manual aplicada' ?>
+                            </div>
+                        </td>
                         <td class="text-right" style="font-weight:700;color:var(--success);font-size:1rem">
-                            <?= formato_pesos($cobrado) ?>
+                            <?= formato_pesos($cob['cobrado_semana']) ?>
                         </td>
                         <td>
                             <div style="display:flex;align-items:center;gap:8px">
                                 <div style="flex:1;background:rgba(255,255,255,.1);border-radius:99px;height:8px;overflow:hidden">
-                                    <div style="width:<?= $pct ?>%;height:100%;background:<?= $color ?>;border-radius:99px;transition:width .4s"></div>
+                                    <div style="width:<?= $cob['cumplimiento_pct'] ?>%;height:100%;background:<?= $cob['cumplimiento_color'] ?>;border-radius:99px;transition:width .4s"></div>
                                 </div>
-                                <span style="font-size:.82rem;font-weight:700;color:<?= $color ?>;min-width:40px;text-align:right"><?= $pct ?>%</span>
+                                <span style="font-size:.82rem;font-weight:700;color:<?= $cob['cumplimiento_color'] ?>;min-width:40px;text-align:right"><?= $cob['cumplimiento_pct'] ?>%</span>
                             </div>
                         </td>
                         <td class="text-center">
-                            <?php if ($pct >= 100): ?>
+                            <?php if ($cob['cumplimiento_pct'] >= 100): ?>
                                 <span style="color:#d4a017;font-weight:800;font-size:.85rem"><i class="fa fa-trophy"></i> Cumplida</span>
-                            <?php elseif ($pct >= 70): ?>
+                            <?php elseif ($cob['cumplimiento_pct'] >= 70): ?>
                                 <span style="color:var(--success);font-size:.82rem"><i class="fa fa-check"></i> En camino</span>
-                            <?php elseif ($pct >= 40): ?>
+                            <?php elseif ($cob['cumplimiento_pct'] >= 40): ?>
                                 <span style="color:#f97316;font-size:.82rem"><i class="fa fa-clock"></i> Regular</span>
                             <?php else: ?>
                                 <span style="color:var(--danger);font-size:.82rem"><i class="fa fa-arrow-down"></i> Bajo</span>

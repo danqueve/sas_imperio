@@ -351,7 +351,9 @@ $mensual_rows = array_values($mensual_dedup);
 $_meta_stmt = $pdo->prepare("SELECT meta_semanal FROM ic_usuarios WHERE id = ?");
 $_meta_stmt->execute([$cobrador_filtro]);
 $_meta_manual = $_meta_stmt->fetchColumn();
-$META_SEMANAL = ($_meta_manual !== false && $_meta_manual !== null)
+$META_SEMANAL_ES_MANUAL = ($_meta_manual !== false && $_meta_manual !== null);
+$META_SEMANAL_TIPO      = $META_SEMANAL_ES_MANUAL ? 'Manual' : 'Automática';
+$META_SEMANAL = $META_SEMANAL_ES_MANUAL
     ? (float) $_meta_manual
     : calcular_meta_semanal_auto($pdo, $cobrador_filtro);
 $dow_cobro    = (int) date('N');
@@ -682,6 +684,9 @@ $meta_color = $pct_meta >= 100 ? '#d4a017' : ($pct_meta >= 70 ? 'var(--success)'
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <span style="font-size:.9rem;font-weight:700">
             <i class="fa fa-bullseye" style="color:<?= $meta_color ?>"></i> Meta Semanal
+            <span class="badge-ic <?= $META_SEMANAL_ES_MANUAL ? 'badge-muted' : 'badge-primary' ?>" style="font-size:.68rem;vertical-align:middle">
+                <?= $META_SEMANAL_TIPO ?>
+            </span>
         </span>
         <span style="font-size:.85rem;font-weight:800;color:<?= $meta_color ?>">
             <?= $pct_meta ?>%
