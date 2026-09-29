@@ -37,16 +37,38 @@ $sabado_str = calcular_semana_sabado($lunes_str);
 $agenda = obtener_agenda_historica($pdo, $cobrador_id, $lunes_str, $sabado_str);
 
 // ── Resumen "Semanales": uno solo, sumando los 6 días (ya no se separa
-//    por Lunes/Martes/Miercoles en la lista, ver más abajo) ──────────
-$resumen_semanales = ['clientes' => 0, 'pagaron' => 0, 'no_pagaron' => 0, 'estimado' => 0.0, 'cobrado' => 0.0];
-$semanales_flat    = [];
+//    por Lunes/Martes/Miercoles en la lista, ver más abajo). "Clientes"
+//    NO se puede sumar día por día (un mismo cliente puede tener 2
+//    créditos semanales en días distintos, ej. Lunes y Miércoles) — se
+//    arma con un set de cliente_id para contarlo una sola vez. ────────
+$resumen_semanales = ['clientes' => 0, 'cuotas' => 0, 'pagaron' => 0, 'no_pagaron' => 0, 'ya_pagas' => 0, 'estimado' => 0.0, 'cobrado' => 0.0];
+$semanales_flat         = [];
+$semanales_clientes_set = [];
 foreach ($agenda['semanales'] as $g) {
-    $resumen_semanales['clientes']   += $g['resumen']['clientes'];
+    $resumen_semanales['cuotas']     += $g['resumen']['cuotas'];
     $resumen_semanales['pagaron']    += $g['resumen']['pagaron'];
     $resumen_semanales['no_pagaron'] += $g['resumen']['no_pagaron'];
+    $resumen_semanales['ya_pagas']   += $g['resumen']['ya_pagas'];
     $resumen_semanales['estimado']   += $g['resumen']['estimado'];
     $resumen_semanales['cobrado']    += $g['resumen']['cobrado'];
-    foreach ($g['clientes'] as $c) $semanales_flat[] = $c;
+    foreach ($g['clientes'] as $c) {
+        $semanales_flat[] = $c;
+        $semanales_clientes_set[$c['cliente_id']] = true;
+    }
+}
+$resumen_semanales['clientes'] = count($semanales_clientes_set);
+
+// Set global de clientes distintos (Semanales + cada frecuencia), para
+// el TOTAL del resumen final — se arma ANTES de mezclar los pagos de
+// otra semana (más abajo), así solo cuenta clientes con una cuota que
+// realmente vencía esta semana. Sumar el 'clientes' de cada categoría
+// duplicaría a quien tiene, por ejemplo, un crédito semanal y uno
+// mensual venciendo la misma semana.
+$tot_clientes_set = $semanales_clientes_set;
+foreach ($agenda['otras_frecuencias'] as $g) {
+    foreach ($g['clientes'] as $c) {
+        $tot_clientes_set[$c['cliente_id']] = true;
+    }
 }
 
 // ── Pagos de OTRA semana: en vez de una tabla aparte, se insertan
@@ -70,7 +92,7 @@ foreach ($pagos_fuera_semana as $pf) {
         $agenda['otras_frecuencias'][$fk] = [
             'label'    => $FREC_LABELS[$fk] ?? ucfirst($fk),
             'clientes' => [],
-            'resumen'  => ['clientes' => 0, 'pagaron' => 0, 'no_pagaron' => 0, 'estimado' => 0.0, 'cobrado' => 0.0],
+            'resumen'  => ['clientes' => 0, 'cuotas' => 0, 'pagaron' => 0, 'no_pagaron' => 0, 'ya_pagas' => 0, 'estimado' => 0.0, 'cobrado' => 0.0],
         ];
     }
     $agenda['otras_frecuencias'][$fk]['clientes'][] = $pf;
@@ -83,12 +105,18 @@ foreach ($agenda['otras_frecuencias'] as $g) {
     $categorias[] = ['label' => $g['label'], 'resumen' => $g['resumen']];
 }
 
-$tot_clientes = $tot_pagaron = $tot_no_pagaron = 0;
+// $tot_clientes NO es la suma de "clientes" de cada categoría (eso
+// contaría dos veces a quien tiene, ej., un crédito semanal y otro
+// mensual venciendo la misma semana) — sale del set global armado
+// arriba, antes de mezclar los pagos de otra semana.
+$tot_clientes = count($tot_clientes_set);
+$tot_cuotas = $tot_pagaron = $tot_no_pagaron = $tot_ya_pagas = 0;
 $tot_estimado = $tot_cobrado = 0.0;
 foreach ($categorias as $cat) {
-    $tot_clientes   += $cat['resumen']['clientes'];
+    $tot_cuotas     += $cat['resumen']['cuotas'];
     $tot_pagaron    += $cat['resumen']['pagaron'];
     $tot_no_pagaron += $cat['resumen']['no_pagaron'];
+    $tot_ya_pagas   += $cat['resumen']['ya_pagas'];
     $tot_estimado   += $cat['resumen']['estimado'];
     $tot_cobrado    += $cat['resumen']['cobrado'];
 }
@@ -252,7 +280,11 @@ function drawFilaAgendaHist(AgendaHistoricoPDF $pdf, array $COLS, int &$num, arr
     $es_otra_semana = $c['semana_lunes_cuota'] !== $semana_vista_lunes;
     $semana_txt = date('d/m', strtotime($c['semana_lunes_cuota'])) . ' al ' . date('d/m/y', strtotime($c['semana_sabado_cuota']));
 
-    if ($c['pago_realizado']) {
+    $ya_estaba_paga = !empty($c['ya_estaba_paga']);
+    if ($ya_estaba_paga) {
+        $estado = 'Ya estaba paga'
+            . ($c['fecha_pago_antes'] ? ' (' . date('d/m/y', strtotime($c['fecha_pago_antes'])) . ')' : '');
+    } elseif ($c['pago_realizado']) {
         $estado = 'Pago ' . fmt((float) $c['pagado_esa_semana'])
             . ($c['fecha_pago_esa_semana'] ? ' el ' . date('d/m', strtotime($c['fecha_pago_esa_semana'])) : '')
             . ($c['forma_pago'] ? ' - ' . $c['forma_pago'] : '');
@@ -280,15 +312,21 @@ function drawFilaAgendaHist(AgendaHistoricoPDF $pdf, array $COLS, int &$num, arr
     }
 
     $pdf->Cell($COLS[6], 5.5, lat(fmt((float) $c['monto_cuota'])), 1, 0, 'R');
+    if ($ya_estaba_paga) $pdf->SetTextColor(128, 128, 128);
     $pdf->Cell($COLS[7], 5.5, $pdf->fitText($estado, $COLS[7] - 2), 1, 0, 'L');
+    if ($ya_estaba_paga) $pdf->SetTextColor(0, 0, 0);
     $pdf->Ln();
     $num++;
 }
 
 function resumenTexto(array $r): string
 {
-    return $r['clientes'] . ' clientes | ' . $r['pagaron'] . ' pagaron | ' . $r['no_pagaron'] . ' no pagaron | '
-        . 'Estimado ' . fmt($r['estimado']) . ' | Cobrado ' . fmt($r['cobrado']);
+    $txt = $r['clientes'] . ' clientes | ' . $r['cuotas'] . ' cuotas | ' . $r['pagaron'] . ' pagaron | ' . $r['no_pagaron'] . ' no pagaron';
+    if (!empty($r['ya_pagas'])) {
+        $txt .= ' | ' . $r['ya_pagas'] . ' ya estaban pagas';
+    }
+    $txt .= ' | Estimado ' . fmt($r['estimado']) . ' | Cobrado ' . fmt($r['cobrado']);
+    return $txt;
 }
 
 // ── Semanales: una sola lista, sin separar por dia_cobro ─────────────
@@ -320,10 +358,12 @@ $pdf->seccionResumen         = '';
 $pdf->mostrarEncabezadoTabla = false;
 
 // ── Resumen final por tipo de agenda: Estimado / Cobrado / Faltante ──
-// Categoria(35) + Clientes(20) + Pagaron(20) + No Pagaron(24)
-// + Estimado(30) + Cobrado(30) + Faltante(31) = 190
-$RCOLS = [35, 20, 20, 24, 30, 30, 31];
-$RLBLS = ['Categoria', 'Clientes', 'Pagaron', 'No Pagaron', 'Estimado', 'Cobrado', 'Faltante'];
+// Categoria(32) + Clientes(18) + Cuotas(16) + Pagaron(18) + No Pagaron(22)
+// + Estimado(28) + Cobrado(28) + Faltante(28) = 190. "Clientes" ahora
+// cuenta clientes distintos (no cuotas) — por eso "Cuotas" es columna
+// aparte, y ya no cuadra sumar Pagaron+No Pagaron contra Clientes.
+$RCOLS = [32, 18, 16, 18, 22, 28, 28, 28];
+$RLBLS = ['Categoria', 'Clientes', 'Cuotas', 'Pagaron', 'No Pagaron', 'Estimado', 'Cobrado', 'Faltante'];
 
 $alto_resumen_final = 8 + 6 + (count($categorias) + 2) * 6;
 if ($pdf->GetY() + $alto_resumen_final > $pdf->GetPageHeight() - 16) {
@@ -338,7 +378,7 @@ $pdf->SetFont('Helvetica', 'B', 7);
 $pdf->SetFillColor(220, 220, 230);
 $pdf->SetX(10);
 foreach ($RCOLS as $i => $w) {
-    $pdf->Cell($w, 6, lat($RLBLS[$i]), 1, 0, $i === 0 ? 'L' : ($i <= 3 ? 'C' : 'R'), true);
+    $pdf->Cell($w, 6, lat($RLBLS[$i]), 1, 0, $i === 0 ? 'L' : ($i <= 4 ? 'C' : 'R'), true);
 }
 $pdf->Ln();
 $pdf->SetFillColor(255, 255, 255);
@@ -350,32 +390,34 @@ foreach ($categorias as $cat) {
     $pdf->SetX(10);
     $pdf->Cell($RCOLS[0], 6, lat($cat['label']), 1, 0, 'L');
     $pdf->Cell($RCOLS[1], 6, (string) $r['clientes'], 1, 0, 'C');
-    $pdf->Cell($RCOLS[2], 6, (string) $r['pagaron'], 1, 0, 'C');
-    $pdf->Cell($RCOLS[3], 6, (string) $r['no_pagaron'], 1, 0, 'C');
-    $pdf->Cell($RCOLS[4], 6, lat(fmt($r['estimado'])), 1, 0, 'R');
-    $pdf->Cell($RCOLS[5], 6, lat(fmt($r['cobrado'])), 1, 0, 'R');
-    $pdf->Cell($RCOLS[6], 6, lat(fmt($faltante)), 1, 0, 'R');
+    $pdf->Cell($RCOLS[2], 6, (string) $r['cuotas'], 1, 0, 'C');
+    $pdf->Cell($RCOLS[3], 6, (string) $r['pagaron'], 1, 0, 'C');
+    $pdf->Cell($RCOLS[4], 6, (string) $r['no_pagaron'], 1, 0, 'C');
+    $pdf->Cell($RCOLS[5], 6, lat(fmt($r['estimado'])), 1, 0, 'R');
+    $pdf->Cell($RCOLS[6], 6, lat(fmt($r['cobrado'])), 1, 0, 'R');
+    $pdf->Cell($RCOLS[7], 6, lat(fmt($faltante)), 1, 0, 'R');
     $pdf->Ln();
 }
 
 // Fila aparte: plata de cuotas de OTRA semana (ya visible arriba, en
 // naranja, mezclada en las listas) — se suma acá y entra en el TOTAL de
 // "Cobrado", para que esa columna refleje todo lo que efectivamente
-// entró en caja esta semana. "Pagaron"/"No Pagaron"/"Estimado" no
-// aplican a este bucket (no es "una cuota que vencía esta semana"), se
-// muestran con "-"; por eso tampoco suma en "Faltante" del TOTAL — ver
-// nota al pie.
+// entró en caja esta semana. "Cuotas"/"Pagaron"/"No Pagaron"/"Estimado"
+// no aplican a este bucket (no es "una cuota que vencía esta semana"),
+// se muestran con "-"; por eso tampoco suma en "Faltante" del TOTAL —
+// ver nota al pie.
 if ($clientes_fuera_semana > 0) {
     $pdf->SetFont('Helvetica', 'I', 8);
     $pdf->SetTextColor(200, 80, 0);
     $pdf->SetX(10);
     $pdf->Cell($RCOLS[0], 6, lat('Otra semana'), 1, 0, 'L');
     $pdf->Cell($RCOLS[1], 6, (string) $clientes_fuera_semana, 1, 0, 'C');
-    $pdf->Cell($RCOLS[2], 6, '-', 1, 0, 'C');
+    $pdf->Cell($RCOLS[2], 6, (string) count($pagos_fuera_semana), 1, 0, 'C');
     $pdf->Cell($RCOLS[3], 6, '-', 1, 0, 'C');
     $pdf->Cell($RCOLS[4], 6, '-', 1, 0, 'C');
-    $pdf->Cell($RCOLS[5], 6, lat(fmt($monto_fuera_semana)), 1, 0, 'R');
-    $pdf->Cell($RCOLS[6], 6, '-', 1, 0, 'C');
+    $pdf->Cell($RCOLS[5], 6, '-', 1, 0, 'C');
+    $pdf->Cell($RCOLS[6], 6, lat(fmt($monto_fuera_semana)), 1, 0, 'R');
+    $pdf->Cell($RCOLS[7], 6, '-', 1, 0, 'C');
     $pdf->Ln();
     $pdf->SetTextColor(0, 0, 0);
 }
@@ -390,11 +432,12 @@ $pdf->SetFont('Helvetica', 'B', 8);
 $pdf->SetX(10);
 $pdf->Cell($RCOLS[0], 6, lat('TOTAL'), 1, 0, 'L');
 $pdf->Cell($RCOLS[1], 6, (string) $tot_clientes, 1, 0, 'C');
-$pdf->Cell($RCOLS[2], 6, (string) $tot_pagaron, 1, 0, 'C');
-$pdf->Cell($RCOLS[3], 6, (string) $tot_no_pagaron, 1, 0, 'C');
-$pdf->Cell($RCOLS[4], 6, lat(fmt($tot_estimado)), 1, 0, 'R');
-$pdf->Cell($RCOLS[5], 6, lat(fmt($tot_cobrado_general)), 1, 0, 'R');
-$pdf->Cell($RCOLS[6], 6, lat(fmt($tot_faltante)), 1, 0, 'R');
+$pdf->Cell($RCOLS[2], 6, (string) $tot_cuotas, 1, 0, 'C');
+$pdf->Cell($RCOLS[3], 6, (string) $tot_pagaron, 1, 0, 'C');
+$pdf->Cell($RCOLS[4], 6, (string) $tot_no_pagaron, 1, 0, 'C');
+$pdf->Cell($RCOLS[5], 6, lat(fmt($tot_estimado)), 1, 0, 'R');
+$pdf->Cell($RCOLS[6], 6, lat(fmt($tot_cobrado_general)), 1, 0, 'R');
+$pdf->Cell($RCOLS[7], 6, lat(fmt($tot_faltante)), 1, 0, 'R');
 $pdf->Ln();
 
 if ($clientes_fuera_semana > 0) {
@@ -418,10 +461,17 @@ $pdf->SetX(10);
 $pdf->MultiCell(190, 4, lat(
     'Nota: usa la asignacion de cobrador ACTUAL de cada credito, no la que tenia esa semana pasada. '
     . 'Si un credito fue reasignado a otro cobrador (Migrar Cobrador) despues de esa semana, figura aca bajo el cobrador de hoy, no el de entonces. '
+    . 'No incluye cuotas de creditos dados de baja (Retiro de Producto, Incobrabilidad, etc.) — esa plata nunca fue ni va a ser cobrable, salvo que '
+    . 'igual haya tenido un cobro real esa semana puntual, en cuyo caso sigue apareciendo. '
+    . '"Ya estaba paga" = la cuota vencia esta semana pero el cliente ya la habia pagado por completo en una semana anterior (adelanto) — no suma '
+    . 'en Estimado/Cobrado ni cuenta como Pagaron/No Pagaron, porque no habia nada que cobrarle esa semana; un pago parcial anterior no alcanza, '
+    . 'sigue siendo "No pago" normal. '
     . '"Semana" = semana a la que pertenece esa cuota (Lunes a Sabado) — coincide con la semana del reporte salvo en las filas en naranja, '
     . 'que son cobros de esta semana aplicados a una cuota de otra semana (backlog viejo o adelanto de una futura). '
     . '"Pago" = pago confirmado con semana_lunes de esa misma semana (revertido=0) — un pago posterior no cuenta como pagado en esta semana. '
     . '"Atrasadas" = otras cuotas del mismo credito, vencidas y sin cobrar HOY (no necesariamente ya estaban vencidas en esa semana pasada). '
+    . '"Clientes" del resumen final cuenta clientes distintos (un mismo cliente con 2 creditos venciendo esa semana cuenta una sola vez) — '
+    . '"Cuotas" es la cantidad de filas/cuotas, que si se reparte exacto entre Pagaron + No Pagaron + las que ya estaban pagas. '
     . 'En el resumen final: "Faltante" = Estimado - Cobrado, solo de las cuotas que vencian esta semana puntual (la fila "Otra semana" no entra ahi). '
     . 'El TOTAL de "Cobrado" si incluye la fila "Otra semana" — por eso Estimado - Cobrado del TOTAL no va a dar exacto igual a "Faltante", a proposito.'
 ), 0, 'L');

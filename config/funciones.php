@@ -1358,6 +1358,13 @@ function obtener_creditos_cartera_zona(PDO $pdo, int $cobrador_id, string $zona,
  * una cuota venciendo esa semana pasada debe seguir apareciendo — el
  * único filtro de vigencia es que la cuota haya vencido en el rango.
  *
+ * SÍ excluye las cuotas de créditos dados de baja (estado CANCELADA, o
+ * el estado vacío de bajas viejas nunca canceladas — ver
+ * sql/fix_cuotas_finalizadas_sin_cancelar.sql) salvo que esa cuota
+ * puntual haya tenido un pago confirmado justo esa semana (salvaguarda
+ * para no perder un cobro real). Esa plata nunca fue ni va a ser
+ * cobrable, así que no debe inflar el Estimado de ninguna semana.
+ *
  * Limitación aceptada (se avisa en pantalla, no se resuelve acá): usa
  * cr.cobrador_id, la asignación ACTUAL del crédito — este sistema no
  * guarda a qué cobrador pertenecía cada crédito en cada semana pasada.
@@ -1367,8 +1374,16 @@ function obtener_creditos_cartera_zona(PDO $pdo, int $cobrador_id, string $zona,
  * 'pagos_fuera_semana' => [...]] — cada grupo ya trae 'label', 'clientes'
  * (filas enriquecidas con pago_realizado/pagado_esa_semana/
  * fecha_pago_esa_semana/forma_pago/cuotas_atrasadas_otras/
- * semana_lunes_cuota/semana_sabado_cuota) y 'resumen' (clientes/pagaron/
- * no_pagaron/estimado/cobrado).
+ * semana_lunes_cuota/semana_sabado_cuota/pagado_antes/fecha_pago_antes/
+ * ya_estaba_paga) y 'resumen' (clientes [distintos] /cuotas [filas] /
+ * pagaron/no_pagaron/ya_pagas/estimado/cobrado).
+ *
+ * 'ya_estaba_paga' = la cuota vencía esta semana pero ya se había
+ * cobrado por completo en una semana ANTERIOR (cliente adelantado) —
+ * esas filas no suman a pagaron/no_pagaron ni a estimado/cobrado
+ * (van a 'ya_pagas'), porque el cobrador no tenía nada que cobrarle
+ * esa semana. Un pago parcial previo no alcanza para marcarla así —
+ * sigue siendo una cuota "No pagó" normal, cobrable esa semana.
  *
  * 'pagos_fuera_semana' es el detalle (una fila por cuota) de pagos
  * hechos durante esta semana para una cuota que NO vencía esta semana
@@ -1411,7 +1426,13 @@ function obtener_agenda_historica(PDO $pdo, int $cobrador_id, string $lunes, str
                   AND pc.semana_lunes = ? AND pc.revertido = 0) AS forma_pago,
                (SELECT COUNT(*) FROM ic_cuotas cu2
                 WHERE cu2.credito_id = cr.id AND cu2.id <> cu.id
-                  AND cu2.estado IN ('VENCIDA', 'PENDIENTE') AND cu2.fecha_vencimiento < CURDATE()) AS cuotas_atrasadas_otras
+                  AND cu2.estado IN ('VENCIDA', 'PENDIENTE') AND cu2.fecha_vencimiento < CURDATE()) AS cuotas_atrasadas_otras,
+               (SELECT SUM(pc.monto_total) FROM ic_pagos_confirmados pc
+                WHERE pc.cuota_id = cu.id AND pc.revertido = 0
+                  AND pc.semana_lunes < ?) AS pagado_antes,
+               (SELECT MAX(pc.fecha_pago) FROM ic_pagos_confirmados pc
+                WHERE pc.cuota_id = cu.id AND pc.revertido = 0
+                  AND pc.semana_lunes < ?) AS fecha_pago_antes
         FROM ic_creditos cr
         JOIN ic_clientes cl ON cl.id = cr.cliente_id
         JOIN ic_cuotas cu   ON cu.credito_id = cr.id
@@ -1419,12 +1440,22 @@ function obtener_agenda_historica(PDO $pdo, int $cobrador_id, string $lunes, str
         WHERE cr.cobrador_id = ?
           AND cu.fecha_vencimiento BETWEEN ? AND ?
           AND %FREQ%
+          AND (cu.estado IN ('PENDIENTE', 'PAGADA', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA')
+               OR EXISTS (SELECT 1 FROM ic_pagos_confirmados pcx
+                          WHERE pcx.cuota_id = cu.id AND pcx.revertido = 0
+                            AND pcx.semana_lunes = ?))
         ORDER BY %ORDEN%, cl.apellidos ASC, cl.nombres ASC
     ";
+    // Cuotas dadas de baja (CANCELADA, o el bug de datos de estado vacio
+    // en creditos finalizados hace tiempo — ver sql/fix_cuotas_finalizadas_sin_cancelar.sql,
+    // nunca aplicado) se excluyen: esa plata no era ni va a ser cobrable.
+    // La condicion EXISTS es una salvaguarda para no perder un cobro real
+    // — si alguna vez una cuota "dada de baja" tuvo un pago confirmado
+    // justo esa semana, la fila igual entra (verificado: hoy 0 casos).
 
     $ejecutar = function (string $freq_sql, string $orden) use ($pdo, $sql, $lunes, $sabado, $cobrador_id): array {
         $stmt = $pdo->prepare(str_replace(['%FREQ%', '%ORDEN%'], [$freq_sql, $orden], $sql));
-        $stmt->execute([$lunes, $lunes, $lunes, $cobrador_id, $lunes, $sabado]);
+        $stmt->execute([$lunes, $lunes, $lunes, $lunes, $lunes, $cobrador_id, $lunes, $sabado, $lunes]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     };
 
@@ -1443,6 +1474,17 @@ function obtener_agenda_historica(PDO $pdo, int $cobrador_id, string $lunes, str
             // pagos_fuera_semana) con el mismo campo.
             $f['semana_lunes_cuota']  = calcular_semana_lunes($f['fecha_vencimiento']);
             $f['semana_sabado_cuota'] = calcular_semana_sabado($f['fecha_vencimiento']);
+
+            // "Ya estaba paga": la cuota vencía esta semana pero ya se
+            // había cobrado por completo en una semana ANTERIOR (cliente
+            // que adelantó) — no cuenta como "No pagó" ni suma al
+            // Estimado/Cobrado de esta semana, porque el cobrador no
+            // tenía nada que cobrarle. Un pago PARCIAL previo no alcanza
+            // (la tolerancia de 1 centavo es solo por redondeo de float).
+            $f['pagado_antes']    = (float) ($f['pagado_antes'] ?? 0);
+            $f['fecha_pago_antes'] = $f['fecha_pago_antes'] ?? null;
+            $f['ya_estaba_paga']  = !$f['pago_realizado']
+                && $f['pagado_antes'] >= (float) $f['monto_cuota'] - 0.01;
         }
         unset($f);
     }
@@ -1486,6 +1528,13 @@ function obtener_agenda_historica(PDO $pdo, int $cobrador_id, string $lunes, str
         $pf['cuotas_atrasadas_otras'] = (int) $pf['cuotas_atrasadas_otras'];
         $pf['semana_lunes_cuota']     = calcular_semana_lunes($pf['fecha_vencimiento']);
         $pf['semana_sabado_cuota']    = calcular_semana_sabado($pf['fecha_vencimiento']);
+        // Mismo campo que las filas normales, para que el caller pueda
+        // mezclarlas sin chequear de dónde vino cada una — acá siempre
+        // es false (la fila existe justamente porque hubo un pago esta
+        // semana, nunca puede ser "ya estaba paga de antes").
+        $pf['pagado_antes']    = 0.0;
+        $pf['fecha_pago_antes'] = null;
+        $pf['ya_estaba_paga']  = false;
     }
     unset($pf);
     $clientes_pago_fuera_semana = count(array_unique(array_column($pagos_fuera_semana, 'cliente_id')));
@@ -1493,23 +1542,40 @@ function obtener_agenda_historica(PDO $pdo, int $cobrador_id, string $lunes, str
     $DIAS  = [1 => 'Lunes', 2 => 'Martes', 3 => 'Miercoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sabado'];
     $FRECS = ['quincenal' => 'Quincenal', 'mensual' => 'Mensual', 'diario' => 'Diario'];
 
+    // 'clientes' del resumen cuenta CLIENTES DISTINTOS (no filas/cuotas
+    // — un cliente puede tener 2+ cuotas venciendo la misma semana, ej.
+    // dos créditos semanales); 'cuotas' es el conteo de filas de antes.
+    // Una cuota 'ya_estaba_paga' (adelantada, ver más arriba) suma al
+    // cliente distinto y a 'cuotas', pero NO a pagaron/no_pagaron ni a
+    // estimado/cobrado — va a su propio contador 'ya_pagas'.
     $agrupar = function (array $filas, array $labels, string $campo): array {
         $grupos = [];
         foreach ($filas as $f) {
             $k = $f[$campo];
             if (!isset($grupos[$k])) {
                 $grupos[$k] = [
-                    'label'    => $labels[$k] ?? (string) $k,
-                    'clientes' => [],
-                    'resumen'  => ['clientes' => 0, 'pagaron' => 0, 'no_pagaron' => 0, 'estimado' => 0.0, 'cobrado' => 0.0],
+                    'label'         => $labels[$k] ?? (string) $k,
+                    'clientes'      => [],
+                    '_clientes_set' => [],
+                    'resumen'       => ['clientes' => 0, 'cuotas' => 0, 'pagaron' => 0, 'no_pagaron' => 0, 'ya_pagas' => 0, 'estimado' => 0.0, 'cobrado' => 0.0],
                 ];
             }
-            $grupos[$k]['clientes'][]  = $f;
-            $grupos[$k]['resumen']['clientes']++;
-            $grupos[$k]['resumen'][$f['pago_realizado'] ? 'pagaron' : 'no_pagaron']++;
-            $grupos[$k]['resumen']['estimado'] += (float) $f['monto_cuota'];
-            $grupos[$k]['resumen']['cobrado']  += $f['pagado_esa_semana'];
+            $grupos[$k]['clientes'][] = $f;
+            $grupos[$k]['_clientes_set'][$f['cliente_id']] = true;
+            $grupos[$k]['resumen']['cuotas']++;
+            if ($f['ya_estaba_paga']) {
+                $grupos[$k]['resumen']['ya_pagas']++;
+            } else {
+                $grupos[$k]['resumen'][$f['pago_realizado'] ? 'pagaron' : 'no_pagaron']++;
+                $grupos[$k]['resumen']['estimado'] += (float) $f['monto_cuota'];
+                $grupos[$k]['resumen']['cobrado']  += $f['pagado_esa_semana'];
+            }
         }
+        foreach ($grupos as &$g) {
+            $g['resumen']['clientes'] = count($g['_clientes_set']);
+            unset($g['_clientes_set']);
+        }
+        unset($g);
         return $grupos;
     };
 

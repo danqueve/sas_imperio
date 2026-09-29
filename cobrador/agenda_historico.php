@@ -61,31 +61,47 @@ if ($cobrador_id > 0) {
 }
 
 // ── KPIs generales (suma de todos los grupos, ambas secciones) ───
-$tot_clientes = $tot_pagaron = $tot_no_pagaron = 0;
+// "Clientes" NO se puede sumar el 'clientes' de cada grupo (un mismo
+// cliente puede tener, ej., un crédito semanal y otro mensual venciendo
+// la misma semana, o 2 créditos semanales en días distintos) — se arma
+// con un set de cliente_id para contarlo una sola vez.
+$tot_clientes_set = [];
+$tot_cuotas = $tot_pagaron = $tot_no_pagaron = $tot_ya_pagas = 0;
 $tot_estimado = $tot_cobrado = 0.0;
 if ($agenda !== null) {
     foreach (array_merge($agenda['semanales'], $agenda['otras_frecuencias']) as $g) {
-        $tot_clientes   += $g['resumen']['clientes'];
+        $tot_cuotas     += $g['resumen']['cuotas'];
         $tot_pagaron    += $g['resumen']['pagaron'];
         $tot_no_pagaron += $g['resumen']['no_pagaron'];
+        $tot_ya_pagas   += $g['resumen']['ya_pagas'];
         $tot_estimado   += $g['resumen']['estimado'];
         $tot_cobrado    += $g['resumen']['cobrado'];
+        foreach ($g['clientes'] as $c) $tot_clientes_set[$c['cliente_id']] = true;
     }
 }
+$tot_clientes = count($tot_clientes_set);
 $tot_pct = $tot_estimado > 0 ? round($tot_cobrado / $tot_estimado * 100) : 0;
 
 function renderTarjetaCliente(array $c): string
 {
-    $vencim  = date('d/m/Y', strtotime($c['fecha_vencimiento']));
-    $estado  = $c['pago_realizado']
-        ? '<span class="ahist-estado ahist-estado--pago"><i class="fa fa-check-circle"></i> Pagó '
+    $vencim = date('d/m/Y', strtotime($c['fecha_vencimiento']));
+
+    if (!empty($c['ya_estaba_paga'])) {
+        $estado = '<span class="ahist-estado ahist-estado--ya-paga"><i class="fa fa-clock-rotate-left"></i> Ya estaba paga'
+            . ($c['fecha_pago_antes'] ? ' (' . e(date('d/m/Y', strtotime($c['fecha_pago_antes']))) . ')' : '') . '</span>';
+    } elseif ($c['pago_realizado']) {
+        $estado = '<span class="ahist-estado ahist-estado--pago"><i class="fa fa-check-circle"></i> Pagó '
             . e(formato_pesos($c['pagado_esa_semana']))
             . ($c['fecha_pago_esa_semana'] ? ' el ' . e(date('d/m', strtotime($c['fecha_pago_esa_semana']))) : '')
-            . ($c['forma_pago'] ? ' — ' . e($c['forma_pago']) : '') . '</span>'
-        : '<span class="ahist-estado ahist-estado--no-pago"><i class="fa fa-circle-xmark"></i> No pagó</span>';
+            . ($c['forma_pago'] ? ' — ' . e($c['forma_pago']) : '') . '</span>';
+    } else {
+        $estado = '<span class="ahist-estado ahist-estado--no-pago"><i class="fa fa-circle-xmark"></i> No pagó</span>';
+    }
+
+    $card_class = !empty($c['ya_estaba_paga']) ? ' ahist-card--ya-paga' : ($c['pago_realizado'] ? ' ahist-card--pago' : '');
 
     return '
-    <div class="ahist-card' . ($c['pago_realizado'] ? ' ahist-card--pago' : '') . '">
+    <div class="ahist-card' . $card_class . '">
         <div class="ahist-card-main">
             <div class="ahist-card-nombre">' . e($c['apellidos'] . ', ' . $c['nombres']) . '</div>
             <div class="ahist-card-sub">' . e($c['articulo']) . ' — Cuota #' . (int) $c['numero_cuota'] . '/' . (int) $c['cant_cuotas'] . '</div>
@@ -100,11 +116,16 @@ function renderTarjetaCliente(array $c): string
 
 function renderResumenGrupo(array $r): string
 {
+    $ya_pagas_html = !empty($r['ya_pagas'])
+        ? '<span style="color:var(--text-muted)"><strong>' . $r['ya_pagas'] . '</strong> ya estaban pagas</span>'
+        : '';
     return '
     <div class="ahist-resumen">
         <span><strong>' . $r['clientes'] . '</strong> clientes</span>
+        <span><strong>' . $r['cuotas'] . '</strong> cuotas</span>
         <span style="color:var(--success)"><strong>' . $r['pagaron'] . '</strong> pagaron</span>
         <span style="color:var(--danger)"><strong>' . $r['no_pagaron'] . '</strong> no pagaron</span>
+        ' . $ya_pagas_html . '
         <span>Estimado: <strong>' . e(formato_pesos($r['estimado'])) . '</strong></span>
         <span>Cobrado: <strong>' . e(formato_pesos($r['cobrado'])) . '</strong></span>
     </div>';
@@ -119,6 +140,7 @@ require_once __DIR__ . '/../views/layout.php';
 .ahist-resumen { display:flex; gap:18px; flex-wrap:wrap; font-size:.82rem; color:var(--text-muted); padding:10px 14px; background:var(--dark-input); border-radius:8px; margin-bottom:10px; }
 .ahist-card { display:flex; justify-content:space-between; gap:14px; padding:12px 14px; border-radius:10px; border:1px solid var(--dark-border); background:var(--dark-card); margin-bottom:8px; border-left:4px solid var(--danger); }
 .ahist-card--pago { border-left-color:var(--success); }
+.ahist-card--ya-paga { border-left-color:var(--text-muted); opacity:.75; }
 .ahist-card-nombre { font-weight:700; color:var(--text-main); }
 .ahist-card-sub { font-size:.8rem; color:var(--text-muted); margin-top:2px; }
 .ahist-card-side { text-align:right; flex-shrink:0; }
@@ -126,11 +148,12 @@ require_once __DIR__ . '/../views/layout.php';
 .ahist-estado { display:inline-flex; align-items:center; gap:5px; font-size:.78rem; font-weight:600; margin-top:4px; }
 .ahist-estado--pago { color:var(--success); }
 .ahist-estado--no-pago { color:var(--danger); }
+.ahist-estado--ya-paga { color:var(--text-muted); }
 .ahist-grupo-titulo { font-weight:700; color:var(--text-main); margin:18px 0 8px; font-size:.95rem; }
 </style>
 
 <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">
-    <i class="fa fa-circle-info"></i> Reconstruye la agenda de una semana pasada: quién tenía una cuota venciendo esa semana y quién pagó durante esa misma semana (no después). Usa la asignación de cobrador <strong>actual</strong> de cada crédito — si un crédito fue reasignado a otro cobrador (Migrar Cobrador) después de esa semana, va a figurar acá bajo el cobrador de hoy, no el de entonces.
+    <i class="fa fa-circle-info"></i> Reconstruye la agenda de una semana pasada: quién tenía una cuota venciendo esa semana y quién pagó durante esa misma semana (no después). No incluye cuotas de créditos dados de baja (Retiro de Producto, Incobrabilidad, etc.) ni cuotas que el cliente ya había pagado por adelantado en una semana anterior (esas figuran como "Ya estaba paga"). Usa la asignación de cobrador <strong>actual</strong> de cada crédito — si un crédito fue reasignado a otro cobrador (Migrar Cobrador) después de esa semana, va a figurar acá bajo el cobrador de hoy, no el de entonces.
 </div>
 
 <!-- ── SELECTOR DE SEMANA ─────────────────────────────────────── -->
@@ -214,6 +237,7 @@ require_once __DIR__ . '/../views/layout.php';
             <div class="kpi-body">
                 <div class="kpi-label">Clientes con cuota esa semana</div>
                 <div class="kpi-value"><?= $tot_clientes ?></div>
+                <div class="kpi-sub"><?= $tot_cuotas ?> cuotas<?= $tot_ya_pagas > 0 ? ' · ' . $tot_ya_pagas . ' ya pagas' : '' ?></div>
             </div>
         </div>
         <div class="kpi-card" style="--kpi-color:var(--success)">
