@@ -102,6 +102,64 @@ function dias_atraso_habiles(string $fecha_vencimiento, ?string $fecha_ref = nul
 }
 
 /**
+ * Determina si una cuota semanal integraba la cartera cobrable de una semana.
+ *
+ * La cuota conserva su valor nominal aunque hubiera recibido un pago parcial
+ * antes del lunes. En cambio, una cuota cubierta por completo antes de esa
+ * semana ya no era cobrable y se excluye. Un pago confirmado en la semana
+ * siempre conserva la cuota: también es la salvaguarda para pagos reales de
+ * cuotas dadas de baja o con un estado histórico inválido.
+ *
+ * @param array{estado:mixed, monto_cuota:mixed, monto_mora:mixed,
+ *     fecha_vencimiento:mixed, interes_moratorio_pct:mixed,
+ *     pagado_antes:mixed, pago_en_semana:mixed} $cuota
+ * @return array{incluida:bool, ya_estaba_paga:bool, mora:float, monto_meta:float}
+ */
+function evaluar_cobrabilidad_meta_semanal(array $cuota, string $fecha_referencia): array
+{
+    $monto_cuota     = (float) $cuota['monto_cuota'];
+    $pagado_antes    = (float) $cuota['pagado_antes'];
+    $pago_en_semana  = (float) $cuota['pago_en_semana'];
+    $tiene_pago_semana = $pago_en_semana > 0.0;
+
+    if (!$tiene_pago_semana && !in_array((string) $cuota['estado'], [
+        'PENDIENTE', 'PAGADA', 'VENCIDA', 'PARCIAL', 'CAP_PAGADA',
+    ], true)) {
+        return [
+            'incluida'        => false,
+            'ya_estaba_paga'  => false,
+            'mora'            => 0.0,
+            'monto_meta'      => 0.0,
+        ];
+    }
+
+    if (!$tiene_pago_semana && $pagado_antes >= $monto_cuota - 0.01) {
+        return [
+            'incluida'        => false,
+            'ya_estaba_paga'  => true,
+            'mora'            => 0.0,
+            'monto_meta'      => 0.0,
+        ];
+    }
+
+    $dias_atraso = dias_atraso_habiles((string) $cuota['fecha_vencimiento'], $fecha_referencia);
+    $mora = (float) $cuota['monto_mora'] > 0
+        ? (float) $cuota['monto_mora']
+        : calcular_mora(
+            $monto_cuota,
+            $dias_atraso,
+            (float) $cuota['interes_moratorio_pct']
+        );
+
+    return [
+        'incluida'        => true,
+        'ya_estaba_paga'  => false,
+        'mora'            => $mora,
+        'monto_meta'      => $monto_cuota + $mora,
+    ];
+}
+
+/**
  * Agrega las cuotas impagas de un mismo cliente/crédito: TODAS las que ya
  * están atrasadas ("atraso", con mora) + la PRÓXIMA a vencer que todavía
  * está en fecha ("fijo", sin mora) — y se corta ahí. Un crédito quincenal/
@@ -172,9 +230,19 @@ function calcular_metas_semanales_auto(PDO $pdo, array $cobrador_ids, ?DateTimeI
     $ph = implode(',', array_fill(0, count($cobrador_ids), '?'));
     $totales = array_fill_keys($cobrador_ids, 0.0);
 
-    $acumular = function (array $rows) use (&$totales) {
+    $acumular_semanales = function (array $rows) use (&$totales, $hoy_str) {
         foreach ($rows as $cu) {
-            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
+            $evaluacion = evaluar_cobrabilidad_meta_semanal($cu, $hoy_str);
+            if (!$evaluacion['incluida']) {
+                continue;
+            }
+            $totales[(int) $cu['cobrador_id']] += $evaluacion['monto_meta'];
+        }
+    };
+
+    $acumular_cartera = function (array $rows) use (&$totales, $hoy_str) {
+        foreach ($rows as $cu) {
+            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento'], $hoy_str);
             $mora = (float) $cu['monto_mora'] > 0
                 ? (float) $cu['monto_mora']
                 : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
@@ -184,16 +252,40 @@ function calcular_metas_semanales_auto(PDO $pdo, array $cobrador_ids, ?DateTimeI
 
     // Semanales: vencimiento dentro de esta semana (Lun-Sáb)
     $stmt = $pdo->prepare("
-        SELECT cr.cobrador_id, cu.monto_cuota, cu.monto_mora, cu.fecha_vencimiento, cr.interes_moratorio_pct
+        SELECT cr.cobrador_id, cu.estado, cu.monto_cuota, cu.monto_mora,
+               cu.fecha_vencimiento, cr.interes_moratorio_pct,
+               COALESCE((
+                   SELECT SUM(pc.monto_total)
+                   FROM ic_pagos_confirmados pc
+                   WHERE pc.cuota_id = cu.id
+                     AND pc.revertido = 0
+                     AND pc.semana_lunes < ?
+               ), 0) AS pagado_antes,
+               COALESCE((
+                   SELECT SUM(pc.monto_total)
+                   FROM ic_pagos_confirmados pc
+                   WHERE pc.cuota_id = cu.id
+                     AND pc.revertido = 0
+                     AND pc.semana_lunes = ?
+               ), 0) AS pago_en_semana
         FROM ic_cuotas cu
         JOIN ic_creditos cr ON cr.id = cu.credito_id
         WHERE cr.cobrador_id IN ($ph) AND cr.estado IN ('EN_CURSO','MOROSO')
           AND cr.frecuencia = 'semanal'
           AND cu.fecha_vencimiento BETWEEN ? AND ?
-          AND cu.estado != 'CANCELADA'
+          AND (
+              cu.estado IN ('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA')
+              OR EXISTS (
+                  SELECT 1
+                  FROM ic_pagos_confirmados pcx
+                  WHERE pcx.cuota_id = cu.id
+                    AND pcx.revertido = 0
+                    AND pcx.semana_lunes = ?
+              )
+          )
     ");
-    $stmt->execute([...$cobrador_ids, $lunes, $sabado]);
-    $acumular($stmt->fetchAll());
+    $stmt->execute([$lunes, $lunes, ...$cobrador_ids, $lunes, $sabado, $lunes]);
+    $acumular_semanales($stmt->fetchAll());
 
     // Diario/Quincenal/Mensual: cartera vencida a hoy
     $stmt2 = $pdo->prepare("
@@ -206,7 +298,7 @@ function calcular_metas_semanales_auto(PDO $pdo, array $cobrador_ids, ?DateTimeI
           AND cu.fecha_vencimiento <= ?
     ");
     $stmt2->execute([...$cobrador_ids, $hoy_str]);
-    $acumular($stmt2->fetchAll());
+    $acumular_cartera($stmt2->fetchAll());
 
     return $totales;
 }
@@ -232,16 +324,48 @@ function calcular_meta_semanal_pura(PDO $pdo, int $cobrador_id, ?DateTimeImmutab
     $sabado = $hoy->modify('-' . ($dow - 1) . ' days')->modify('+5 days')->format('Y-m-d');
 
     $stmt = $pdo->prepare("
-        SELECT COALESCE(SUM(cu.monto_cuota), 0)
+        SELECT cu.estado, cu.monto_cuota, cu.monto_mora, cu.fecha_vencimiento,
+               cr.interes_moratorio_pct,
+               COALESCE((
+                   SELECT SUM(pc.monto_total)
+                   FROM ic_pagos_confirmados pc
+                   WHERE pc.cuota_id = cu.id
+                     AND pc.revertido = 0
+                     AND pc.semana_lunes < ?
+               ), 0) AS pagado_antes,
+               COALESCE((
+                   SELECT SUM(pc.monto_total)
+                   FROM ic_pagos_confirmados pc
+                   WHERE pc.cuota_id = cu.id
+                     AND pc.revertido = 0
+                     AND pc.semana_lunes = ?
+               ), 0) AS pago_en_semana
         FROM ic_cuotas cu
         JOIN ic_creditos cr ON cr.id = cu.credito_id
         WHERE cr.cobrador_id = ? AND cr.estado IN ('EN_CURSO','MOROSO')
           AND cr.frecuencia = 'semanal'
           AND cu.fecha_vencimiento BETWEEN ? AND ?
-          AND cu.estado != 'CANCELADA'
+          AND (
+              cu.estado IN ('PENDIENTE','PAGADA','VENCIDA','PARCIAL','CAP_PAGADA')
+              OR EXISTS (
+                  SELECT 1
+                  FROM ic_pagos_confirmados pcx
+                  WHERE pcx.cuota_id = cu.id
+                    AND pcx.revertido = 0
+                    AND pcx.semana_lunes = ?
+              )
+          )
     ");
-    $stmt->execute([$cobrador_id, $lunes, $sabado]);
-    return (float) $stmt->fetchColumn();
+    $stmt->execute([$lunes, $lunes, $cobrador_id, $lunes, $sabado, $lunes]);
+
+    $total = 0.0;
+    foreach ($stmt->fetchAll() as $cu) {
+        $evaluacion = evaluar_cobrabilidad_meta_semanal($cu, $hoy->format('Y-m-d'));
+        if ($evaluacion['incluida']) {
+            $total += (float) $cu['monto_cuota'];
+        }
+    }
+    return $total;
 }
 
 /**
