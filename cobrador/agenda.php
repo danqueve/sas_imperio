@@ -490,6 +490,9 @@ require_once __DIR__ . '/../views/layout.php';
             <button type="button" class="btn-ic btn-ghost" onclick="openModal('modal-faltantes-pdf')">
                 <i class="fa fa-user-slash"></i> Faltantes PDF
             </button>
+            <a href="agenda_historico?cobrador_id=<?= $cobrador_filtro ?>" class="btn-ic btn-ghost">
+                <i class="fa fa-clock-rotate-left"></i> Historial de Agendas
+            </a>
         <?php endif; ?>
     </form>
 </div>

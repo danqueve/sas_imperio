@@ -1348,6 +1348,180 @@ function obtener_creditos_cartera_zona(PDO $pdo, int $cobrador_id, string $zona,
 }
 
 /**
+ * Reconstruye la agenda semanal de un cobrador para una semana pasada
+ * puntual: quiénes tenían una cuota venciendo esa semana y, de esos,
+ * quiénes efectivamente pagaron durante esa misma semana (no después).
+ * Fuente única para cobrador/agenda_historico.php y su PDF — nunca deben
+ * mostrar números distintos.
+ *
+ * No filtra por cr.estado: un crédito ya FINALIZADO hoy pero que tenía
+ * una cuota venciendo esa semana pasada debe seguir apareciendo — el
+ * único filtro de vigencia es que la cuota haya vencido en el rango.
+ *
+ * Limitación aceptada (se avisa en pantalla, no se resuelve acá): usa
+ * cr.cobrador_id, la asignación ACTUAL del crédito — este sistema no
+ * guarda a qué cobrador pertenecía cada crédito en cada semana pasada.
+ *
+ * Devuelve ['semanales' => [dia_cobro => [...]], 'otras_frecuencias' =>
+ * [frecuencia => [...]], 'clientes_pago_fuera_semana' => int,
+ * 'pagos_fuera_semana' => [...]] — cada grupo ya trae 'label', 'clientes'
+ * (filas enriquecidas con pago_realizado/pagado_esa_semana/
+ * fecha_pago_esa_semana/forma_pago/cuotas_atrasadas_otras/
+ * semana_lunes_cuota/semana_sabado_cuota) y 'resumen' (clientes/pagaron/
+ * no_pagaron/estimado/cobrado).
+ *
+ * 'pagos_fuera_semana' es el detalle (una fila por cuota) de pagos
+ * hechos durante esta semana para una cuota que NO vencía esta semana
+ * (backlog de otra semana, o adelanto de una futura) — cada fila tiene
+ * exactamente la misma forma que las filas de 'semanales'/
+ * 'otras_frecuencias' (mismos nombres de campo, incluida 'frecuencia'/
+ * 'dia_cobro' para poder enrutarla al mismo grupo si el caller quiere
+ * mezclarla en la misma lista) más 'semana_lunes_cuota'/
+ * 'semana_sabado_cuota' (el rango real al que pertenecía esa cuota,
+ * calculado también para las filas normales — para ellas siempre
+ * coincide con la semana `$lunes`/`$sabado` pedida, por construcción).
+ * Esa plata no está incluida en 'cobrado' de ningún grupo de arriba,
+ * porque esos grupos solo suman pagos de cuotas que sí vencían en la
+ * semana que se está viendo. 'clientes_pago_fuera_semana' es la
+ * cantidad de clientes distintos en ese detalle.
+ */
+function obtener_agenda_historica(PDO $pdo, int $cobrador_id, string $lunes, string $sabado): array
+{
+    $sql = "
+        SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos, cl.telefono, cl.zona,
+               cr.id AS credito_id, cr.dia_cobro, cr.cant_cuotas, cr.frecuencia,
+               cu.id AS cuota_id, cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota,
+               cu.estado AS cuota_estado,
+               COALESCE(cr.articulo_desc, a.descripcion, 'Sin articulo') AS articulo,
+               (SELECT SUM(pc.monto_total) FROM ic_pagos_confirmados pc
+                WHERE pc.cuota_id = cu.id AND pc.cobrador_id = cr.cobrador_id
+                  AND pc.semana_lunes = ? AND pc.revertido = 0) AS pagado_esa_semana,
+               (SELECT MAX(pc.fecha_pago) FROM ic_pagos_confirmados pc
+                WHERE pc.cuota_id = cu.id AND pc.cobrador_id = cr.cobrador_id
+                  AND pc.semana_lunes = ? AND pc.revertido = 0) AS fecha_pago_esa_semana,
+               (SELECT GROUP_CONCAT(DISTINCT
+                    CASE
+                        WHEN pc.monto_efectivo > 0 AND pc.monto_transferencia > 0 THEN 'Efectivo + Transferencia'
+                        WHEN pc.monto_efectivo > 0 THEN 'Efectivo'
+                        WHEN pc.monto_transferencia > 0 THEN 'Transferencia'
+                        ELSE 'Otro'
+                    END SEPARATOR ' + ')
+                FROM ic_pagos_confirmados pc
+                WHERE pc.cuota_id = cu.id AND pc.cobrador_id = cr.cobrador_id
+                  AND pc.semana_lunes = ? AND pc.revertido = 0) AS forma_pago,
+               (SELECT COUNT(*) FROM ic_cuotas cu2
+                WHERE cu2.credito_id = cr.id AND cu2.id <> cu.id
+                  AND cu2.estado IN ('VENCIDA', 'PENDIENTE') AND cu2.fecha_vencimiento < CURDATE()) AS cuotas_atrasadas_otras
+        FROM ic_creditos cr
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        JOIN ic_cuotas cu   ON cu.credito_id = cr.id
+        LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
+        WHERE cr.cobrador_id = ?
+          AND cu.fecha_vencimiento BETWEEN ? AND ?
+          AND %FREQ%
+        ORDER BY %ORDEN%, cl.apellidos ASC, cl.nombres ASC
+    ";
+
+    $ejecutar = function (string $freq_sql, string $orden) use ($pdo, $sql, $lunes, $sabado, $cobrador_id): array {
+        $stmt = $pdo->prepare(str_replace(['%FREQ%', '%ORDEN%'], [$freq_sql, $orden], $sql));
+        $stmt->execute([$lunes, $lunes, $lunes, $cobrador_id, $lunes, $sabado]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    };
+
+    $filas_semanales = $ejecutar("cr.frecuencia = 'semanal'", 'cr.dia_cobro');
+    $filas_otras     = $ejecutar("cr.frecuencia IN ('quincenal','mensual','diario')", 'cr.frecuencia');
+
+    foreach ([&$filas_semanales, &$filas_otras] as &$grupo_filas) {
+        foreach ($grupo_filas as &$f) {
+            $f['pagado_esa_semana']       = (float) ($f['pagado_esa_semana'] ?? 0);
+            $f['pago_realizado']          = $f['pagado_esa_semana'] > 0;
+            $f['cuotas_atrasadas_otras']  = (int) ($f['cuotas_atrasadas_otras'] ?? 0);
+            // Para una fila normal, por construcción cu.fecha_vencimiento
+            // ya cae dentro de $lunes-$sabado — este cálculo siempre
+            // coincide con la semana pedida, pero se deja igual para que
+            // el caller pueda tratar todas las filas (normales + de
+            // pagos_fuera_semana) con el mismo campo.
+            $f['semana_lunes_cuota']  = calcular_semana_lunes($f['fecha_vencimiento']);
+            $f['semana_sabado_cuota'] = calcular_semana_sabado($f['fecha_vencimiento']);
+        }
+        unset($f);
+    }
+    unset($grupo_filas);
+
+    // Detalle (una fila por cuota) de pagos hechos esta semana para una
+    // cuota que NO vencía esta semana (backlog de otra semana, o
+    // adelanto de una cuota futura) — esa plata no entra en ningún
+    // 'cobrado' de arriba. Misma forma de fila que $filas_semanales/
+    // $filas_otras (mismos nombres de columna) para que el caller pueda
+    // mezclarlas en una sola lista sin transformar nada.
+    $stmt_fuera = $pdo->prepare("
+        SELECT cl.id AS cliente_id, cl.nombres, cl.apellidos,
+               cr.id AS credito_id, cr.cant_cuotas, cr.frecuencia, cr.dia_cobro,
+               COALESCE(cr.articulo_desc, a.descripcion, 'Sin articulo') AS articulo,
+               cu.numero_cuota, cu.fecha_vencimiento, cu.monto_cuota, cu.estado AS cuota_estado,
+               pc.monto_total AS pagado_esa_semana, pc.fecha_pago AS fecha_pago_esa_semana,
+               CASE
+                   WHEN pc.monto_efectivo > 0 AND pc.monto_transferencia > 0 THEN 'Efectivo + Transferencia'
+                   WHEN pc.monto_efectivo > 0 THEN 'Efectivo'
+                   WHEN pc.monto_transferencia > 0 THEN 'Transferencia'
+                   ELSE 'Otro'
+               END AS forma_pago,
+               (SELECT COUNT(*) FROM ic_cuotas cu2
+                WHERE cu2.credito_id = cr.id AND cu2.id <> cu.id
+                  AND cu2.estado IN ('VENCIDA', 'PENDIENTE') AND cu2.fecha_vencimiento < CURDATE()) AS cuotas_atrasadas_otras
+        FROM ic_pagos_confirmados pc
+        JOIN ic_cuotas cu   ON cu.id = pc.cuota_id
+        JOIN ic_creditos cr ON cr.id = cu.credito_id
+        JOIN ic_clientes cl ON cl.id = cr.cliente_id
+        LEFT JOIN ic_articulos a ON a.id = cr.articulo_id
+        WHERE pc.cobrador_id = ? AND pc.semana_lunes = ? AND pc.revertido = 0
+          AND cu.fecha_vencimiento NOT BETWEEN ? AND ?
+        ORDER BY cu.fecha_vencimiento ASC, cl.apellidos ASC, cl.nombres ASC
+    ");
+    $stmt_fuera->execute([$cobrador_id, $lunes, $lunes, $sabado]);
+    $pagos_fuera_semana = $stmt_fuera->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($pagos_fuera_semana as &$pf) {
+        $pf['pagado_esa_semana']      = (float) $pf['pagado_esa_semana'];
+        $pf['pago_realizado']         = true; // esta fila solo existe porque hubo un pago
+        $pf['cuotas_atrasadas_otras'] = (int) $pf['cuotas_atrasadas_otras'];
+        $pf['semana_lunes_cuota']     = calcular_semana_lunes($pf['fecha_vencimiento']);
+        $pf['semana_sabado_cuota']    = calcular_semana_sabado($pf['fecha_vencimiento']);
+    }
+    unset($pf);
+    $clientes_pago_fuera_semana = count(array_unique(array_column($pagos_fuera_semana, 'cliente_id')));
+
+    $DIAS  = [1 => 'Lunes', 2 => 'Martes', 3 => 'Miercoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sabado'];
+    $FRECS = ['quincenal' => 'Quincenal', 'mensual' => 'Mensual', 'diario' => 'Diario'];
+
+    $agrupar = function (array $filas, array $labels, string $campo): array {
+        $grupos = [];
+        foreach ($filas as $f) {
+            $k = $f[$campo];
+            if (!isset($grupos[$k])) {
+                $grupos[$k] = [
+                    'label'    => $labels[$k] ?? (string) $k,
+                    'clientes' => [],
+                    'resumen'  => ['clientes' => 0, 'pagaron' => 0, 'no_pagaron' => 0, 'estimado' => 0.0, 'cobrado' => 0.0],
+                ];
+            }
+            $grupos[$k]['clientes'][]  = $f;
+            $grupos[$k]['resumen']['clientes']++;
+            $grupos[$k]['resumen'][$f['pago_realizado'] ? 'pagaron' : 'no_pagaron']++;
+            $grupos[$k]['resumen']['estimado'] += (float) $f['monto_cuota'];
+            $grupos[$k]['resumen']['cobrado']  += $f['pagado_esa_semana'];
+        }
+        return $grupos;
+    };
+
+    return [
+        'semanales'                   => $agrupar($filas_semanales, $DIAS, 'dia_cobro'),
+        'otras_frecuencias'           => $agrupar($filas_otras, $FRECS, 'frecuencia'),
+        'clientes_pago_fuera_semana'  => $clientes_pago_fuera_semana,
+        'pagos_fuera_semana'          => $pagos_fuera_semana,
+    ];
+}
+
+/**
  * Cobrado/Estimado/Faltante por zona de un cobrador, en un período —
  * fuente única para admin/estadisticas_zona.php y su PDF resumen. Antes
  * esta misma lógica (incluida la regla de qué cuenta como "cobrado_cuota",
