@@ -440,6 +440,23 @@ function calcular_cobrado_semanal_por_metodo(PDO $pdo, int $cobrador_id, ?DateTi
 }
 
 /**
+ * Decide el "objetivo efectivo" de meta semanal: el override manual del
+ * cobrador si tiene uno cargado, o la meta automática si no. Centraliza el
+ * mismo criterio ya usado inline en admin/metas.php/admin/dashboard.php
+ * (`meta_semanal === null ? automatica : manual`) para el único caller que
+ * necesita persistirlo (el snapshot histórico) — función pura, sin PDO,
+ * para poder testearla directo.
+ */
+function determinar_meta_objetivo(float $meta_automatica, ?float $override_manual): array
+{
+    $tiene_override = ($override_manual !== null);
+    return [
+        'meta_objetivo' => $tiene_override ? $override_manual : $meta_automatica,
+        'origen_meta'   => $tiene_override ? 'MANUAL' : 'AUTOMATICA',
+    ];
+}
+
+/**
  * Calcula las 4 métricas de meta semanal de un cobrador para la semana de
  * $semana_referencia (cualquier fecha de esa semana). El criterio "cartera
  * vencida a hoy" de meta_automatica/meta_fija_semanal se evalúa al domingo
@@ -448,6 +465,13 @@ function calcular_cobrado_semanal_por_metodo(PDO $pdo, int $cobrador_id, ?DateTi
  * durante esa semana, igual que si se hubiera tomado la foto el último día.
  * Usada por registrar_snapshot_metas_semana() y por el preview del cron
  * (para que el log y lo que se guarda sean siempre el mismo número).
+ *
+ * meta_objetivo/origen_meta usan el override manual VIGENTE al momento de
+ * calcular (ic_usuarios.meta_semanal actual) — este sistema no guarda un
+ * historial de a qué valor estaba el override en cada semana pasada, así
+ * que un snapshot de una semana vieja refleja el override de HOY, no el
+ * que pudo haber existido entonces (misma limitación ya aceptada para
+ * cr.cobrador_id en obtener_agenda_historica()).
  */
 function calcular_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImmutable $semana_referencia): array
 {
@@ -456,9 +480,19 @@ function calcular_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImmu
     $fin_semana = $lunes->modify('+6 days');
     $metodo     = calcular_cobrado_semanal_por_metodo($pdo, $cobrador_id, $fin_semana);
 
+    $meta_automatica = calcular_meta_semanal_auto($pdo, $cobrador_id, $fin_semana);
+
+    $stmt_override = $pdo->prepare("SELECT meta_semanal FROM ic_usuarios WHERE id = ?");
+    $stmt_override->execute([$cobrador_id]);
+    $override_raw = $stmt_override->fetchColumn();
+    $override     = ($override_raw === false || $override_raw === null) ? null : (float) $override_raw;
+    $objetivo     = determinar_meta_objetivo($meta_automatica, $override);
+
     return [
         'semana_lunes'          => $lunes->format('Y-m-d'),
-        'meta_automatica'       => calcular_meta_semanal_auto($pdo, $cobrador_id, $fin_semana),
+        'meta_automatica'       => $meta_automatica,
+        'meta_objetivo'         => $objetivo['meta_objetivo'],
+        'origen_meta'           => $objetivo['origen_meta'],
         'cobrado_real'          => calcular_cobrado_semanal_real($pdo, $cobrador_id, $fin_semana),
         'meta_fija_semanal'     => calcular_meta_semanal_pura($pdo, $cobrador_id, $fin_semana),
         'cobrado_semanal_puro'  => calcular_cobrado_semanal_puro($pdo, $cobrador_id, $fin_semana),
@@ -480,10 +514,12 @@ function registrar_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImm
 
     $stmt = $pdo->prepare("
         INSERT INTO ic_historial_metas
-            (cobrador_id, semana_lunes, meta_automatica, cobrado_real, meta_fija_semanal, cobrado_semanal_puro, cobrado_efectivo, cobrado_transferencia)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (cobrador_id, semana_lunes, meta_automatica, meta_objetivo, origen_meta, cobrado_real, meta_fija_semanal, cobrado_semanal_puro, cobrado_efectivo, cobrado_transferencia)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             meta_automatica = VALUES(meta_automatica),
+            meta_objetivo = VALUES(meta_objetivo),
+            origen_meta = VALUES(origen_meta),
             cobrado_real = VALUES(cobrado_real),
             meta_fija_semanal = VALUES(meta_fija_semanal),
             cobrado_semanal_puro = VALUES(cobrado_semanal_puro),
@@ -494,6 +530,8 @@ function registrar_snapshot_metas_semana(PDO $pdo, int $cobrador_id, DateTimeImm
         $cobrador_id,
         $s['semana_lunes'],
         $s['meta_automatica'],
+        $s['meta_objetivo'],
+        $s['origen_meta'],
         $s['cobrado_real'],
         $s['meta_fija_semanal'],
         $s['cobrado_semanal_puro'],

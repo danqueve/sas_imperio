@@ -131,18 +131,22 @@ final class LogicaFinancieraTest extends TestCase
 
     public static function calcularMoraProvider(): iterable
     {
-        yield 'tasa 12% semanal, 1 día: 12/6=2% diario → 20.00' => [
-            1000.0, 1, 12.0, 20.0,
+        // calcular_mora() tiene un período de gracia de 6 días hábiles
+        // (MORA_DIAS_GRACIA): 0-6 días → sin mora; 7-10 días → mora sobre
+        // el EXCESO por encima de la gracia; 11+ días → mora sobre TODOS
+        // los días (sin descontar la gracia).
+        yield 'tasa 12% semanal, día 8 (2 días de exceso): 12/6=2% diario × 2 → 40.00' => [
+            1000.0, 8, 12.0, 40.0,
         ];
         yield 'días negativos siempre devuelven 0' => [
             1000.0, -1, 15.0, 0.0,
         ];
-        yield 'monto con decimales se redondea a 2 cifras' => [
+        yield 'monto con decimales se redondea a 2 cifras (día 7, 1 día de exceso)' => [
             // 1500.50 × 2.5% × 1 = 37.5125 → 37.51
-            1500.50, 1, 15.0, 37.51,
+            1500.50, 7, 15.0, 37.51,
         ];
-        yield '6 días hábiles a tasa 15%: 1000 × 2.5% × 6 = 150.00' => [
-            1000.0, 6, 15.0, 150.0,
+        yield '11+ días: mora sobre TODOS los días sin descontar gracia → 1000 × 2.5% × 11 = 275.00' => [
+            1000.0, 11, 15.0, 275.0,
         ];
     }
 

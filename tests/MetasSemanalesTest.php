@@ -143,6 +143,42 @@ final class MetasSemanalesTest extends TestCase
         $this->assertSame(1350.0, $resultado['monto_meta']);
     }
 
+    #[Test]
+    public function it_uses_automatic_goal_when_no_manual_override_exists(): void
+    {
+        // Act
+        $resultado = determinar_meta_objetivo(500000.0, null);
+
+        // Assert
+        $this->assertSame(500000.0, $resultado['meta_objetivo']);
+        $this->assertSame('AUTOMATICA', $resultado['origen_meta']);
+    }
+
+    #[Test]
+    public function it_uses_manual_override_as_goal_when_it_exists(): void
+    {
+        // Act
+        $resultado = determinar_meta_objetivo(500000.0, 450000.0);
+
+        // Assert: el override manda aunque sea menor a la automática —
+        // no se promedia ni se toma el máximo, es una decisión explícita
+        // del admin sobre esa cartera.
+        $this->assertSame(450000.0, $resultado['meta_objetivo']);
+        $this->assertSame('MANUAL', $resultado['origen_meta']);
+    }
+
+    #[Test]
+    public function it_treats_a_zero_override_as_a_deliberate_manual_goal(): void
+    {
+        // Act: 0.0 no es "sin override" — el admin cargó explícitamente
+        // cero. Solo `null` (campo vacío) significa "usar automática".
+        $resultado = determinar_meta_objetivo(500000.0, 0.0);
+
+        // Assert
+        $this->assertSame(0.0, $resultado['meta_objetivo']);
+        $this->assertSame('MANUAL', $resultado['origen_meta']);
+    }
+
     /**
      * @param array<string, mixed> $sobrescribir
      * @return array<string, mixed>

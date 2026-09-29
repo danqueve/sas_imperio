@@ -282,7 +282,8 @@
       "Bash(curl -s -b \"PHPSESSID=0825e7baef7451f862d6cbb5025b6422\" \"http://localhost/creditos/admin/rendicion_pdf?cobrador_id=11&fecha=2026-08-10\" -o \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/rendicion_test3.pdf\")",
       "Bash('C:\\\\Python314\\\\python.exe' -c ' *)",
       "Bash(/c/wamp64/bin/php/php8.4.15/php.exe \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/forge_admin3.php\")",
-      "Bash(curl -s -b \"PHPSESSID=05f54f50f3dda341439750dbf5dd912e\" \"http://localhost/creditos/admin/historial_rendiciones_pdf?cobrador_id=45&fecha=2026-08-13\" -o \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/hist_test.pdf\")"
+      "Bash(curl -s -b \"PHPSESSID=05f54f50f3dda341439750dbf5dd912e\" \"http://localhost/creditos/admin/historial_rendiciones_pdf?cobrador_id=45&fecha=2026-08-13\" -o \"/c/Users/Usuario/AppData/Local/Temp/claude/c--wamp64-www-creditos/72cdde1f-d1db-49f9-95c9-87cec0dd48a4/scratchpad/hist_test.pdf\")",
+      "Bash('C:\\\\wamp64\\\\bin\\\\php\\\\php8.4.15\\\\php.exe' -r ' *)"
     ],
     "additionalDirectories": [
       "C:\\wamp64\\tmp",

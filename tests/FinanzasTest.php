@@ -7,17 +7,24 @@ class FinanzasTest extends TestCase
 {
     public function testCalcularMora()
     {
-        // 1000 cuota, 1 día de atraso, 15% semanal -> 2.5% diario = 25
-        $mora = calcular_mora(1000.0, 1, 15.0);
-        $this->assertEquals(25.0, $mora);
+        // calcular_mora() tiene un período de gracia de 6 días hábiles
+        // (MORA_DIAS_GRACIA en config/funciones.php) — ningún atraso de
+        // 0 a 6 días genera mora. Recién del día 7 al 10 se cobra sobre
+        // el EXCESO por encima de la gracia; desde el día 11 se cobra
+        // sobre TODOS los días (sin descontar la gracia).
 
-        // 0 días hábiles
-        $mora0 = calcular_mora(1000.0, 0, 15.0);
-        $this->assertEquals(0.0, $mora0);
+        // Dentro del período de gracia: sin mora
+        $this->assertEquals(0.0, calcular_mora(1000.0, 0, 15.0));
+        $this->assertEquals(0.0, calcular_mora(1000.0, 6, 15.0));
 
-        // 2 días hábiles (5% = 50)
-        $mora2 = calcular_mora(1000.0, 2, 15.0);
-        $this->assertEquals(50.0, $mora2);
+        // Día 7: 1 día de exceso sobre la gracia. 15% semanal / 6 = 2.5% diario.
+        $this->assertEquals(25.0, calcular_mora(1000.0, 7, 15.0));
+
+        // Día 10: 4 días de exceso sobre la gracia (10 - 6).
+        $this->assertEquals(100.0, calcular_mora(1000.0, 10, 15.0));
+
+        // Día 11: se cobra sobre los 11 días completos, no solo el exceso.
+        $this->assertEquals(275.0, calcular_mora(1000.0, 11, 15.0));
     }
 
     public function testDiasHabilesAtraso()

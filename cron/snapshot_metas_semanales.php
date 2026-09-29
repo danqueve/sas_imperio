@@ -72,8 +72,8 @@ foreach ($cobradores as $cob) {
     $nombre = $cob['apellido'] . ', ' . $cob['nombre'];
 
     $s = calcular_snapshot_metas_semana($pdo, $cid, $semana_referencia);
-    $resumen = "Meta Auto: {$s['meta_automatica']} | Cobrado Real: {$s['cobrado_real']} | "
-        . "Meta Fija: {$s['meta_fija_semanal']} | Cobrado Puro: {$s['cobrado_semanal_puro']}";
+    $resumen = "Meta Auto: {$s['meta_automatica']} | Meta Objetivo: {$s['meta_objetivo']} ({$s['origen_meta']}) | "
+        . "Cobrado Real: {$s['cobrado_real']} | Meta Fija: {$s['meta_fija_semanal']} | Cobrado Puro: {$s['cobrado_semanal_puro']}";
 
     if ($dry_run) {
         log_cron("  [DRY-RUN] $nombre (id=$cid) — $resumen");
