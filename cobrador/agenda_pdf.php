@@ -390,6 +390,11 @@ function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array 
     }
     $total_dia = $total_fijo + $total_atraso;
 
+    // Suma de la columna "V. Cuota" (valor nominal de la cuota más vieja de
+    // cada fila, el mismo valor que ya se le pasa a drawRow()) — para
+    // mostrar el subtotal semanal debajo de esa columna en la fila TOTAL.
+    $total_valor_cuota = array_sum(array_map(fn($r) => (float) $r['monto_cuota'], $clientes));
+
     $cant = count($clientes);
     $pdf->SetFont('Helvetica', 'B', 10);
     $pdf->Cell(277, 7, lat($titulo . ' — ' . $cant . ' cliente(s)'), 0, 1, 'L');
@@ -448,10 +453,15 @@ function renderBloqueSemanal(AgendaPDF $pdf, array $COLS, string $titulo, array 
         $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $g['cuotas_atrasadas'], $g['monto_total'], $num);
     }
 
-    // Fila total del bloque — Monto es la última columna
+    // Fila total del bloque — Monto es la última columna. La columna
+    // "V. Cuota" (índice 10) lleva su propio subtotal semanal debajo.
     $pdf->SetFont('Helvetica', 'B', 7);
-    $ancho = array_sum(array_slice($COLS, 0, 12));
+    $ancho = array_sum(array_slice($COLS, 0, 10));
     $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($titulo)), 1, 0, 'R', false);
+    $pdf->SetFont('Helvetica', 'B', 6.5);
+    $pdf->Cell($COLS[10], 6, lat(fmt($total_valor_cuota)), 1, 0, 'R', false);
+    $pdf->SetFont('Helvetica', 'B', 7);
+    $pdf->Cell($COLS[11], 6, '', 1, 0, 'C', false);
     $pdf->Cell($COLS[12], 6, fmt($total_dia), 1, 0, 'R', false);
     $pdf->Ln();
     $pdf->Ln(3);
@@ -603,6 +613,9 @@ if (!empty($rows_qm)) {
         }
         $total_frec = $total_frec_fijo + $total_frec_atraso;
 
+        // Suma de la columna "V. Cuota" (mismo criterio que renderBloqueSemanal()).
+        $total_frec_valor_cuota = array_sum(array_map(fn($r) => (float) $r['monto_cuota'], $lista));
+
         $pdf->SetFont('Helvetica', 'B', 10);
         $pdf->Cell(277, 7, lat($titulo . ' — ' . count($lista) . ' cliente(s)'), 0, 1, 'L');
         $pdf->SetFont('Helvetica', '', 8);
@@ -658,10 +671,15 @@ if (!empty($rows_qm)) {
             $pdf->drawRow($r, $cuota_label, $venc, (float)$r['monto_cuota'], $g['cuotas_atrasadas'], $g['monto_total'], $num);
         }
 
-        // Fila total de frecuencia — Monto es la última columna
+        // Fila total de frecuencia — Monto es la última columna. La columna
+        // "V. Cuota" (índice 10) lleva su propio subtotal debajo.
         $pdf->SetFont('Helvetica', 'B', 7);
-        $ancho = array_sum(array_slice($COLS, 0, 12));
+        $ancho = array_sum(array_slice($COLS, 0, 10));
         $pdf->Cell($ancho, 6, lat('TOTAL ' . strtoupper($titulo)), 1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', 'B', 6.5);
+        $pdf->Cell($COLS[10], 6, lat(fmt($total_frec_valor_cuota)), 1, 0, 'R', false);
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->Cell($COLS[11], 6, '', 1, 0, 'C', false);
         $pdf->Cell($COLS[12], 6, fmt($total_frec), 1, 0, 'R', false);
         $pdf->Ln();
         $pdf->Ln(3);
@@ -701,6 +719,13 @@ $stmt_atr = $pdo->prepare("
 ");
 $stmt_atr->execute(array_merge([$cobrador_id], $zonas_sel));
 $rows_atr = $stmt_atr->fetchAll();
+
+// Total de Criticos (sin mora, montos nominales) — se usa mas abajo en el
+// Resumen General para que el TOTAL GENERAL sume tambien lo acumulado,
+// no solo Semanales/Quincenales/Mensuales. Definido siempre (aunque no
+// haya criticos) para que el Resumen General lo pueda sumar sin chequear.
+$total_atr = !empty($rows_atr) ? array_sum(array_map(fn($r) => (float)$r['monto_base'], $rows_atr)) : 0.0;
+$cant_atr  = count($rows_atr);
 
 if (!empty($rows_atr)) {
     // Agrupar por zona (normalizado: "Norte"/"norte" deben ser el mismo grupo)
@@ -852,10 +877,11 @@ if (!empty($rows_atr)) {
         $pdf->Ln(3);
     }
 
-    // Total general sección — Total es la última columna
-    $total_atr = array_sum(array_map(fn($r) => (float)$r['monto_base'], $rows_atr));
+    // Total general sección — Total es la última columna ($total_atr ya
+    // calculado más arriba, antes del if, para que el Resumen General lo
+    // pueda usar aunque este bloque completo no se imprima)
     $pdf->SetFont('Helvetica', 'B', 8);
-    $pdf->Cell(array_sum(array_slice($CA, 0, 8)), 6, lat('TOTAL GENERAL — ' . count($rows_atr) . ' credito(s)'), 1, 0, 'R');
+    $pdf->Cell(array_sum(array_slice($CA, 0, 8)), 6, lat('TOTAL GENERAL — ' . $cant_atr . ' credito(s)'), 1, 0, 'R');
     $pdf->Cell($CA[8], 6, lat(fmt($total_atr)), 1, 1, 'R');
 }
 
@@ -971,10 +997,48 @@ if (!empty($resumen)) {
         $total_gral_atraso += $sub_atraso_frec;
     }
 
+    // ── Grupo Criticos (5+ cuotas atrasadas, ver seccion aparte) ────
+    // Cuotas acumuladas de creditos que ya juntaron 5+ atrasadas — quedan
+    // afuera de Semanales/Quincenales/Mensuales (filtro.credito_id IS NULL
+    // en esas 2 queries, sin superposicion posible) y se suman aca para
+    // que el TOTAL GENERAL refleje toda la cartera pendiente del cobrador,
+    // no solo lo reconciliable de esta semana. Monto nominal, SIN mora —
+    // mismo criterio que la seccion "Clientes con 5+ cuotas atrasadas".
+    if ($cant_atr > 0) {
+        $pdf->Ln(2);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->SetFillColor(240, 240, 240);
+        $pdf->Cell(277, 6, lat('  Criticos (5+ cuotas atrasadas, acumulado)'), 1, 1, 'L', true);
+        $pdf->SetFillColor(255, 255, 255);
+
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->Cell($RCOLS[0], 5, lat('Detalle'), 1, 0, 'L');
+        $pdf->Cell($RCOLS[1], 5, lat('Creditos'), 1, 0, 'C');
+        $pdf->Cell($RCOLS[2] + $RCOLS[3], 5, '', 1, 0, 'R');
+        $pdf->Cell($RCOLS[4], 5, lat('Total'), 1, 1, 'R');
+
+        $pdf->SetFont('Helvetica', '', 7);
+        $pdf->Cell($RCOLS[0], 5, lat('Clientes con 5+ cuotas atrasadas'), 1, 0, 'L');
+        $pdf->Cell($RCOLS[1], 5, (string)$cant_atr, 1, 0, 'C');
+        $pdf->Cell($RCOLS[2] + $RCOLS[3], 5, '', 1, 0, 'R');
+        $pdf->Cell($RCOLS[4], 5, fmt($total_atr), 1, 1, 'R');
+
+        $pdf->SetFont('Helvetica', 'I', 7);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->Cell(277, 4, lat('Nota: monto nominal, SIN mora (mismo criterio que la seccion "Clientes con 5+ cuotas atrasadas"). No entra en el Resumen por Zona de mas abajo.'), 0, 1, 'L');
+        $pdf->SetTextColor(0, 0, 0);
+
+        $total_gral_cant   += $cant_atr;
+        $total_gral_atraso += $total_atr;
+    }
+
     // ── Resumen por Zona (solo si el cobrador cubre mas de 1 zona) ──
-    // Combina Semanales + Quincenales/Mensuales/Diarios por zona — mismo
-    // total que TOTAL GENERAL, solo reagrupado. Si el cobrador tiene una
-    // sola zona (o ninguna), no aporta nada nuevo y no se imprime.
+    // Combina Semanales + Quincenales/Mensuales/Diarios por zona — NO
+    // incluye Criticos (que ya tiene su propio desglose por zona en su
+    // propia seccion), asi que a partir de ahora puede diferir del TOTAL
+    // GENERAL de mas abajo por exactamente el monto de Criticos. Si el
+    // cobrador tiene una sola zona (o ninguna), no aporta nada nuevo y no
+    // se imprime.
     if (count($resumen_zona) > 1) {
         $zonas_ord = $resumen_zona;
         uasort($zonas_ord, fn($a, $b) => ($b['fijo'] + $b['atraso']) <=> ($a['fijo'] + $a['atraso']));
@@ -1010,6 +1074,13 @@ if (!empty($resumen)) {
         $pdf->Cell($RCOLS[2], 5, fmt($tz_fijo), 1, 0, 'R');
         $pdf->Cell($RCOLS[3], 5, fmt($tz_atraso), 1, 0, 'R');
         $pdf->Cell($RCOLS[4], 5, fmt($tz_fijo + $tz_atraso), 1, 1, 'R');
+
+        if ($cant_atr > 0) {
+            $pdf->SetFont('Helvetica', 'I', 7);
+            $pdf->SetTextColor(80, 80, 80);
+            $pdf->Cell(277, 4, lat('Nota: no incluye Criticos (' . $cant_atr . ' credito(s), ' . fmt($total_atr) . ') — por eso difiere del TOTAL GENERAL de mas abajo.'), 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+        }
     }
 
     // ── Total General ───────────────────────────────────────────
