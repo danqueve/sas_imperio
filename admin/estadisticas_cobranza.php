@@ -61,11 +61,11 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
     }
 
     // ── Semanal: una consulta por grupo (ventana Lun-Mié / Lun-Sáb) ──
-    $cargar_semanal = function (array $ids, string $desde, string $hasta) use ($pdo, &$data) {
+    $cargar_semanal = function (array $ids, string $desde, string $hasta, string $lunes_reporte) use ($pdo, &$data) {
         if (empty($ids)) return;
         $ph = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $pdo->prepare("
-            SELECT cu.id, cu.estado, cu.monto_cuota, cu.monto_mora, cu.saldo_pagado, cu.fecha_vencimiento,
+            SELECT cu.id, cu.estado, cu.monto_cuota, cu.monto_mora, cu.fecha_vencimiento,
                    cr.cobrador_id, cr.cliente_id, cr.interes_moratorio_pct,
                    (SELECT COUNT(*)
                     FROM ic_cuotas cu2
@@ -76,34 +76,43 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
                       AND cu2.fecha_vencimiento < CURDATE()
                       AND (cu2.monto_cuota - cu2.saldo_pagado) > 0
                    ) AS cuotas_atrasadas_cliente,
+                   COALESCE((
+                       SELECT SUM(pc.monto_total)
+                       FROM ic_pagos_confirmados pc
+                       WHERE pc.cuota_id = cu.id
+                         AND pc.revertido = 0
+                         AND pc.semana_lunes < ?
+                   ), 0) AS pagado_antes,
                    EXISTS(
                        SELECT 1 FROM ic_pagos_temporales pt2
                        WHERE pt2.cuota_id = cu.id AND pt2.estado IN ('PENDIENTE','APROBADO')
                          AND pt2.origen = 'cobrador'
-                   ) AS tiene_pago
+                         AND pt2.fecha_jornada BETWEEN ? AND ?
+                   ) AS pago_en_semana
             FROM ic_cuotas cu
             JOIN ic_creditos cr ON cu.credito_id = cr.id
             WHERE cr.cobrador_id IN ($ph) AND cr.estado IN ('EN_CURSO','MOROSO')
               AND cr.frecuencia = 'semanal'
               AND cu.fecha_vencimiento BETWEEN ? AND ?
-              AND cu.estado != 'CANCELADA'
         ");
-        $stmt->execute([...$ids, $desde, $hasta]);
+        $stmt->execute([$lunes_reporte, $desde, $hasta, ...$ids, $desde, $hasta]);
 
         $cobrados_set = [];
         $faltan_set   = [];
         $criticos_set = [];
         foreach ($stmt->fetchAll() as $cu) {
             $cid  = (int) $cu['cobrador_id'];
-            $dias_atraso = dias_atraso_habiles($cu['fecha_vencimiento']);
-            $mora = (float) $cu['monto_mora'] > 0
-                ? (float) $cu['monto_mora']
-                : calcular_mora((float) $cu['monto_cuota'], $dias_atraso, (float) $cu['interes_moratorio_pct']);
-            $data[$cid]['semanal']['estimado'] += (float) $cu['monto_cuota'] + $mora;
+            $evaluacion = evaluar_cobrabilidad_meta_semanal($cu, $hasta);
+            if (!$evaluacion['incluida']) {
+                continue;
+            }
 
-            $cobrado = ((float) $cu['saldo_pagado'] > 0)
-                || in_array($cu['estado'], ['PAGADA', 'CAP_PAGADA'], true)
-                || (bool) $cu['tiene_pago'];
+            $monto_meta = $evaluacion['monto_meta'];
+            $data[$cid]['semanal']['estimado'] += $monto_meta;
+            // Esta estadística representa la cobranza de la ventana elegida:
+            // ni el saldo actual ni pagos de otras semanas pueden convertir una
+            // cuota histórica en cobrada.
+            $cobrado = (float) $cu['pago_en_semana'] > 0.0;
 
             if ($cobrado) {
                 $cobrados_set[$cid][$cu['cliente_id']] = true;
@@ -112,7 +121,7 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
                 if ((int) $cu['cuotas_atrasadas_cliente'] >= 5) {
                     $criticos_set[$cid][$cu['cliente_id']] = true;
                 }
-                $data[$cid]['semanal']['faltante'] += max(0, (float) $cu['monto_cuota'] + $mora - (float) $cu['saldo_pagado']);
+                $data[$cid]['semanal']['faltante'] += $monto_meta;
             }
         }
         foreach ($cobrados_set as $cid => $set) $data[$cid]['semanal']['cobrados'] = count($set);
@@ -120,8 +129,8 @@ function calcular_estadisticas(PDO $pdo, DateTimeImmutable $lunes_sel, array $us
         foreach ($criticos_set as $cid => $set) $data[$cid]['semanal']['criticos'] = count($set);
     };
 
-    $cargar_semanal($ids_especiales, $lunes_str, $mier_sel);
-    $cargar_semanal($ids_normales,   $lunes_str, $sabado_sel);
+    $cargar_semanal($ids_especiales, $lunes_str, $mier_sel, $lunes_str);
+    $cargar_semanal($ids_normales,   $lunes_str, $sabado_sel, $lunes_str);
 
     // ── Quincenal / Mensual: cartera vencida a hoy, todos los cobradores ──
     $ids_todos = array_merge($ids_especiales, $ids_normales);

@@ -41,7 +41,7 @@ for ($i = 0; $i < 6; $i++) {
     $dias_semana[$d->format('Y-m-d')] = (int) $d->format('N');
 }
 
-// ── Queries (idénticas a estadisticas_cobranza.php) ───────────
+// ── Queries ──────────────────────────────────────────────────
 $cobradores = $pdo->query(
     "SELECT id, nombre, apellido FROM ic_usuarios
      WHERE rol = 'cobrador' AND activo = 1
@@ -69,16 +69,29 @@ $stmt_cobros->execute([$inicio_str, $fin_str]);
 $cobros_raw = $stmt_cobros->fetchAll();
 
 $stmt_agenda = $pdo->prepare("
-    SELECT cr.cobrador_id, cu.fecha_vencimiento, cr.frecuencia,
-           COUNT(*)             AS cuotas_agendadas,
-           SUM(cu.monto_cuota)  AS monto_estimado
+    SELECT cr.cobrador_id, cu.estado, cu.monto_cuota, cu.monto_mora,
+           cu.fecha_vencimiento, cr.frecuencia, cr.interes_moratorio_pct,
+           COALESCE((
+               SELECT SUM(pc.monto_total)
+               FROM ic_pagos_confirmados pc
+               WHERE pc.cuota_id = cu.id
+                 AND pc.revertido = 0
+                 AND pc.semana_lunes < ?
+           ), 0) AS pagado_antes,
+           EXISTS(
+               SELECT 1
+               FROM ic_pagos_temporales pt
+               WHERE pt.cuota_id = cu.id
+                 AND pt.estado IN ('PENDIENTE', 'APROBADO')
+                 AND pt.origen = 'cobrador'
+                 AND pt.fecha_jornada BETWEEN ? AND ?
+           ) AS pago_en_semana
     FROM ic_cuotas   cu
     JOIN ic_creditos cr ON cu.credito_id = cr.id
     WHERE cu.fecha_vencimiento BETWEEN ? AND ?
       AND cr.estado = 'EN_CURSO'
-    GROUP BY cr.cobrador_id, cu.fecha_vencimiento, cr.frecuencia
 ");
-$stmt_agenda->execute([$inicio_str, $fin_str]);
+$stmt_agenda->execute([$inicio_str, $inicio_str, $fin_str, $inicio_str, $fin_str]);
 $agenda_raw = $stmt_agenda->fetchAll();
 
 // ── Construir $data (idéntico a estadisticas_cobranza.php) ────
@@ -105,8 +118,10 @@ foreach ($agenda_raw as $row) {
     $fecha = $row['fecha_vencimiento'];
     $freq  = $row['frecuencia'];
     if (!isset($data[$cid]['dias'][$fecha])) continue;
-    $ag = (int) $row['cuotas_agendadas'];
-    $me = (float) $row['monto_estimado'];
+    $evaluacion = evaluar_cobrabilidad_meta_semanal($row, $fin_str);
+    if (!$evaluacion['incluida']) continue;
+    $ag = 1;
+    $me = $evaluacion['monto_meta'];
     $data[$cid]['dias'][$fecha]['agendados']                          += $ag;
     $data[$cid]['dias'][$fecha]['monto_estimado']                     += $me;
     $data[$cid]['dias'][$fecha]['por_tipo'][$freq]['agendados']       += $ag;
@@ -184,7 +199,9 @@ class EstadisticasPDF extends PDFBase
         $this->SetFont('Helvetica', 'I', 7);
         $this->SetTextColor(120, 120, 120);
         $this->SetX(10);
-        $this->Cell(190, 4, lat('Solo pagos cargados por el cobrador en su agenda (no incluye pagos directos de admin/supervisor)'), 0, 1, 'C');
+        $this->Cell(190, 4, lat('Estimado: solo cuotas cobrables del rango (excluye bajas y cuotas pagadas antes de la semana)'), 0, 1, 'C');
+        $this->SetX(10);
+        $this->Cell(190, 4, lat('Cobrado: solo pagos cargados por el cobrador en su agenda (no incluye pagos directos de admin/supervisor)'), 0, 1, 'C');
         $this->SetTextColor(0, 0, 0);
 
         // Cobrador
